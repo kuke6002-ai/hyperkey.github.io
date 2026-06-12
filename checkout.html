@@ -38,7 +38,7 @@
             <section class="page-heading">
                 <div class="container py-5">
                     <h1 class="fw-black mb-2">Checkout</h1>
-                    <p class="text-secondary mb-0">Enter delivery and payment details for your digital order.</p>
+                    <p class="text-secondary mb-0">Confirm your cart from inside Telegram Mini App.</p>
                 </div>
             </section>
 
@@ -47,63 +47,36 @@
                     <div class="row g-4">
                         <div class="col-lg-8">
                             <form class="checkout-form content-panel" id="checkoutForm">
-                                <h2 class="h4 fw-black mb-4">Delivery details</h2>
-                                <div class="row g-3 mb-4">
-                                    <div class="col-md-6">
-                                        <label class="form-label" for="firstName">First name</label>
-                                        <input class="form-control" id="firstName" type="text" required />
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label" for="lastName">Last name</label>
-                                        <input class="form-control" id="lastName" type="text" required />
-                                    </div>
-                                    <div class="col-md-8">
-                                        <label class="form-label" for="email">Delivery email</label>
-                                        <input class="form-control" id="email" type="email" required />
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label class="form-label" for="region">Account region</label>
-                                        <select class="form-select" id="region" required>
-                                            <option value="">Choose...</option>
-                                            <option>United States</option>
-                                            <option>United Kingdom</option>
-                                            <option>Europe</option>
-                                            <option>Global</option>
-                                            <option>Nigeria</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-12">
-                                        <label class="form-label" for="playerId">Player ID or notes</label>
-                                        <textarea class="form-control" id="playerId" rows="3" placeholder="Required for top ups. Add username, server, or special delivery notes."></textarea>
-                                    </div>
-                                </div>
+                                <h2 class="h4 fw-black mb-3">Telegram checkout</h2>
+                                <p class="text-secondary mb-4">
+                                    Your Telegram Mini App session is verified securely before the order is sent.
+                                </p>
 
                                 <h2 class="h4 fw-black mb-4">Payment</h2>
                                 <div class="row g-3">
                                     <div class="col-12">
-                                        <label class="form-label" for="cardName">Name on card</label>
-                                        <input class="form-control" id="cardName" type="text" required />
+                                        <label class="form-label" for="paymentMethod">Payment method</label>
+                                        <select class="form-select" id="paymentMethod" required>
+                                            <option value="">Choose...</option>
+                                            <option>Manual confirmation</option>
+                                            <option>Bank transfer</option>
+                                            <option>Wallet transfer</option>
+                                        </select>
                                     </div>
                                     <div class="col-12">
-                                        <label class="form-label" for="cardNumber">Card number</label>
-                                        <input class="form-control" id="cardNumber" type="text" inputmode="numeric" placeholder="4242 4242 4242 4242" required />
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label" for="expiry">Expiry</label>
-                                        <input class="form-control" id="expiry" type="text" placeholder="MM/YY" required />
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label" for="cvc">CVC</label>
-                                        <input class="form-control" id="cvc" type="text" inputmode="numeric" required />
+                                        <div class="alert alert-warning mb-0" role="alert">
+                                            Online payment verification is not configured yet, so orders are marked as payment not verified.
+                                        </div>
                                     </div>
                                 </div>
 
-                                <button class="btn btn-primary btn-lg w-100 mt-4" type="submit">
-                                    Place digital order
+                                <button class="btn btn-primary btn-lg w-100 mt-4" id="placeOrderButton" type="submit">
+                                    <span class="order-button-text">Place digital order</span>
                                 </button>
                                 <div class="alert alert-success mt-4 d-none" id="checkoutSuccess" role="alert">
-                                    Order placed. Your demo cart was cleared and delivery details are ready.
+                                    Order placed. Your cart was cleared and the admin was notified.
                                 </div>
+                                <div class="alert alert-danger mt-4 d-none" id="checkoutError" role="alert"></div>
                             </form>
                         </div>
 
@@ -116,8 +89,7 @@
                                     <strong id="checkoutTotal">TND 0.000</strong>
                                 </div>
                                 <p class="small text-secondary mt-3 mb-0">
-                                    This is a front-end demo checkout. Connect a payment provider before
-                                    using it for real transactions.
+                                    Prices are recalculated on the server from products.json before the order is sent.
                                 </p>
                             </aside>
                         </div>

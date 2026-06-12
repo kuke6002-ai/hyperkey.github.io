@@ -102,7 +102,7 @@ const PRODUCTS = {
         price: 9.99,
         icon: "bi-gem",
         art: "topup-art",
-        description: "Fast top up using your player ID.",
+        description: "Fast top up handled through Telegram order support.",
     },
     "fortnite-vbucks-1000": {
         name: "Fortnite 1,000 V-Bucks",
@@ -151,6 +151,7 @@ const THEME_KEY = "gamevault-theme";
 let CURRENCY = "TND";
 const DATABASE_URL = "products.json";
 const CART_VARIATION_SEPARATOR = "::";
+let checkoutSubmitting = false;
 const ART_CLASSES = [...new Set(Object.values(PRODUCTS).map((product) => product.art).filter(Boolean))];
 // Add a category here if you introduce a new product category in PRODUCTS.
 const CATEGORIES = [
@@ -161,7 +162,7 @@ const CATEGORIES = [
         icon: "bi-gift",
         teaser: "Steam, Xbox, PlayStation, Roblox",
         heading: "Platform wallet codes",
-        description: "Digital gift cards delivered to your email.",
+        description: "Digital gift cards handled through Telegram order support.",
     },
     {
         name: "Top up",
@@ -188,7 +189,7 @@ const CATEGORIES = [
         icon: "bi-person-badge",
         teaser: "Verified starter accounts",
         heading: "Verified game accounts",
-        description: "Starter accounts with delivery notes and recovery guidance.",
+        description: "Starter accounts with access notes and recovery guidance.",
     },
 ];
 const PRODUCT_ROUTES = {
@@ -661,23 +662,93 @@ function renderCheckoutSummary() {
     if (checkoutTotal) checkoutTotal.textContent = formatMoney(getCartTotal(cart));
 }
 
+function getCheckoutRequestId() {
+    return window.crypto?.randomUUID?.() || `checkout-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getCheckoutItems(cart) {
+    return Object.entries(cart).map(([cartKey, qty]) => {
+        const { productId, variationId } = parseCartKey(cartKey);
+        return {
+            productId,
+            quantity: Number(qty),
+            ...(variationId ? { variationId } : {}),
+        };
+    });
+}
+
 function setupCheckoutForm() {
     const form = document.getElementById("checkoutForm");
     if (!form) return;
 
-    form.addEventListener("submit", (event) => {
+    form.addEventListener("submit", async (event) => {
         event.preventDefault();
         if (!form.checkValidity()) {
             form.classList.add("was-validated");
             return;
         }
 
-        localStorage.removeItem(CART_KEY);
-        updateCartCount();
-        renderCheckoutSummary();
-        form.reset();
-        form.classList.remove("was-validated");
-        document.getElementById("checkoutSuccess")?.classList.remove("d-none");
+        if (checkoutSubmitting) return;
+
+        const cart = getCart();
+        if (!Object.keys(cart).length) {
+            const error = document.getElementById("checkoutError");
+            if (error) {
+                error.textContent = "Your cart is empty.";
+                error.classList.remove("d-none");
+            }
+            return;
+        }
+
+        const button = document.getElementById("placeOrderButton");
+        const buttonText = button?.querySelector(".order-button-text");
+        const success = document.getElementById("checkoutSuccess");
+        const error = document.getElementById("checkoutError");
+        const checkoutRequestId = getCheckoutRequestId();
+        const paymentMethod = document.getElementById("paymentMethod")?.value || "";
+
+        checkoutSubmitting = true;
+        if (button) button.disabled = true;
+        if (buttonText) buttonText.textContent = "Placing order...";
+        success?.classList.add("d-none");
+        error?.classList.add("d-none");
+
+        try {
+            const response = await fetch("/api/order", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    checkoutRequestId,
+                    items: getCheckoutItems(cart),
+                    paymentMethod,
+                    telegramInitData: window.Telegram?.WebApp?.initData || "",
+                }),
+            });
+
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || "Order could not be placed.");
+            }
+
+            localStorage.removeItem(CART_KEY);
+            updateCartCount();
+            renderCheckoutSummary();
+            form.reset();
+            form.classList.remove("was-validated");
+            if (success) {
+                success.textContent = `Order placed successfully. Order ID: ${result.orderId}. Payment status: ${result.paymentStatus || "Not verified"}.`;
+                success.classList.remove("d-none");
+            }
+        } catch (submitError) {
+            if (error) {
+                error.textContent = submitError.message || "Order failed. Please try again.";
+                error.classList.remove("d-none");
+            }
+        } finally {
+            checkoutSubmitting = false;
+            if (button) button.disabled = false;
+            if (buttonText) buttonText.textContent = "Place digital order";
+        }
     });
 }
 
@@ -731,12 +802,12 @@ function setupProductOptions() {
 function getProductIntro(product) {
     const intros = {
         "Gift card": "Redeem this digital gift card for wallet credit, games, add-ons, and platform content.",
-        "Top up": "Fast in-game credit delivery for supported accounts. Add your player ID at checkout.",
+        "Top up": "Fast in-game credit support for eligible accounts through Telegram checkout.",
         "Game key": "Activate this digital game key with the included redemption instructions.",
         Account: "Receive verified account access details and recovery guidance after checkout.",
     };
 
-    return intros[getProductCategory(product)] || "Digital product delivered to your checkout email.";
+    return intros[getProductCategory(product)] || "Digital product handled through Telegram checkout.";
 }
 
 function getProductDetail(product) {
@@ -744,14 +815,14 @@ function getProductDetail(product) {
         "Gift card":
             "This digital wallet code is ideal for gamers who want quick account credit without waiting for physical delivery. Confirm your account region before purchase because digital codes may have region limitations.",
         "Top up":
-            "This top up is processed using the player ID or account details you provide during checkout. Please double-check your region, server, and username before placing the order.",
+            "This top up is processed after the order is reviewed. Please confirm the product region and platform before placing the order.",
         "Game key":
             "This product includes a digital activation key and redemption steps. Make sure your platform account meets the region and age requirements before purchase.",
         Account:
-            "This account product includes access details and a recovery guide. Change credentials after delivery and review all account notes before using it.",
+            "This account product includes access details and a recovery guide. Change credentials after receiving access and review all account notes before using it.",
     };
 
-    return details[getProductCategory(product)] || "Your digital product will be delivered by email after checkout.";
+    return details[getProductCategory(product)] || "Your digital product will be processed after Telegram checkout.";
 }
 
 function setupProductDetailPage() {

@@ -9,7 +9,7 @@
             "icon": "bi-gift",
             "teaser": "Steam, Xbox, PlayStation, Roblox",
             "heading": "Platform wallet codes",
-            "description": "Digital gift cards delivered to your email."
+            "description": "Digital gift cards handled through Telegram order support."
         },
         {
             "name": "Top up",
@@ -19,7 +19,7 @@
             "icon": "bi-gem",
             "teaser": "Diamonds, points, V-Bucks",
             "heading": "In-game credit and currency",
-            "description": "Add player details at checkout for eligible top ups."
+            "description": "Top up orders handled through Telegram order support."
         },
         {
             "name": "Game key",
@@ -39,7 +39,7 @@
             "icon": "bi-person-badge",
             "teaser": "Verified starter accounts",
             "heading": "Verified game accounts",
-            "description": "Starter accounts with delivery notes and recovery guidance."
+            "description": "Starter accounts with access notes and recovery guidance."
         }
     ],
     "routes": {
@@ -145,7 +145,7 @@
             "price": 9.99,
             "icon": "bi-gem",
             "art": "topup-art",
-            "description": "Fast top up using your player ID."
+            "description": "Fast top up handled through Telegram order support."
         },
         "fortnite-vbucks-1000": {
             "name": "Fortnite 1,000 V-Bucks",
