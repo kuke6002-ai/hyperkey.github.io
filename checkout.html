@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <title>Checkout | GameVault</title>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css" />
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+
+    <body>
+        <header class="sticky-top">
+            <nav class="navbar navbar-expand-lg bg-white border-bottom">
+                <div class="container">
+                    <a class="navbar-brand fw-black" href="index.html"><span class="brand-mark">GV</span>GameVault</a>
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar" aria-controls="mainNavbar" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+                    <div class="collapse navbar-collapse" id="mainNavbar">
+                        <ul class="navbar-nav mx-auto mb-3 mb-lg-0">
+                            <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+                            <li class="nav-item"><a class="nav-link" href="products.html">Products</a></li>
+                            <li class="nav-item"><a class="nav-link" href="product.html">Product</a></li>
+                            <li class="nav-item"><a class="nav-link" href="cart.html">Cart</a></li>
+                            <li class="nav-item"><a class="nav-link active" aria-current="page" href="checkout.html">Checkout</a></li>
+                        </ul>
+                        <a class="btn btn-dark position-relative" href="cart.html" aria-label="Cart">
+                            <i class="bi bi-bag"></i>
+                            <span class="cart-count badge rounded-pill text-bg-warning">0</span>
+                        </a>
+                    </div>
+                </div>
+            </nav>
+        </header>
+
+        <main>
+            <section class="page-heading">
+                <div class="container py-5">
+                    <h1 class="fw-black mb-2">Checkout</h1>
+                    <p class="text-secondary mb-0">Enter delivery and payment details for your digital order.</p>
+                </div>
+            </section>
+
+            <section class="py-5">
+                <div class="container">
+                    <div class="row g-4">
+                        <div class="col-lg-8">
+                            <form class="checkout-form content-panel" id="checkoutForm">
+                                <h2 class="h4 fw-black mb-4">Delivery details</h2>
+                                <div class="row g-3 mb-4">
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="firstName">First name</label>
+                                        <input class="form-control" id="firstName" type="text" required />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="lastName">Last name</label>
+                                        <input class="form-control" id="lastName" type="text" required />
+                                    </div>
+                                    <div class="col-md-8">
+                                        <label class="form-label" for="email">Delivery email</label>
+                                        <input class="form-control" id="email" type="email" required />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label" for="region">Account region</label>
+                                        <select class="form-select" id="region" required>
+                                            <option value="">Choose...</option>
+                                            <option>United States</option>
+                                            <option>United Kingdom</option>
+                                            <option>Europe</option>
+                                            <option>Global</option>
+                                            <option>Nigeria</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label" for="playerId">Player ID or notes</label>
+                                        <textarea class="form-control" id="playerId" rows="3" placeholder="Required for top ups. Add username, server, or special delivery notes."></textarea>
+                                    </div>
+                                </div>
+
+                                <h2 class="h4 fw-black mb-4">Payment</h2>
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <label class="form-label" for="cardName">Name on card</label>
+                                        <input class="form-control" id="cardName" type="text" required />
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label" for="cardNumber">Card number</label>
+                                        <input class="form-control" id="cardNumber" type="text" inputmode="numeric" placeholder="4242 4242 4242 4242" required />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="expiry">Expiry</label>
+                                        <input class="form-control" id="expiry" type="text" placeholder="MM/YY" required />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="cvc">CVC</label>
+                                        <input class="form-control" id="cvc" type="text" inputmode="numeric" required />
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-primary btn-lg w-100 mt-4" type="submit">
+                                    Place digital order
+                                </button>
+                                <div class="alert alert-success mt-4 d-none" id="checkoutSuccess" role="alert">
+                                    Order placed. Your demo cart was cleared and delivery details are ready.
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="col-lg-4">
+                            <aside class="summary-card">
+                                <h2 class="h4 fw-black mb-4">Your order</h2>
+                                <div id="checkoutSummary"></div>
+                                <div class="summary-line total mt-3">
+                                    <span>Total</span>
+                                    <strong id="checkoutTotal">TND 0.000</strong>
+                                </div>
+                                <p class="small text-secondary mt-3 mb-0">
+                                    This is a front-end demo checkout. Connect a payment provider before
+                                    using it for real transactions.
+                                </p>
+                            </aside>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="site-footer">
+            <div class="container py-4">
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+                    <p class="mb-0 text-white-50">GameVault checkout demo.</p>
+                    <a href="cart.html">Back to cart</a>
+                </div>
+            </div>
+        </footer>
+
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+        <script src="app.js"></script>
+    </body>
+</html>

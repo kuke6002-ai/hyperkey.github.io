@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <title>Gift Cards | GameVault</title>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css" />
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body data-category="Gift card">
+        <header class="sticky-top">
+            <nav class="navbar navbar-expand-lg bg-white border-bottom">
+                <div class="container">
+                    <a class="navbar-brand fw-black" href="index.html"><span class="brand-mark">GV</span>GameVault</a>
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar" aria-controls="mainNavbar" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+                    <div class="collapse navbar-collapse" id="mainNavbar">
+                        <ul class="navbar-nav mx-auto mb-3 mb-lg-0">
+                            <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+                            <li class="nav-item"><a class="nav-link active" aria-current="page" href="products.html">Products</a></li>
+                            <li class="nav-item"><a class="nav-link" href="cart.html">Cart</a></li>
+                            <li class="nav-item"><a class="nav-link" href="checkout.html">Checkout</a></li>
+                        </ul>
+                        <a class="btn btn-dark position-relative" href="cart.html" aria-label="Cart">
+                            <i class="bi bi-bag"></i>
+                            <span class="cart-count badge rounded-pill text-bg-warning">0</span>
+                        </a>
+                    </div>
+                </div>
+            </nav>
+        </header>
+        <main>
+            <section class="page-heading">
+                <div class="container py-5">
+                    <p class="eyebrow mb-2">Category</p>
+                    <h1 class="fw-black mb-2" id="categoryPageTitle">Gift Cards</h1>
+                    <p class="text-secondary mb-0" id="categoryPageDescription">Digital gift cards delivered to your email.</p>
+                </div>
+            </section>
+            <section class="py-5">
+                <div class="container">
+                    <div class="row g-4" id="categoryProducts"></div>
+                </div>
+            </section>
+        </main>
+        <footer class="site-footer">
+            <div class="container py-4">
+                <div class="d-flex justify-content-between gap-3">
+                    <a href="products.html">All categories</a>
+                    <a href="cart.html">Cart</a>
+                </div>
+            </div>
+        </footer>
+        <div class="toast-container position-fixed bottom-0 end-0 p-3">
+            <div id="cartToast" class="toast" role="status" aria-live="polite" aria-atomic="true">
+                <div class="toast-body">Added to cart.</div>
+            </div>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+        <script src="app.js"></script>
+    </body>
+</html>
