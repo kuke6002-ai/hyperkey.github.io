@@ -213,7 +213,14 @@ async function loadProductDatabase() {
         const response = await fetch(`${DATABASE_URL}?v=${Date.now()}`, { cache: "no-store" });
         if (!response.ok) throw new Error(`Could not load ${DATABASE_URL}`);
 
-        const database = await response.json();
+        const responseText = await response.text();
+        let database = {};
+        try {
+            database = responseText ? JSON.parse(responseText) : {};
+        } catch {
+            throw new Error(`${DATABASE_URL} did not return JSON. Check that products.json exists on your GitHub Pages site.`);
+        }
+
         if (database.products && typeof database.products === "object") {
             Object.keys(PRODUCTS).forEach((id) => delete PRODUCTS[id]);
             Object.assign(PRODUCTS, database.products);
