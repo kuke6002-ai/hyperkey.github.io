@@ -685,13 +685,6 @@ function getCheckoutItems(cart) {
     });
 }
 
-function getTelegramInitData() {
-    const webApp = window.Telegram?.WebApp;
-    webApp?.ready?.();
-    webApp?.expand?.();
-    return webApp?.initData || "";
-}
-
 function setupCheckoutForm() {
     const form = document.getElementById("checkoutForm");
     if (!form) return;
@@ -721,6 +714,8 @@ function setupCheckoutForm() {
         const error = document.getElementById("checkoutError");
         const checkoutRequestId = getCheckoutRequestId();
         const paymentMethod = document.getElementById("paymentMethod")?.value || "";
+        const customerPhone = document.getElementById("customerPhone")?.value.trim() || "";
+        const telegramUsername = document.getElementById("telegramUsername")?.value.trim() || "";
 
         checkoutSubmitting = true;
         if (button) button.disabled = true;
@@ -733,13 +728,6 @@ function setupCheckoutForm() {
                 throw new Error("Checkout backend is not configured. Paste your Cloudflare Worker URL into config.js.");
             }
 
-            const telegramInitData = getTelegramInitData();
-            if (!telegramInitData) {
-                throw new Error(
-                    "Telegram session is missing. Open the store from your bot's Mini App button, not as a normal browser link.",
-                );
-            }
-
             const response = await fetch(ORDER_API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -747,7 +735,8 @@ function setupCheckoutForm() {
                     checkoutRequestId,
                     items: getCheckoutItems(cart),
                     paymentMethod,
-                    telegramInitData,
+                    customerPhone,
+                    telegramUsername,
                 }),
             });
 
@@ -954,12 +943,6 @@ function setupThemeToggle() {
     applyTheme(savedTheme);
 }
 
-function setupTelegramApp() {
-    const webApp = window.Telegram?.WebApp;
-    webApp?.ready?.();
-    webApp?.expand?.();
-}
-
 document.addEventListener("click", (event) => {
     const addButton = event.target.closest("[data-add-to-cart]");
     if (addButton) {
@@ -973,7 +956,6 @@ document.addEventListener("click", (event) => {
 });
 
 async function initSite() {
-    setupTelegramApp();
     setupThemeToggle();
     await loadProductDatabase();
     updateCartCount();

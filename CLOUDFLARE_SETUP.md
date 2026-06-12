@@ -32,9 +32,8 @@ window.GAMEVAULT_ORDER_API_URL = "https://your-worker.yourname.workers.dev";
 
 ## 4. Test
 
-Open the store from your Telegram Mini App, add a product to the cart, and place
-an order. A normal browser will not have `Telegram.WebApp.initData`, so checkout
-should only succeed inside Telegram.
+Open the store, add a product to the cart, enter a phone number on checkout, and
+place an order.
 
 ## Security Notes
 

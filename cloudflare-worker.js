@@ -1,5 +1,4 @@
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
-const TELEGRAM_INIT_DATA_MAX_AGE_SECONDS = 24 * 60 * 60;
 const MAX_QUANTITY = 99;
 const processedOrders = new Map();
 
@@ -23,82 +22,6 @@ function getCorsHeaders(request) {
     };
 }
 
-async function hmacSha256(key, message) {
-    const encoder = new TextEncoder();
-    const cryptoKey = await crypto.subtle.importKey(
-        "raw",
-        typeof key === "string" ? encoder.encode(key) : key,
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"],
-    );
-    return crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(message));
-}
-
-function bytesToHex(buffer) {
-    return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function timingSafeEqualHex(a, b) {
-    if (!/^[a-f0-9]{64}$/i.test(a) || !/^[a-f0-9]{64}$/i.test(b)) return false;
-    let diff = 0;
-    for (let index = 0; index < a.length; index += 1) {
-        diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
-    }
-    return diff === 0;
-}
-
-async function validateTelegramInitData(initData, botToken) {
-    if (!initData || typeof initData !== "string") {
-        const error = new Error("Missing Telegram initData");
-        error.statusCode = 401;
-        throw error;
-    }
-    if (!botToken) {
-        const error = new Error("Telegram bot token is not configured");
-        error.statusCode = 500;
-        throw error;
-    }
-
-    const params = new URLSearchParams(initData);
-    const hash = params.get("hash") || "";
-    params.delete("hash");
-
-    const dataCheckString = [...params.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, value]) => `${key}=${value}`)
-        .join("\n");
-
-    const secret = await hmacSha256("WebAppData", botToken);
-    const calculatedHash = bytesToHex(await hmacSha256(secret, dataCheckString));
-    if (!timingSafeEqualHex(hash, calculatedHash)) {
-        const error = new Error("Invalid Telegram initData");
-        error.statusCode = 401;
-        throw error;
-    }
-
-    const authDate = Number(params.get("auth_date") || 0);
-    const now = Math.floor(Date.now() / 1000);
-    if (!authDate || now - authDate > TELEGRAM_INIT_DATA_MAX_AGE_SECONDS) {
-        const error = new Error("Expired Telegram session");
-        error.statusCode = 401;
-        throw error;
-    }
-
-    let user = null;
-    try {
-        user = JSON.parse(params.get("user") || "null");
-    } catch {
-        user = null;
-    }
-    if (!user || !user.id) {
-        const error = new Error("Telegram user is missing from initData");
-        error.statusCode = 401;
-        throw error;
-    }
-    return user;
-}
-
 async function readDatabase(env) {
     if (!env.PRODUCT_DATABASE_URL) {
         const error = new Error("PRODUCT_DATABASE_URL is not configured");
@@ -113,7 +36,13 @@ async function readDatabase(env) {
     if (!response.ok) {
         throw new Error(`Could not load product database: ${response.status}`);
     }
-    return response.json();
+
+    const text = await response.text();
+    try {
+        return JSON.parse(text);
+    } catch {
+        throw new Error("Product database did not return JSON");
+    }
 }
 
 function slugify(value) {
@@ -150,6 +79,25 @@ function normalizePaymentMethod(value) {
     return value.trim().slice(0, 80);
 }
 
+function normalizePhone(value) {
+    if (typeof value !== "string") return "";
+    return value.trim().replace(/\s+/g, " ").slice(0, 40);
+}
+
+function validatePhone(value) {
+    const phone = normalizePhone(value);
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 6 || digits.length > 15 || !/^[+\d][+\d\s().-]*$/.test(phone)) {
+        throw new Error("A valid phone number is required");
+    }
+    return phone;
+}
+
+function normalizeTelegramUsername(value) {
+    if (typeof value !== "string") return "";
+    return value.trim().replace(/^@/, "").replace(/[^a-zA-Z0-9_]/g, "").slice(0, 32);
+}
+
 function money(amount, currency) {
     return new Intl.NumberFormat("en-TN", {
         style: "currency",
@@ -157,10 +105,11 @@ function money(amount, currency) {
     }).format(Number(amount) || 0);
 }
 
-function buildOrder(items, paymentMethod, telegramUser, database) {
+function buildOrder(body, database) {
     const products = database.products || {};
     const currency = database.currency || "TND";
     const lines = [];
+    const items = body.items;
 
     if (!Array.isArray(items) || !items.length) throw new Error("Cart is empty");
 
@@ -209,11 +158,12 @@ function buildOrder(items, paymentMethod, telegramUser, database) {
         id: `GV-${createdAt.getTime()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
         createdAt: createdAt.toISOString(),
         currency,
-        paymentMethod: normalizePaymentMethod(paymentMethod),
+        customerPhone: validatePhone(body.customerPhone),
+        telegramUsername: normalizeTelegramUsername(body.telegramUsername),
+        paymentMethod: normalizePaymentMethod(body.paymentMethod),
         paymentStatus: "Not verified - no online payment provider configured",
         lines,
         total: lines.reduce((sum, line) => sum + line.lineTotal, 0),
-        telegramUserId: telegramUser.id,
     };
 }
 
@@ -225,12 +175,7 @@ function escapeHtml(value) {
         .replace(/"/g, "&quot;");
 }
 
-function getTelegramDisplayName(user) {
-    return [user.first_name, user.last_name].filter(Boolean).join(" ") || "Telegram user";
-}
-
-function formatAdminMessage(order, telegramUser) {
-    const username = telegramUser.username ? `@${telegramUser.username}` : "";
+function formatAdminMessage(order) {
     const products = order.lines
         .map((line, index) => {
             const option = line.optionLabel ? `\n   Option: ${escapeHtml(line.optionLabel)}` : "";
@@ -250,10 +195,9 @@ function formatAdminMessage(order, telegramUser) {
         `<b>Order ID:</b> ${escapeHtml(order.id)}`,
         `<b>Order date:</b> ${escapeHtml(order.createdAt)}`,
         "",
-        "<b>Telegram customer</b>",
-        `<b>Display name:</b> ${escapeHtml(getTelegramDisplayName(telegramUser))}`,
-        username ? `<b>Username:</b> ${escapeHtml(username)}` : "",
-        `<b>User ID:</b> ${escapeHtml(telegramUser.id)}`,
+        "<b>Customer contact</b>",
+        `<b>Phone:</b> ${escapeHtml(order.customerPhone)}`,
+        `<b>Telegram username:</b> ${escapeHtml(order.telegramUsername ? `@${order.telegramUsername}` : "Not provided")}`,
         "",
         "<b>Products</b>",
         products,
@@ -261,17 +205,6 @@ function formatAdminMessage(order, telegramUser) {
         `<b>Total:</b> ${escapeHtml(money(order.total, order.currency))}`,
         `<b>Payment status:</b> ${escapeHtml(order.paymentStatus)}`,
         `<b>Payment method:</b> ${escapeHtml(order.paymentMethod || "Not selected")}`,
-    ]
-        .filter((line) => line !== "")
-        .join("\n");
-}
-
-function formatCustomerMessage(order) {
-    return [
-        "<b>Order received</b>",
-        `Order ID: ${escapeHtml(order.id)}`,
-        `Total: ${escapeHtml(money(order.total, order.currency))}`,
-        "We will review your payment and process the digital order.",
     ].join("\n");
 }
 
@@ -311,7 +244,6 @@ async function handleOrder(request, env, corsHeaders) {
     cleanupProcessedOrders();
 
     const body = await request.json();
-    const telegramUser = await validateTelegramInitData(body.telegramInitData, env.TELEGRAM_BOT_TOKEN);
     const checkoutRequestId = String(body.checkoutRequestId || "").trim();
     if (!checkoutRequestId) return jsonResponse({ error: "Missing checkout request ID" }, 400, corsHeaders);
 
@@ -328,7 +260,7 @@ async function handleOrder(request, env, corsHeaders) {
     }
 
     const database = await readDatabase(env);
-    const order = buildOrder(body.items, body.paymentMethod, telegramUser, database);
+    const order = buildOrder(body, database);
     const responsePayload = {
         ok: true,
         orderId: order.id,
@@ -339,19 +271,21 @@ async function handleOrder(request, env, corsHeaders) {
 
     processedOrders.set(checkoutRequestId, { createdAt: Date.now(), pending: true });
 
-    const contactMarkup = {
-        inline_keyboard: [
-            [
-                {
-                    text: "Contact customer",
-                    url: `tg://user?id=${encodeURIComponent(String(telegramUser.id))}`,
-                },
-            ],
-        ],
-    };
+    const contactButton = order.telegramUsername
+        ? {
+              inline_keyboard: [
+                  [
+                      {
+                          text: "Open Telegram username",
+                          url: `https://t.me/${encodeURIComponent(order.telegramUsername)}`,
+                      },
+                  ],
+              ],
+          }
+        : undefined;
 
     try {
-        await sendTelegramMessage(env, env.TELEGRAM_ADMIN_CHAT_ID, formatAdminMessage(order, telegramUser), contactMarkup);
+        await sendTelegramMessage(env, env.TELEGRAM_ADMIN_CHAT_ID, formatAdminMessage(order), contactButton);
     } catch (error) {
         processedOrders.delete(checkoutRequestId);
         throw error;
@@ -362,12 +296,6 @@ async function handleOrder(request, env, corsHeaders) {
         pending: false,
         response: responsePayload,
     });
-
-    try {
-        await sendTelegramMessage(env, telegramUser.id, formatCustomerMessage(order));
-    } catch (error) {
-        console.warn("Telegram customer confirmation failed", error);
-    }
 
     return jsonResponse(responsePayload, 200, corsHeaders);
 }
