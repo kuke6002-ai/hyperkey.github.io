@@ -150,6 +150,7 @@ const CART_KEY = "gamevault-cart";
 const THEME_KEY = "gamevault-theme";
 let CURRENCY = "TND";
 const DATABASE_URL = "products.json";
+const ORDER_API_URL = window.GAMEVAULT_ORDER_API_URL || "";
 const CART_VARIATION_SEPARATOR = "::";
 let checkoutSubmitting = false;
 const ART_CLASSES = [...new Set(Object.values(PRODUCTS).map((product) => product.art).filter(Boolean))];
@@ -171,7 +172,7 @@ const CATEGORIES = [
         icon: "bi-gem",
         teaser: "Diamonds, points, V-Bucks",
         heading: "In-game credit and currency",
-        description: "Add player details at checkout for eligible top ups.",
+        description: "Top up orders handled through Telegram order support.",
     },
     {
         name: "Game key",
@@ -714,7 +715,11 @@ function setupCheckoutForm() {
         error?.classList.add("d-none");
 
         try {
-            const response = await fetch("/api/order", {
+            if (!ORDER_API_URL) {
+                throw new Error("Checkout backend is not configured. Paste your Cloudflare Worker URL into config.js.");
+            }
+
+            const response = await fetch(ORDER_API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -725,7 +730,16 @@ function setupCheckoutForm() {
                 }),
             });
 
-            const result = await response.json();
+            const responseText = await response.text();
+            let result = {};
+            try {
+                result = responseText ? JSON.parse(responseText) : {};
+            } catch {
+                throw new Error(
+                    "Checkout backend did not return JSON. Set GAMEVAULT_ORDER_API_URL in config.js to your Cloudflare Worker URL.",
+                );
+            }
+
             if (!response.ok || !result.ok) {
                 throw new Error(result.error || "Order could not be placed.");
             }
