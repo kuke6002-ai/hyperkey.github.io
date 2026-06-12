@@ -685,6 +685,13 @@ function getCheckoutItems(cart) {
     });
 }
 
+function getTelegramInitData() {
+    const webApp = window.Telegram?.WebApp;
+    webApp?.ready?.();
+    webApp?.expand?.();
+    return webApp?.initData || "";
+}
+
 function setupCheckoutForm() {
     const form = document.getElementById("checkoutForm");
     if (!form) return;
@@ -726,6 +733,13 @@ function setupCheckoutForm() {
                 throw new Error("Checkout backend is not configured. Paste your Cloudflare Worker URL into config.js.");
             }
 
+            const telegramInitData = getTelegramInitData();
+            if (!telegramInitData) {
+                throw new Error(
+                    "Telegram session is missing. Open the store from your bot's Mini App button, not as a normal browser link.",
+                );
+            }
+
             const response = await fetch(ORDER_API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -733,7 +747,7 @@ function setupCheckoutForm() {
                     checkoutRequestId,
                     items: getCheckoutItems(cart),
                     paymentMethod,
-                    telegramInitData: window.Telegram?.WebApp?.initData || "",
+                    telegramInitData,
                 }),
             });
 
@@ -940,6 +954,12 @@ function setupThemeToggle() {
     applyTheme(savedTheme);
 }
 
+function setupTelegramApp() {
+    const webApp = window.Telegram?.WebApp;
+    webApp?.ready?.();
+    webApp?.expand?.();
+}
+
 document.addEventListener("click", (event) => {
     const addButton = event.target.closest("[data-add-to-cart]");
     if (addButton) {
@@ -953,6 +973,7 @@ document.addEventListener("click", (event) => {
 });
 
 async function initSite() {
+    setupTelegramApp();
     setupThemeToggle();
     await loadProductDatabase();
     updateCartCount();
