@@ -15,12 +15,17 @@ In the Worker settings, add these names:
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_ADMIN_CHAT_ID=
 PRODUCT_DATABASE_URL=
+PAYMENT_SETTINGS_URL=
 ```
 
 Use Cloudflare secrets for `TELEGRAM_BOT_TOKEN`.
 
 `PRODUCT_DATABASE_URL` must be the public URL for this store's `products.json`
 on GitHub Pages.
+
+`PAYMENT_SETTINGS_URL` should be the public URL for this store's `settings.json`
+on GitHub Pages. If it is missing, the Worker uses the default rules already in
+`cloudflare-worker.js`.
 
 ## 3. Connect GitHub Pages to the Worker
 
@@ -32,8 +37,9 @@ window.GAMEVAULT_ORDER_API_URL = "https://your-worker.yourname.workers.dev";
 
 ## 4. Test
 
-Open the store, add a product to the cart, enter a phone number on checkout, and
-place an order.
+Open the store, add a product to the cart, enter a WhatsApp number on checkout,
+choose a payment method, enter the required reference or card codes on
+`payment.html`, and submit the order.
 
 ## Security Notes
 

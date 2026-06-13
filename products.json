@@ -147,6 +147,14 @@
             "art": "topup-art",
             "description": "Fast top up handled through Telegram order support."
         },
+        "free-fire-diamonds-100": {
+            "name": "Free Fire 100 Diamonds",
+            "category": "Top up",
+            "price": 3.5,
+            "icon": "bi-fire",
+            "art": "topup-art",
+            "description": "Free Fire 100 diamond top up handled through Telegram order support."
+        },
         "fortnite-vbucks-1000": {
             "name": "Fortnite 1,000 V-Bucks",
             "category": "Top up",

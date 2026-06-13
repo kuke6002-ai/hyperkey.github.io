@@ -1,0 +1,710 @@
+const ART_STYLES = [
+    "steam-art",
+    "xbox-art",
+    "playstation-art",
+    "topup-art",
+    "vbucks-art",
+    "valorant-art",
+    "gamekey-art",
+    "account-art",
+    "roblox-art",
+];
+
+const DEFAULT_PAYMENT_SETTINGS = {
+    payment: {
+        d17: {
+            enabled: true,
+            label: "D17 transfer",
+            instructions: "Send the shown amount by D17, then enter only the authorization number from your receipt.",
+            proofLabel: "Authorization number",
+            feePercent: 1,
+            roundUpToDecimal: 1,
+        },
+        flouci: {
+            enabled: true,
+            label: "Flouci transfer",
+            instructions: "Send the shown amount by Flouci, then enter only the transaction ID from your receipt.",
+            proofLabel: "Transaction ID",
+            feeUnder100: 1,
+            feeFrom100: 2,
+        },
+        "tt-card": {
+            enabled: true,
+            label: "Tunisie Telecom recharge card",
+            instructions: "Enter the required Tunisie Telecom recharge card codes. Each code must be 15 digits.",
+            cardValue: 5,
+            feePercent: 20,
+            codeLength: 15,
+        },
+    },
+};
+
+const state = {
+    database: {
+        currency: "TND",
+        categories: [],
+        routes: {},
+        products: {},
+    },
+    settings: clone(DEFAULT_PAYMENT_SETTINGS),
+    selectedId: "",
+    originalId: "",
+    draftVariations: [],
+    previewImages: {},
+};
+
+function slugify(value) {
+    return String(value || "")
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
+
+function safeAssetFileName(fileName) {
+    const extension = String(fileName || "").split(".").pop()?.toLowerCase() || "png";
+    const baseName = String(fileName || "product-photo").replace(/\.[^.]+$/, "");
+    return `${slugify(baseName) || "product-photo"}.${extension.replace(/[^a-z0-9]/g, "") || "png"}`;
+}
+
+function money(amount, currency = "TND") {
+    return new Intl.NumberFormat("en-TN", {
+        style: "currency",
+        currency,
+    }).format(Number(amount) || 0);
+}
+
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function mergePaymentSettings(settings = {}) {
+    const merged = clone(DEFAULT_PAYMENT_SETTINGS);
+    const incomingPayment = settings.payment && typeof settings.payment === "object" ? settings.payment : {};
+
+    Object.entries(incomingPayment).forEach(([method, config]) => {
+        const key = method === "ttCard" ? "tt-card" : method;
+        if (!merged.payment[key] || !config || typeof config !== "object") return;
+        merged.payment[key] = {
+            ...merged.payment[key],
+            ...config,
+        };
+    });
+
+    return merged;
+}
+
+function getProducts() {
+    return state.database.products || {};
+}
+
+function getCategories() {
+    return Array.isArray(state.database.categories) ? state.database.categories : [];
+}
+
+function getProductEntries() {
+    return Object.entries(getProducts()).sort(([, a], [, b]) => String(a.name || "").localeCompare(String(b.name || "")));
+}
+
+function getSelectedProduct() {
+    return getProducts()[state.selectedId] || null;
+}
+
+function showToast(message) {
+    const toastElement = document.getElementById("adminToast");
+    const messageElement = document.getElementById("adminToastMessage");
+    if (messageElement) messageElement.textContent = message;
+    if (toastElement && window.bootstrap) bootstrap.Toast.getOrCreateInstance(toastElement).show();
+}
+
+function setDatabase(database) {
+    state.database = {
+        currency: database.currency || "TND",
+        categories: Array.isArray(database.categories) ? database.categories : [],
+        routes: database.routes && typeof database.routes === "object" ? database.routes : {},
+        products: database.products && typeof database.products === "object" ? database.products : {},
+    };
+
+    const firstProduct = Object.keys(state.database.products)[0] || "";
+    selectProduct(firstProduct);
+    renderAll();
+}
+
+async function loadDatabase() {
+    try {
+        const response = await fetch(`products.json?v=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) throw new Error("Could not load products.json");
+        setDatabase(await response.json());
+        showToast("Loaded products.json");
+    } catch (error) {
+        renderAll();
+        showToast(error.message || "Could not load products.json");
+    }
+}
+
+function setSettings(settings) {
+    state.settings = mergePaymentSettings(settings);
+    fillSettingsForm();
+}
+
+async function loadSettings() {
+    try {
+        const response = await fetch(`settings.json?v=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) throw new Error("Could not load settings.json");
+        setSettings(await response.json());
+    } catch (error) {
+        setSettings(DEFAULT_PAYMENT_SETTINGS);
+        showToast(error.message || "Using default payment settings");
+    }
+}
+
+function renderAll() {
+    renderCategoryOptions();
+    renderArtOptions();
+    renderProductList();
+    fillForm();
+    updateJsonOutput();
+}
+
+function renderCategoryOptions() {
+    const categorySelect = document.getElementById("productCategory");
+    if (!categorySelect) return;
+
+    const currentValue = categorySelect.value;
+    categorySelect.innerHTML = getCategories()
+        .map((category) => `<option value="${escapeHtml(category.name)}">${escapeHtml(category.label || category.name)}</option>`)
+        .join("");
+    categorySelect.value = currentValue || categorySelect.options[0]?.value || "";
+}
+
+function renderArtOptions() {
+    const artSelect = document.getElementById("productArt");
+    if (!artSelect) return;
+
+    const currentValue = artSelect.value;
+    artSelect.innerHTML = ART_STYLES.map((art) => `<option value="${escapeHtml(art)}">${escapeHtml(art)}</option>`).join("");
+    artSelect.value = currentValue || ART_STYLES[0];
+}
+
+function renderProductList() {
+    const list = document.getElementById("productList");
+    const search = document.getElementById("productSearch")?.value.trim().toLowerCase() || "";
+    if (!list) return;
+
+    const entries = getProductEntries().filter(([id, product]) => {
+        const haystack = `${id} ${product.name || ""} ${product.category || ""}`.toLowerCase();
+        return haystack.includes(search);
+    });
+
+    list.innerHTML = entries.length
+        ? entries
+              .map(([id, product]) => {
+                  const isActive = id === state.selectedId;
+                  const hidden = product.visible === false;
+                  const variationCount = Array.isArray(product.variations) ? product.variations.length : 0;
+                  return `
+                    <button class="admin-product-item ${isActive ? "active" : ""}" type="button" data-select-product="${escapeHtml(id)}">
+                        <span>
+                            <strong>${escapeHtml(product.name || id)}</strong>
+                            <small>${escapeHtml(id)} · ${escapeHtml(product.category || "Digital")}</small>
+                        </span>
+                        <span class="admin-item-meta">
+                            ${variationCount ? `<em>${variationCount} options</em>` : `<em>${money(product.price, state.database.currency)}</em>`}
+                            ${hidden ? '<i class="bi bi-eye-slash" title="Hidden"></i>' : '<i class="bi bi-eye" title="Visible"></i>'}
+                        </span>
+                    </button>
+                `;
+              })
+              .join("")
+        : `<div class="empty-state py-4"><p class="text-secondary mb-0">No products found.</p></div>`;
+}
+
+function selectProduct(id) {
+    state.selectedId = id;
+    state.originalId = id;
+    const product = getSelectedProduct();
+    state.draftVariations = Array.isArray(product?.variations) ? clone(product.variations) : [];
+}
+
+function fillForm() {
+    const product = getSelectedProduct();
+    const isNew = !product;
+    document.getElementById("editorTitle").textContent = isNew ? "New product" : product.name || state.selectedId;
+
+    const productId = document.getElementById("productId");
+    const productName = document.getElementById("productName");
+    const productCategory = document.getElementById("productCategory");
+    const productPrice = document.getElementById("productPrice");
+    const productIcon = document.getElementById("productIcon");
+    const productArt = document.getElementById("productArt");
+    const productImage = document.getElementById("productImage");
+    const productPhotoFile = document.getElementById("productPhotoFile");
+    const productDescription = document.getElementById("productDescription");
+    const productVisible = document.getElementById("productVisible");
+
+    if (productId) productId.value = state.selectedId || "";
+    if (productName) productName.value = product?.name || "";
+    if (productCategory) productCategory.value = product?.category || productCategory.options[0]?.value || "";
+    if (productPrice) productPrice.value = Number(product?.price ?? 0);
+    if (productIcon) productIcon.value = product?.icon || "bi-box";
+    if (productArt) productArt.value = product?.art || "gamekey-art";
+    if (productImage) productImage.value = product?.image || "";
+    if (productPhotoFile) productPhotoFile.value = "";
+    if (productDescription) productDescription.value = product?.description || "";
+    if (productVisible) productVisible.checked = product?.visible !== false;
+
+    renderVariations();
+    renderPreview();
+}
+
+function renderVariations() {
+    const list = document.getElementById("variationList");
+    const defaultVariation = document.getElementById("defaultVariation");
+    const selectedProduct = getSelectedProduct();
+    if (!list || !defaultVariation) return;
+
+    list.innerHTML = state.draftVariations.length
+        ? state.draftVariations
+              .map(
+                  (variation, index) => `
+                    <div class="admin-variation-row" data-variation-index="${index}">
+                        <div>
+                            <label class="form-label">ID</label>
+                            <input class="form-control form-control-sm" data-variation-field="id" value="${escapeHtml(variation.id || "")}" />
+                        </div>
+                        <div>
+                            <label class="form-label">Label</label>
+                            <input class="form-control form-control-sm" data-variation-field="label" value="${escapeHtml(variation.label || "")}" />
+                        </div>
+                        <div>
+                            <label class="form-label">Name</label>
+                            <input class="form-control form-control-sm" data-variation-field="name" value="${escapeHtml(variation.name || "")}" />
+                        </div>
+                        <div>
+                            <label class="form-label">Price</label>
+                            <input class="form-control form-control-sm" data-variation-field="price" type="number" min="0" step="0.001" value="${Number(variation.price ?? 0)}" />
+                        </div>
+                        <button class="btn btn-outline-danger btn-sm" type="button" data-remove-variation="${index}"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                `,
+              )
+              .join("")
+        : `<div class="empty-state py-3"><p class="text-secondary mb-0">No variations for this product.</p></div>`;
+
+    defaultVariation.innerHTML = `<option value="">None</option>${state.draftVariations
+        .map((variation) => `<option value="${escapeHtml(variation.id || "")}">${escapeHtml(variation.label || variation.name || variation.id || "Option")}</option>`)
+        .join("")}`;
+    defaultVariation.value = selectedProduct?.defaultVariation || state.draftVariations[0]?.id || "";
+}
+
+function readFormProduct() {
+    const id = document.getElementById("productId").value.trim();
+    const name = document.getElementById("productName").value.trim();
+    const category = document.getElementById("productCategory").value;
+    const price = Number(document.getElementById("productPrice").value || 0);
+    const icon = document.getElementById("productIcon").value.trim() || "bi-box";
+    const art = document.getElementById("productArt").value || "gamekey-art";
+    const image = document.getElementById("productImage").value.trim();
+    const description = document.getElementById("productDescription").value.trim();
+    const visible = document.getElementById("productVisible").checked;
+    const defaultVariation = document.getElementById("defaultVariation").value;
+
+    if (!id) throw new Error("Product ID is required");
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error("Product ID must use lowercase letters, numbers, and hyphens");
+    if (!name) throw new Error("Product name is required");
+    if (!Number.isFinite(price) || price < 0) throw new Error("Price must be zero or more");
+    if (id !== state.originalId && getProducts()[id]) throw new Error("Product ID already exists");
+
+    const product = {
+        name,
+        category,
+        price,
+        icon,
+        art,
+    };
+    if (image) product.image = image;
+    if (description) product.description = description;
+    if (!visible) product.visible = false;
+
+    const variations = state.draftVariations
+        .map((variation) => ({
+            id: String(variation.id || "").trim(),
+            label: String(variation.label || "").trim(),
+            name: String(variation.name || "").trim(),
+            price: Number(variation.price || 0),
+        }))
+        .filter((variation) => variation.id || variation.label || variation.name);
+
+    const seenVariationIds = new Set();
+    variations.forEach((variation, index) => {
+        if (!variation.id) variation.id = slugify(variation.label || variation.name || `option-${index + 1}`);
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(variation.id)) throw new Error(`Variation ID is invalid: ${variation.id}`);
+        if (seenVariationIds.has(variation.id)) throw new Error(`Duplicate variation ID: ${variation.id}`);
+        if (!Number.isFinite(variation.price) || variation.price < 0) throw new Error(`Variation price is invalid: ${variation.id}`);
+        seenVariationIds.add(variation.id);
+    });
+
+    if (variations.length) {
+        product.variations = variations;
+        product.defaultVariation = defaultVariation && seenVariationIds.has(defaultVariation) ? defaultVariation : variations[0].id;
+    }
+
+    return { id, product };
+}
+
+function saveProduct(options = {}) {
+    const { id, product } = readFormProduct();
+    const products = getProducts();
+    if (state.originalId && state.originalId !== id) delete products[state.originalId];
+    products[id] = product;
+    selectProduct(id);
+    renderAll();
+    if (!options.silent) showToast("Product saved in editor");
+}
+
+function deleteProduct() {
+    if (!state.selectedId) return;
+    const product = getSelectedProduct();
+    if (!product) return;
+    if (!window.confirm(`Delete ${product.name || state.selectedId}?`)) return;
+
+    delete getProducts()[state.selectedId];
+    Object.keys(state.database.routes || {}).forEach((routeId) => {
+        if (state.database.routes[routeId]?.productId === state.selectedId) delete state.database.routes[routeId];
+    });
+
+    const nextId = Object.keys(getProducts())[0] || "";
+    selectProduct(nextId);
+    renderAll();
+    showToast("Product deleted in editor");
+}
+
+function createNewProduct() {
+    state.selectedId = "";
+    state.originalId = "";
+    state.draftVariations = [];
+    fillForm();
+    document.getElementById("productId").value = "";
+    document.getElementById("productName").focus();
+}
+
+function duplicateProduct() {
+    const product = getSelectedProduct();
+    if (!product) return;
+    const baseId = `${state.selectedId || slugify(product.name)}-copy`;
+    let nextId = baseId;
+    let counter = 2;
+    while (getProducts()[nextId]) {
+        nextId = `${baseId}-${counter}`;
+        counter += 1;
+    }
+    getProducts()[nextId] = {
+        ...clone(product),
+        name: `${product.name || "Product"} Copy`,
+    };
+    selectProduct(nextId);
+    renderAll();
+    showToast("Product duplicated");
+}
+
+function addVariation() {
+    const label = `${state.database.currency || "TND"} option`;
+    let id = slugify(label);
+    let counter = 2;
+    const existing = new Set(state.draftVariations.map((variation) => variation.id));
+    while (existing.has(id)) {
+        id = `${slugify(label)}-${counter}`;
+        counter += 1;
+    }
+    state.draftVariations.push({
+        id,
+        label,
+        name: document.getElementById("productName").value.trim() || "Product option",
+        price: Number(document.getElementById("productPrice").value || 0),
+    });
+    renderVariations();
+    renderPreview();
+}
+
+function updateVariation(index, field, value) {
+    if (!state.draftVariations[index]) return;
+    state.draftVariations[index][field] = field === "price" ? Number(value || 0) : value;
+    renderPreview();
+}
+
+function removeVariation(index) {
+    state.draftVariations.splice(index, 1);
+    renderVariations();
+    renderPreview();
+}
+
+function getPreviewProduct() {
+    try {
+        return readFormProduct();
+    } catch {
+        return {
+            id: document.getElementById("productId")?.value || "new-product",
+            product: {
+                name: document.getElementById("productName")?.value || "New product",
+                category: document.getElementById("productCategory")?.value || "Digital",
+                price: Number(document.getElementById("productPrice")?.value || 0),
+                icon: document.getElementById("productIcon")?.value || "bi-box",
+                art: document.getElementById("productArt")?.value || "gamekey-art",
+                image: document.getElementById("productImage")?.value || "",
+                description: document.getElementById("productDescription")?.value || "",
+                variations: state.draftVariations,
+            },
+        };
+    }
+}
+
+function renderPreview() {
+    const preview = document.getElementById("adminPreviewCard");
+    if (!preview) return;
+    const { product } = getPreviewProduct();
+    const firstVariation = product.variations?.[0];
+    const price = firstVariation?.price ?? product.price ?? 0;
+    const image = product.image ? state.previewImages[product.image] || product.image : "";
+
+    preview.innerHTML = `
+        <div class="product-art ${escapeHtml(product.art || "gamekey-art")}">
+            ${
+                image
+                    ? `<img class="product-image" src="${escapeHtml(image)}" alt="${escapeHtml(product.name || "Product photo")}" />`
+                    : `<i class="bi ${escapeHtml(product.icon || "bi-box")}"></i>`
+            }
+        </div>
+        <div class="card-body">
+            <span class="badge text-bg-dark mb-2">${escapeHtml(product.category || "Digital")}</span>
+            <h3 class="h5 fw-black">${escapeHtml(product.name || "New product")}</h3>
+            <p class="text-secondary">${escapeHtml(product.description || "Product description")}</p>
+            <strong class="price">${money(price, state.database.currency)}</strong>
+        </div>
+    `;
+}
+
+function handlePhotoFile(file) {
+    if (!file) return;
+    const path = `assets/${safeAssetFileName(file.name)}`;
+    const input = document.getElementById("productImage");
+    if (input) input.value = path;
+    if (state.previewImages[path]) URL.revokeObjectURL(state.previewImages[path]);
+    state.previewImages[path] = URL.createObjectURL(file);
+    renderPreview();
+    showToast(`Photo path set to ${path}`);
+}
+
+function getOutputJson() {
+    return JSON.stringify(state.database, null, 4);
+}
+
+function updateJsonOutput() {
+    const output = document.getElementById("jsonOutput");
+    if (output) output.value = getOutputJson();
+}
+
+function fillSettingsForm() {
+    const settings = mergePaymentSettings(state.settings);
+    const d17 = settings.payment.d17;
+    const flouci = settings.payment.flouci;
+    const ttCard = settings.payment["tt-card"];
+
+    const fields = {
+        d17Enabled: d17.enabled !== false,
+        d17Instructions: d17.instructions,
+        d17ProofLabel: d17.proofLabel,
+        d17FeePercent: d17.feePercent,
+        d17RoundUpToDecimal: d17.roundUpToDecimal,
+        flouciEnabled: flouci.enabled !== false,
+        flouciInstructions: flouci.instructions,
+        flouciProofLabel: flouci.proofLabel,
+        flouciFeeUnder100: flouci.feeUnder100,
+        flouciFeeFrom100: flouci.feeFrom100,
+        ttCardEnabled: ttCard.enabled !== false,
+        ttCardInstructions: ttCard.instructions,
+        ttCardValue: ttCard.cardValue,
+        ttCardFeePercent: ttCard.feePercent,
+        ttCardCodeLength: ttCard.codeLength,
+    };
+
+    Object.entries(fields).forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        if (!element) return;
+        if (element.type === "checkbox") {
+            element.checked = Boolean(value);
+        } else {
+            element.value = value ?? "";
+        }
+    });
+}
+
+function readSettingsForm() {
+    const numberValue = (id, fallback) => {
+        const value = Number(document.getElementById(id)?.value ?? fallback);
+        return Number.isFinite(value) ? value : fallback;
+    };
+    const textValue = (id, fallback) => document.getElementById(id)?.value.trim() || fallback;
+    const checkedValue = (id) => document.getElementById(id)?.checked !== false;
+
+    return {
+        payment: {
+            d17: {
+                enabled: checkedValue("d17Enabled"),
+                label: "D17 transfer",
+                instructions: textValue("d17Instructions", DEFAULT_PAYMENT_SETTINGS.payment.d17.instructions),
+                proofLabel: textValue("d17ProofLabel", DEFAULT_PAYMENT_SETTINGS.payment.d17.proofLabel),
+                feePercent: numberValue("d17FeePercent", DEFAULT_PAYMENT_SETTINGS.payment.d17.feePercent),
+                roundUpToDecimal: numberValue("d17RoundUpToDecimal", DEFAULT_PAYMENT_SETTINGS.payment.d17.roundUpToDecimal),
+            },
+            flouci: {
+                enabled: checkedValue("flouciEnabled"),
+                label: "Flouci transfer",
+                instructions: textValue("flouciInstructions", DEFAULT_PAYMENT_SETTINGS.payment.flouci.instructions),
+                proofLabel: textValue("flouciProofLabel", DEFAULT_PAYMENT_SETTINGS.payment.flouci.proofLabel),
+                feeUnder100: numberValue("flouciFeeUnder100", DEFAULT_PAYMENT_SETTINGS.payment.flouci.feeUnder100),
+                feeFrom100: numberValue("flouciFeeFrom100", DEFAULT_PAYMENT_SETTINGS.payment.flouci.feeFrom100),
+            },
+            "tt-card": {
+                enabled: checkedValue("ttCardEnabled"),
+                label: "Tunisie Telecom recharge card",
+                instructions: textValue("ttCardInstructions", DEFAULT_PAYMENT_SETTINGS.payment["tt-card"].instructions),
+                cardValue: numberValue("ttCardValue", DEFAULT_PAYMENT_SETTINGS.payment["tt-card"].cardValue),
+                feePercent: numberValue("ttCardFeePercent", DEFAULT_PAYMENT_SETTINGS.payment["tt-card"].feePercent),
+                codeLength: numberValue("ttCardCodeLength", DEFAULT_PAYMENT_SETTINGS.payment["tt-card"].codeLength),
+            },
+        },
+    };
+}
+
+function saveSettingsFromForm() {
+    state.settings = mergePaymentSettings(readSettingsForm());
+}
+
+function getSettingsJson() {
+    saveSettingsFromForm();
+    return JSON.stringify(state.settings, null, 4);
+}
+
+function downloadJson() {
+    try {
+        if (document.getElementById("productId")?.value.trim()) saveProduct({ silent: true });
+    } catch (error) {
+        showToast(error.message || "Could not save current product");
+        return;
+    }
+
+    const blob = new Blob([getOutputJson()], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "products.json";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast("Downloaded products.json");
+}
+
+function downloadSettingsJson() {
+    const blob = new Blob([getSettingsJson()], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "settings.json";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast("Downloaded settings.json");
+}
+
+async function copyJson() {
+    try {
+        if (document.getElementById("productId")?.value.trim()) saveProduct({ silent: true });
+        await navigator.clipboard.writeText(getOutputJson());
+        showToast("Copied JSON");
+    } catch (error) {
+        showToast(error.message || "Could not copy JSON");
+    }
+}
+
+async function importJson(file) {
+    if (!file) return;
+    const text = await file.text();
+    const database = JSON.parse(text);
+    setDatabase(database);
+    showToast("Imported JSON");
+}
+
+async function importSettingsJson(file) {
+    if (!file) return;
+    const text = await file.text();
+    const settings = JSON.parse(text);
+    setSettings(settings);
+    showToast("Imported settings.json");
+}
+
+function bindEvents() {
+    document.getElementById("productSearch")?.addEventListener("input", renderProductList);
+    document.getElementById("newProductButton")?.addEventListener("click", createNewProduct);
+    document.getElementById("duplicateProductButton")?.addEventListener("click", duplicateProduct);
+    document.getElementById("deleteProductButton")?.addEventListener("click", deleteProduct);
+    document.getElementById("addVariationButton")?.addEventListener("click", addVariation);
+    document.getElementById("resetFormButton")?.addEventListener("click", fillForm);
+    document.getElementById("downloadJsonButton")?.addEventListener("click", downloadJson);
+    document.getElementById("copyJsonButton")?.addEventListener("click", copyJson);
+    document.getElementById("jsonImport")?.addEventListener("change", (event) => importJson(event.target.files[0]));
+    document.getElementById("downloadSettingsButton")?.addEventListener("click", downloadSettingsJson);
+    document.getElementById("settingsImport")?.addEventListener("change", (event) => importSettingsJson(event.target.files[0]));
+    document.getElementById("productPhotoFile")?.addEventListener("change", (event) => handlePhotoFile(event.target.files[0]));
+
+    document.querySelectorAll(".admin-setting-group input, .admin-setting-group textarea").forEach((input) => {
+        input.addEventListener("input", saveSettingsFromForm);
+        input.addEventListener("change", saveSettingsFromForm);
+    });
+
+    document.getElementById("productList")?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-select-product]");
+        if (!button) return;
+        selectProduct(button.dataset.selectProduct);
+        renderAll();
+    });
+
+    document.getElementById("variationList")?.addEventListener("input", (event) => {
+        const input = event.target.closest("[data-variation-field]");
+        if (!input) return;
+        const row = input.closest("[data-variation-index]");
+        updateVariation(Number(row.dataset.variationIndex), input.dataset.variationField, input.value);
+    });
+
+    document.getElementById("variationList")?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-remove-variation]");
+        if (!button) return;
+        removeVariation(Number(button.dataset.removeVariation));
+    });
+
+    document.getElementById("productForm")?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        try {
+            saveProduct();
+        } catch (error) {
+            showToast(error.message || "Could not save product");
+        }
+    });
+
+    document.getElementById("productForm")?.addEventListener("input", () => {
+        renderPreview();
+    });
+}
+
+bindEvents();
+loadDatabase();
+loadSettings();

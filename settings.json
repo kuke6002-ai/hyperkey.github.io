@@ -1,0 +1,28 @@
+{
+    "payment": {
+        "d17": {
+            "enabled": true,
+            "label": "D17 transfer",
+            "instructions": "Send the shown amount by D17, then enter only the authorization number from your receipt.",
+            "proofLabel": "Authorization number",
+            "feePercent": 1,
+            "roundUpToDecimal": 1
+        },
+        "flouci": {
+            "enabled": true,
+            "label": "Flouci transfer",
+            "instructions": "Send the shown amount by Flouci, then enter only the transaction ID from your receipt.",
+            "proofLabel": "Transaction ID",
+            "feeUnder100": 1,
+            "feeFrom100": 2
+        },
+        "tt-card": {
+            "enabled": true,
+            "label": "Tunisie Telecom recharge card",
+            "instructions": "Enter the required Tunisie Telecom recharge card codes. Each code must be 15 digits.",
+            "cardValue": 5,
+            "feePercent": 20,
+            "codeLength": 15
+        }
+    }
+}

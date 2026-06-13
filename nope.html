@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+    <head>
+        <title>Product Admin | HyperKey Store</title>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css" />
+        <link rel="stylesheet" href="styles.css?v=20260613-1" />
+    </head>
+
+    <body>
+        <header class="sticky-top">
+            <nav class="navbar navbar-expand-lg bg-white border-bottom">
+                <div class="container">
+                    <a class="navbar-brand fw-black" href="index.html"><span class="brand-mark"><img src="assets/hyperlogo.png" alt="HyperKey Store logo" /></span>HyperKey Store</a>
+                    <div class="d-flex gap-2 ms-auto">
+                        <a class="btn btn-outline-dark" href="products.html"><i class="bi bi-grid me-2"></i>Store</a>
+                        <button class="btn btn-primary" type="button" id="downloadJsonButton"><i class="bi bi-download me-2"></i>Download JSON</button>
+                    </div>
+                </div>
+            </nav>
+        </header>
+
+        <main class="admin-shell py-4">
+            <div class="container-fluid px-3 px-lg-4">
+                <div class="row g-4">
+                    <aside class="col-lg-4 col-xl-3">
+                        <div class="content-panel admin-panel">
+                            <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
+                                <h1 class="h4 fw-black mb-0">Products</h1>
+                                <button class="btn btn-primary btn-sm" type="button" id="newProductButton"><i class="bi bi-plus-lg"></i></button>
+                            </div>
+                            <div class="input-group mb-3">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input class="form-control" id="productSearch" type="search" placeholder="Search products" />
+                            </div>
+                            <div class="admin-list" id="productList"></div>
+                        </div>
+                    </aside>
+
+                    <section class="col-lg-8 col-xl-6">
+                        <form class="content-panel admin-panel" id="productForm">
+                            <div class="d-flex align-items-start justify-content-between gap-3 mb-4">
+                                <div>
+                                    <p class="eyebrow mb-2">Edit product</p>
+                                    <h2 class="h3 fw-black mb-0" id="editorTitle">New product</h2>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-outline-dark" type="button" id="duplicateProductButton"><i class="bi bi-copy"></i></button>
+                                    <button class="btn btn-outline-danger" type="button" id="deleteProductButton"><i class="bi bi-trash"></i></button>
+                                </div>
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="col-md-5">
+                                    <label class="form-label" for="productId">Product ID</label>
+                                    <input class="form-control" id="productId" type="text" required />
+                                </div>
+                                <div class="col-md-7">
+                                    <label class="form-label" for="productName">Name</label>
+                                    <input class="form-control" id="productName" type="text" required />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="productCategory">Category</label>
+                                    <select class="form-select" id="productCategory" required></select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="productPrice">Base price TND</label>
+                                    <input class="form-control" id="productPrice" type="number" min="0" step="0.001" required />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="productIcon">Bootstrap icon</label>
+                                    <input class="form-control" id="productIcon" type="text" placeholder="bi-box" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="productArt">Art style</label>
+                                    <select class="form-select" id="productArt"></select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="productImage">Photo path</label>
+                                    <input class="form-control" id="productImage" type="text" placeholder="assets/product-photo.png" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="productPhotoFile">Photo file</label>
+                                    <input class="form-control" id="productPhotoFile" type="file" accept="image/*" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label" for="productDescription">Description</label>
+                                    <textarea class="form-control" id="productDescription" rows="3"></textarea>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="defaultVariation">Default variation</label>
+                                    <select class="form-select" id="defaultVariation"></select>
+                                </div>
+                                <div class="col-md-6 d-flex align-items-end">
+                                    <div class="form-check form-switch admin-switch">
+                                        <input class="form-check-input" id="productVisible" type="checkbox" />
+                                        <label class="form-check-label" for="productVisible">Show in store</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr class="my-4" />
+
+                            <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
+                                <h3 class="h5 fw-black mb-0">Variations</h3>
+                                <button class="btn btn-outline-dark btn-sm" type="button" id="addVariationButton"><i class="bi bi-plus-lg me-1"></i>Add option</button>
+                            </div>
+                            <div class="admin-variation-list" id="variationList"></div>
+
+                            <div class="d-flex flex-wrap gap-2 mt-4">
+                                <button class="btn btn-primary" type="submit"><i class="bi bi-check2 me-2"></i>Save product</button>
+                                <button class="btn btn-outline-dark" type="button" id="resetFormButton">Reset</button>
+                            </div>
+                        </form>
+                    </section>
+
+                    <aside class="col-xl-3">
+                        <div class="content-panel admin-panel mb-4">
+                            <p class="eyebrow mb-2">Import</p>
+                            <input class="form-control" id="jsonImport" type="file" accept="application/json,.json" />
+                        </div>
+
+                        <div class="content-panel admin-panel mb-4">
+                            <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
+                                <p class="eyebrow mb-0">Payment settings</p>
+                                <button class="btn btn-outline-dark btn-sm" type="button" id="downloadSettingsButton"><i class="bi bi-download"></i></button>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="settingsImport">Import settings.json</label>
+                                <input class="form-control" id="settingsImport" type="file" accept="application/json,.json" />
+                            </div>
+
+                            <div class="admin-settings-list">
+                                <div class="admin-setting-group">
+                                    <div class="form-check form-switch admin-switch mb-3">
+                                        <input class="form-check-input" id="d17Enabled" type="checkbox" />
+                                        <label class="form-check-label" for="d17Enabled">D17 enabled</label>
+                                    </div>
+                                    <label class="form-label" for="d17Instructions">D17 instructions</label>
+                                    <textarea class="form-control mb-2" id="d17Instructions" rows="2"></textarea>
+                                    <label class="form-label" for="d17ProofLabel">D17 proof label</label>
+                                    <input class="form-control mb-2" id="d17ProofLabel" type="text" />
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <label class="form-label" for="d17FeePercent">Fee %</label>
+                                            <input class="form-control" id="d17FeePercent" type="number" min="0" step="0.001" />
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label" for="d17RoundUpToDecimal">Decimals</label>
+                                            <input class="form-control" id="d17RoundUpToDecimal" type="number" min="0" step="1" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="admin-setting-group">
+                                    <div class="form-check form-switch admin-switch mb-3">
+                                        <input class="form-check-input" id="flouciEnabled" type="checkbox" />
+                                        <label class="form-check-label" for="flouciEnabled">Flouci enabled</label>
+                                    </div>
+                                    <label class="form-label" for="flouciInstructions">Flouci instructions</label>
+                                    <textarea class="form-control mb-2" id="flouciInstructions" rows="2"></textarea>
+                                    <label class="form-label" for="flouciProofLabel">Flouci proof label</label>
+                                    <input class="form-control mb-2" id="flouciProofLabel" type="text" />
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <label class="form-label" for="flouciFeeUnder100">Under 100</label>
+                                            <input class="form-control" id="flouciFeeUnder100" type="number" min="0" step="0.001" />
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label" for="flouciFeeFrom100">100 and up</label>
+                                            <input class="form-control" id="flouciFeeFrom100" type="number" min="0" step="0.001" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="admin-setting-group">
+                                    <div class="form-check form-switch admin-switch mb-3">
+                                        <input class="form-check-input" id="ttCardEnabled" type="checkbox" />
+                                        <label class="form-check-label" for="ttCardEnabled">TT card enabled</label>
+                                    </div>
+                                    <label class="form-label" for="ttCardInstructions">TT card instructions</label>
+                                    <textarea class="form-control mb-2" id="ttCardInstructions" rows="2"></textarea>
+                                    <div class="row g-2">
+                                        <div class="col-4">
+                                            <label class="form-label" for="ttCardValue">Card TND</label>
+                                            <input class="form-control" id="ttCardValue" type="number" min="1" step="0.001" />
+                                        </div>
+                                        <div class="col-4">
+                                            <label class="form-label" for="ttCardFeePercent">Fee %</label>
+                                            <input class="form-control" id="ttCardFeePercent" type="number" min="0" step="0.001" />
+                                        </div>
+                                        <div class="col-4">
+                                            <label class="form-label" for="ttCardCodeLength">Digits</label>
+                                            <input class="form-control" id="ttCardCodeLength" type="number" min="1" step="1" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="content-panel admin-panel mb-4">
+                            <p class="eyebrow mb-2">Preview</p>
+                            <article class="card product-card h-100" id="adminPreviewCard"></article>
+                        </div>
+
+                        <div class="content-panel admin-panel">
+                            <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
+                                <p class="eyebrow mb-0">Output</p>
+                                <button class="btn btn-outline-dark btn-sm" type="button" id="copyJsonButton"><i class="bi bi-clipboard"></i></button>
+                            </div>
+                            <textarea class="form-control admin-json-output" id="jsonOutput" readonly></textarea>
+                        </div>
+                    </aside>
+                </div>
+            </div>
+        </main>
+
+        <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1080">
+            <div class="toast align-items-center text-bg-dark border-0" id="adminToast" role="status" aria-live="polite" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body" id="adminToastMessage">Saved.</div>
+                    <button class="btn-close btn-close-white me-2 m-auto" type="button" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+        <script src="admin.js?v=20260613-1"></script>
+    </body>
+</html>

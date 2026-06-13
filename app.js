@@ -104,6 +104,14 @@ const PRODUCTS = {
         art: "topup-art",
         description: "Fast top up handled through Telegram order support.",
     },
+    "free-fire-diamonds-100": {
+        name: "Free Fire 100 Diamonds",
+        category: "Top up",
+        price: 3.5,
+        icon: "bi-fire",
+        art: "topup-art",
+        description: "Free Fire 100 diamond top up handled through Telegram order support.",
+    },
     "fortnite-vbucks-1000": {
         name: "Fortnite 1,000 V-Bucks",
         category: "Top up",
@@ -146,14 +154,45 @@ const PRODUCTS = {
     },
 };
 
-const CART_KEY = "gamevault-cart";
-const THEME_KEY = "gamevault-theme";
+const CART_KEY = "hyperkey-cart";
+const CHECKOUT_SESSION_KEY = "hyperkey-checkout-session";
+const THEME_KEY = "hyperkey-theme-v2";
 let CURRENCY = "TND";
 const DATABASE_URL = "products.json";
+const SETTINGS_URL = "settings.json";
 const ORDER_API_URL = window.GAMEVAULT_ORDER_API_URL || "";
 const CART_VARIATION_SEPARATOR = "::";
 let checkoutSubmitting = false;
+let paymentSubmitting = false;
 const ART_CLASSES = [...new Set(Object.values(PRODUCTS).map((product) => product.art).filter(Boolean))];
+const DEFAULT_PAYMENT_SETTINGS = {
+    payment: {
+        d17: {
+            enabled: true,
+            label: "D17 transfer",
+            instructions: "Send the shown amount by D17, then enter only the authorization number from your receipt.",
+            proofLabel: "Authorization number",
+            feePercent: 1,
+            roundUpToDecimal: 1,
+        },
+        flouci: {
+            enabled: true,
+            label: "Flouci transfer",
+            instructions: "Send the shown amount by Flouci, then enter only the transaction ID from your receipt.",
+            proofLabel: "Transaction ID",
+            feeUnder100: 1,
+            feeFrom100: 2,
+        },
+        "tt-card": {
+            enabled: true,
+            label: "Tunisie Telecom recharge card",
+            instructions: "Enter the required Tunisie Telecom recharge card codes. Each code must be 15 digits.",
+            cardValue: 5,
+            feePercent: 20,
+            codeLength: 15,
+        },
+    },
+};
 // Add a category here if you introduce a new product category in PRODUCTS.
 const CATEGORIES = [
     {
@@ -252,6 +291,107 @@ function formatMoney(amount) {
     }).format(Number(amount) || 0);
 }
 
+function formatPlainTndAmount(amount) {
+    const value = Number(amount) || 0;
+    const formatted = value.toLocaleString("en-US", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 3,
+        useGrouping: false,
+    });
+    return `${formatted} TND`;
+}
+
+function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function mergePaymentSettings(settings = {}) {
+    const merged = clone(DEFAULT_PAYMENT_SETTINGS);
+    const incomingPayment = settings.payment && typeof settings.payment === "object" ? settings.payment : {};
+    Object.entries(incomingPayment).forEach(([method, config]) => {
+        const key = method === "ttCard" ? "tt-card" : method;
+        if (!merged.payment[key] || !config || typeof config !== "object") return;
+        merged.payment[key] = {
+            ...merged.payment[key],
+            ...config,
+        };
+    });
+    return merged;
+}
+
+async function loadPaymentSettings() {
+    try {
+        const response = await fetch(`${SETTINGS_URL}?v=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`Could not load ${SETTINGS_URL}`);
+        return mergePaymentSettings(await response.json());
+    } catch (error) {
+        console.warn("Using fallback payment settings:", error);
+        return clone(DEFAULT_PAYMENT_SETTINGS);
+    }
+}
+
+function getPaymentConfig(settings, method) {
+    return settings.payment?.[method] || DEFAULT_PAYMENT_SETTINGS.payment[method] || null;
+}
+
+function roundUpToDecimal(value, decimals = 1) {
+    const factor = 10 ** Math.max(0, Number(decimals) || 0);
+    return Math.ceil((Number(value) - 1e-9) * factor) / factor;
+}
+
+function roundUpToMultiple(value, multiple) {
+    const step = Number(multiple) || 1;
+    return Math.ceil((Number(value) - 1e-9) / step) * step;
+}
+
+function calculatePaymentDetails(productTotal, method, settings) {
+    const config = getPaymentConfig(settings, method);
+    if (!config || config.enabled === false) {
+        throw new Error("This payment method is not available.");
+    }
+
+    if (method === "d17") {
+        const amountDue = roundUpToDecimal(productTotal * (1 + Number(config.feePercent || 0) / 100), config.roundUpToDecimal ?? 1);
+        return {
+            method,
+            label: config.label || "D17 transfer",
+            instructions: config.instructions || DEFAULT_PAYMENT_SETTINGS.payment.d17.instructions,
+            proofType: "reference",
+            proofLabel: config.proofLabel || "Authorization number",
+            amountDue,
+        };
+    }
+
+    if (method === "flouci") {
+        const fee = productTotal < 100 ? Number(config.feeUnder100 || 0) : Number(config.feeFrom100 || 0);
+        return {
+            method,
+            label: config.label || "Flouci transfer",
+            instructions: config.instructions || DEFAULT_PAYMENT_SETTINGS.payment.flouci.instructions,
+            proofType: "reference",
+            proofLabel: config.proofLabel || "Transaction ID",
+            amountDue: productTotal + fee,
+        };
+    }
+
+    if (method === "tt-card") {
+        const cardValue = Number(config.cardValue || 5);
+        const amountDue = roundUpToMultiple(productTotal * (1 + Number(config.feePercent || 0) / 100), cardValue);
+        return {
+            method,
+            label: config.label || "Tunisie Telecom recharge card",
+            instructions: config.instructions || DEFAULT_PAYMENT_SETTINGS.payment["tt-card"].instructions,
+            proofType: "tt-cards",
+            amountDue,
+            cardValue,
+            cardCount: Math.max(1, Math.round(amountDue / cardValue)),
+            codeLength: Number(config.codeLength || 15),
+        };
+    }
+
+    throw new Error("Choose a supported payment method.");
+}
+
 function escapeHtml(value) {
     return String(value)
         .replaceAll("&", "&amp;")
@@ -343,6 +483,10 @@ function getProductDisplayName(product) {
     return product.name;
 }
 
+function getProductImage(product) {
+    return typeof product.image === "string" ? product.image.trim() : "";
+}
+
 function getVariationName(product, variation) {
     return variation?.name || product.name;
 }
@@ -372,12 +516,14 @@ function getCartLine(cartKey) {
         price: variation?.price ?? product.price ?? 0,
         icon: product.icon || "bi-box",
         art: product.art || "gamekey-art",
+        image: getProductImage(product),
     };
 }
 
 function productCardTemplate(id, product) {
     const art = product.art || "gamekey-art";
     const icon = product.icon || "bi-box";
+    const image = getProductImage(product);
     const category = getProductCategory(product);
     const hasVariations = getProductVariations(product).length > 0;
     const priceLabel = hasVariations ? `From ${formatMoney(getProductPrice(product))}` : formatMoney(product.price ?? 0);
@@ -386,7 +532,11 @@ function productCardTemplate(id, product) {
         <div class="col-md-6 col-xl-3">
             <article class="card product-card h-100">
                 <a class="product-art ${art}" href="product.html?product=${encodeURIComponent(id)}" aria-label="View ${escapeHtml(product.name)}">
-                    <i class="bi ${icon}"></i>
+                    ${
+                        image
+                            ? `<img class="product-image" src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" loading="lazy" />`
+                            : `<i class="bi ${icon}"></i>`
+                    }
                 </a>
                 <div class="card-body d-flex flex-column">
                     <span class="badge text-bg-dark align-self-start mb-2">${escapeHtml(category)}</span>
@@ -512,7 +662,7 @@ function renderCategoryPage() {
     if (category) {
         if (title) title.textContent = category.label;
         if (description) description.textContent = category.description;
-        document.title = `${category.label} | GameVault`;
+        document.title = `${category.label} | HyperKey Store`;
     }
 
     categoryProducts.innerHTML = products.length
@@ -607,7 +757,11 @@ function renderCartPage() {
                 return `
                     <div class="cart-item">
                         <div class="cart-thumb ${line.art}">
-                            <i class="bi ${line.icon}"></i>
+                            ${
+                                line.image
+                                    ? `<img class="cart-thumb-image" src="${escapeHtml(line.image)}" alt="${escapeHtml(line.name)}" />`
+                                    : `<i class="bi ${line.icon}"></i>`
+                            }
                         </div>
                         <div>
                             <p class="fw-black mb-1">${line.name}</p>
@@ -685,11 +839,34 @@ function getCheckoutItems(cart) {
     });
 }
 
+function saveCheckoutSession(session) {
+    sessionStorage.setItem(CHECKOUT_SESSION_KEY, JSON.stringify(session));
+}
+
+function getCheckoutSession() {
+    try {
+        return JSON.parse(sessionStorage.getItem(CHECKOUT_SESSION_KEY)) || null;
+    } catch {
+        return null;
+    }
+}
+
+function clearCheckoutSession() {
+    sessionStorage.removeItem(CHECKOUT_SESSION_KEY);
+}
+
+function setAlert(elementId, message = "") {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    element.textContent = message;
+    element.classList.toggle("d-none", !message);
+}
+
 function setupCheckoutForm() {
     const form = document.getElementById("checkoutForm");
     if (!form) return;
 
-    form.addEventListener("submit", async (event) => {
+    form.addEventListener("submit", (event) => {
         event.preventDefault();
         if (!form.checkValidity()) {
             form.classList.add("was-validated");
@@ -699,19 +876,14 @@ function setupCheckoutForm() {
         if (checkoutSubmitting) return;
 
         const cart = getCart();
-        if (!Object.keys(cart).length) {
-            const error = document.getElementById("checkoutError");
-            if (error) {
-                error.textContent = "Your cart is empty.";
-                error.classList.remove("d-none");
-            }
+        const validCart = Object.fromEntries(Object.entries(cart).filter(([cartKey, qty]) => getCartLine(cartKey) && Number(qty) > 0));
+        if (!Object.keys(validCart).length) {
+            setAlert("checkoutError", "Your cart is empty.");
             return;
         }
 
         const button = document.getElementById("placeOrderButton");
         const buttonText = button?.querySelector(".order-button-text");
-        const success = document.getElementById("checkoutSuccess");
-        const error = document.getElementById("checkoutError");
         const checkoutRequestId = getCheckoutRequestId();
         const paymentMethod = document.getElementById("paymentMethod")?.value || "";
         const customerPhone = document.getElementById("customerPhone")?.value.trim() || "";
@@ -719,59 +891,231 @@ function setupCheckoutForm() {
 
         checkoutSubmitting = true;
         if (button) button.disabled = true;
-        if (buttonText) buttonText.textContent = "Placing order...";
-        success?.classList.add("d-none");
-        error?.classList.add("d-none");
+        if (buttonText) buttonText.textContent = "Opening payment...";
+        setAlert("checkoutSuccess", "");
+        setAlert("checkoutError", "");
+
+        saveCheckoutSession({
+            checkoutRequestId,
+            createdAt: new Date().toISOString(),
+            cart: validCart,
+            items: getCheckoutItems(validCart),
+            customerPhone,
+            telegramUsername,
+            paymentMethod,
+        });
+
+        setAlert("checkoutSuccess", "Checkout saved. Opening payment page...");
+        window.location.href = "payment.html";
+    });
+}
+
+function renderPaymentOrderSummary(cart) {
+    const summary = document.getElementById("paymentOrderSummary");
+    if (!summary) return;
+
+    const entries = Object.entries(cart || {}).filter(([cartKey]) => getCartLine(cartKey));
+    summary.innerHTML = entries.length
+        ? entries
+              .map(([cartKey, qty]) => {
+                  const line = getCartLine(cartKey);
+                  return `
+                    <div class="summary-line">
+                        <span>${escapeHtml(line.name)} x ${Number(qty)}</span>
+                        <strong>${formatPlainTndAmount(line.price * Number(qty))}</strong>
+                    </div>
+                `;
+              })
+              .join("")
+        : `<p class="text-secondary mb-0">No products found in this checkout session.</p>`;
+}
+
+function renderPaymentProofFields(details) {
+    const proofFields = document.getElementById("paymentProofFields");
+    if (!proofFields) return;
+
+    if (details.proofType === "reference") {
+        proofFields.innerHTML = `
+            <label class="form-label" for="paymentReference">${escapeHtml(details.proofLabel)}</label>
+            <input
+                class="form-control"
+                id="paymentReference"
+                type="text"
+                autocomplete="off"
+                maxlength="80"
+                placeholder="${escapeHtml(details.proofLabel)}"
+                required
+            />
+        `;
+        return;
+    }
+
+    const count = Number(details.cardCount) || 1;
+    const codeLength = Number(details.codeLength) || 15;
+    proofFields.innerHTML = `
+        <label class="form-label">Recharge card codes</label>
+        <div class="payment-code-grid">
+            ${Array.from({ length: count })
+                .map(
+                    (_, index) => `
+                        <input
+                            class="form-control"
+                            type="text"
+                            inputmode="numeric"
+                            pattern="\\d{${codeLength}}"
+                            maxlength="${codeLength}"
+                            data-card-code
+                            placeholder="Card ${index + 1} - ${codeLength} digits"
+                            required
+                        />
+                    `,
+                )
+                .join("")}
+        </div>
+    `;
+}
+
+function readPaymentProof(method) {
+    if (method === "tt-card") {
+        return {
+            cardCodes: [...document.querySelectorAll("[data-card-code]")].map((input) => input.value.trim()),
+        };
+    }
+
+    return {
+        reference: document.getElementById("paymentReference")?.value.trim() || "",
+    };
+}
+
+async function renderPaymentPage() {
+    const page = document.getElementById("paymentPage");
+    if (!page) return null;
+
+    const button = document.getElementById("submitPaymentButton");
+    const session = getCheckoutSession();
+    if (!session) {
+        if (button) button.disabled = true;
+        setAlert("paymentError", "Checkout session was not found. Please return to checkout and choose a payment method.");
+        return null;
+    }
+
+    const validCart = Object.fromEntries(Object.entries(session.cart || {}).filter(([cartKey, qty]) => getCartLine(cartKey) && Number(qty) > 0));
+    if (!Object.keys(validCart).length) {
+        if (button) button.disabled = true;
+        setAlert("paymentError", "No valid products were found in this checkout session.");
+        renderPaymentOrderSummary({});
+        return null;
+    }
+
+    try {
+        const settings = await loadPaymentSettings();
+        const productTotal = getCartTotal(validCart);
+        const details = calculatePaymentDetails(productTotal, session.paymentMethod, settings);
+
+        document.getElementById("paymentMethodTitle").textContent = details.label;
+        document.getElementById("paymentInstructions").textContent = details.instructions;
+        document.getElementById("paymentOriginalTotal").textContent = formatPlainTndAmount(productTotal);
+        document.getElementById("paymentAmountDue").textContent = formatPlainTndAmount(details.amountDue);
+        document.getElementById("paymentSummaryAmount").textContent = formatPlainTndAmount(details.amountDue);
+
+        renderPaymentOrderSummary(validCart);
+        renderPaymentProofFields(details);
+        setAlert("paymentError", "");
+        return { session: { ...session, cart: validCart, items: getCheckoutItems(validCart) }, details };
+    } catch (error) {
+        if (button) button.disabled = true;
+        setAlert("paymentError", error.message || "Could not prepare payment.");
+        renderPaymentOrderSummary(validCart);
+        return null;
+    }
+}
+
+async function submitPaymentOrder(session) {
+    const response = await fetch(ORDER_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            checkoutRequestId: session.checkoutRequestId,
+            items: session.items,
+            paymentMethod: session.paymentMethod,
+            paymentProof: readPaymentProof(session.paymentMethod),
+            customerPhone: session.customerPhone,
+            telegramUsername: session.telegramUsername,
+        }),
+    });
+
+    const responseText = await response.text();
+    let result = {};
+    try {
+        result = responseText ? JSON.parse(responseText) : {};
+    } catch {
+        throw new Error("Checkout backend did not return JSON. Check the Worker URL in config.js.");
+    }
+
+    if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Order could not be submitted.");
+    }
+
+    return result;
+}
+
+function setupPaymentForm() {
+    const form = document.getElementById("paymentForm");
+    if (!form) return;
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!form.checkValidity()) {
+            form.classList.add("was-validated");
+            return;
+        }
+        if (paymentSubmitting) return;
+
+        const session = getCheckoutSession();
+        if (!session) {
+            setAlert("paymentError", "Checkout session was not found. Please return to checkout and try again.");
+            return;
+        }
+        if (!ORDER_API_URL) {
+            setAlert("paymentError", "Checkout backend is not configured. Paste your Cloudflare Worker URL into config.js.");
+            return;
+        }
+
+        const button = document.getElementById("submitPaymentButton");
+        const buttonText = button?.querySelector(".payment-button-text");
+
+        paymentSubmitting = true;
+        if (button) button.disabled = true;
+        if (buttonText) buttonText.textContent = "Submitting...";
+        setAlert("paymentSuccess", "");
+        setAlert("paymentError", "");
 
         try {
-            if (!ORDER_API_URL) {
-                throw new Error("Checkout backend is not configured. Paste your Cloudflare Worker URL into config.js.");
+            const validCart = Object.fromEntries(Object.entries(session.cart || {}).filter(([cartKey, qty]) => getCartLine(cartKey) && Number(qty) > 0));
+            if (!Object.keys(validCart).length) {
+                throw new Error("No valid products were found in this checkout session.");
             }
-
-            const response = await fetch(ORDER_API_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    checkoutRequestId,
-                    items: getCheckoutItems(cart),
-                    paymentMethod,
-                    customerPhone,
-                    telegramUsername,
-                }),
-            });
-
-            const responseText = await response.text();
-            let result = {};
-            try {
-                result = responseText ? JSON.parse(responseText) : {};
-            } catch {
-                throw new Error(
-                    "Checkout backend did not return JSON. Set GAMEVAULT_ORDER_API_URL in config.js to your Cloudflare Worker URL.",
-                );
-            }
-
-            if (!response.ok || !result.ok) {
-                throw new Error(result.error || "Order could not be placed.");
-            }
-
+            const currentSession = {
+                ...session,
+                cart: validCart,
+                items: getCheckoutItems(validCart),
+            };
+            const result = await submitPaymentOrder(currentSession);
             localStorage.removeItem(CART_KEY);
+            clearCheckoutSession();
             updateCartCount();
-            renderCheckoutSummary();
             form.reset();
             form.classList.remove("was-validated");
-            if (success) {
-                success.textContent = `Order placed successfully. Order ID: ${result.orderId}. Payment status: ${result.paymentStatus || "Not verified"}.`;
-                success.classList.remove("d-none");
-            }
+            setAlert(
+                "paymentSuccess",
+                `Order submitted for manual review. Order ID: ${result.orderId}. Amount to verify: ${formatPlainTndAmount(result.amountDue || result.total)}.`,
+            );
         } catch (submitError) {
-            if (error) {
-                error.textContent = submitError.message || "Order failed. Please try again.";
-                error.classList.remove("d-none");
-            }
+            setAlert("paymentError", submitError.message || "Order failed. Please try again.");
         } finally {
-            checkoutSubmitting = false;
+            paymentSubmitting = false;
             if (button) button.disabled = false;
-            if (buttonText) buttonText.textContent = "Place digital order";
+            if (buttonText) buttonText.textContent = "Submit order for review";
         }
     });
 }
@@ -793,7 +1137,7 @@ function updateProductDetailSelection(productId, variationId = "") {
     if (titleElement) titleElement.textContent = displayName;
     if (pageTitleElement) pageTitleElement.textContent = displayName;
     if (breadcrumbElement) breadcrumbElement.textContent = displayName;
-    document.title = `${displayName} | GameVault`;
+    document.title = `${displayName} | HyperKey Store`;
 
     cartButtons.forEach((item) => {
         item.dataset.addToCart = productId;
@@ -853,6 +1197,7 @@ function setupProductDetailPage() {
     const productName = document.getElementById("selectedProductName");
     const productPrice = document.getElementById("selectedProductPrice");
     const productIcon = document.getElementById("selectedProductIcon");
+    const productImage = document.getElementById("selectedProductImage");
     const productShowcase = document.getElementById("productShowcase");
     const productCategory = document.getElementById("selectedProductCategory");
     const productTitle = document.getElementById("productPageTitle");
@@ -878,9 +1223,23 @@ function setupProductDetailPage() {
         getDefaultVariation(product);
     const productArt = product.art || "gamekey-art";
     const productIconClass = product.icon || "bi-box";
+    const productImageSrc = getProductImage(product);
     const productCategoryText = getProductCategory(product);
 
-    if (productIcon) productIcon.className = `bi ${productIconClass}`;
+    if (productIcon) {
+        productIcon.className = `bi ${productIconClass}`;
+        productIcon.classList.toggle("d-none", Boolean(productImageSrc));
+    }
+    if (productImage) {
+        if (productImageSrc) {
+            productImage.src = productImageSrc;
+            productImage.alt = product.name;
+        } else {
+            productImage.removeAttribute("src");
+            productImage.alt = "";
+        }
+        productImage.classList.toggle("d-none", !productImageSrc);
+    }
     if (productCategory) productCategory.textContent = productCategoryText;
     if (productBadge) productBadge.textContent = productCategoryText;
     if (productIntro) productIntro.textContent = getProductIntro(product);
@@ -888,6 +1247,7 @@ function setupProductDetailPage() {
 
     productShowcase.classList.remove(...ART_CLASSES);
     productShowcase.classList.add(productArt);
+    productShowcase.classList.toggle("has-image", Boolean(productImageSrc));
 
     if (productVariationSection && productVariationOptions) {
         productVariationSection.classList.toggle("d-none", !variations.length);
@@ -923,7 +1283,7 @@ function applyTheme(theme) {
 }
 
 function setupThemeToggle() {
-    const savedTheme = localStorage.getItem(THEME_KEY) || "light";
+    const savedTheme = localStorage.getItem(THEME_KEY) || "dark";
     const cartLinks = document.querySelectorAll('a[href="cart.html"][aria-label="Cart"]');
 
     cartLinks.forEach((cartLink) => {
@@ -967,6 +1327,8 @@ async function initSite() {
     renderCartPage();
     renderCheckoutSummary();
     setupCheckoutForm();
+    await renderPaymentPage();
+    setupPaymentForm();
     setupProductDetailPage();
     setupProductOptions();
 }
