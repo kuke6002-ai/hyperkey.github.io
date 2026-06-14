@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1200" viewBox="0 0 900 1200" role="img" aria-labelledby="title desc">
+    <title id="title">D17 authorization number guide</title>
+    <desc id="desc">Fake D17 receipt guide showing where to find the authorization number.</desc>
+    <rect width="900" height="1200" fill="#f6fbff"/>
+    <path d="M0 0h900v165H0z" fill="#20598b"/>
+    <path d="M73 73l-36 36 36 36" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="450" y="110" text-anchor="middle" font-family="Arial, sans-serif" font-size="44" font-weight="800" fill="#fff">Journal D17</text>
+    <rect x="55" y="220" width="790" height="800" rx="22" fill="#edf8fc" stroke="#42a8bb" stroke-width="4"/>
+    <g transform="translate(316 288)">
+        <rect x="45" y="0" width="180" height="180" rx="18" fill="#fff" stroke="#f6c324" stroke-width="5" transform="rotate(45 135 90)"/>
+        <path d="M80 96c54-48 96-70 150-86-42 40-50 77-36 122-36-24-74-31-114-36z" fill="#1a3262"/>
+        <path d="M111 104c44-24 82-36 116-38-34 26-46 48-39 73-22-20-48-31-77-35z" fill="#f7c600"/>
+    </g>
+    <text x="450" y="520" text-anchor="middle" font-family="Arial, sans-serif" font-size="48" font-weight="800" fill="#275377">Operation D17</text>
+    <text x="450" y="574" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" fill="#275377">13/06/2026 17:43:47</text>
+    <line x1="120" y1="650" x2="780" y2="650" stroke="#42a8bb" stroke-width="4"/>
+    <text x="100" y="738" font-family="Arial, sans-serif" font-size="36" font-weight="800" fill="#275377">Service</text>
+    <text x="108" y="792" font-family="Arial, sans-serif" font-size="34" fill="#275377">Transfert du client</text>
+    <rect x="344" y="756" width="156" height="52" fill="#fff"/>
+    <text x="100" y="904" font-family="Arial, sans-serif" font-size="36" font-weight="800" fill="#275377">Montant</text>
+    <text x="108" y="960" font-family="Arial, sans-serif" font-size="34" fill="#275377">+25,300 TND</text>
+    <text x="100" y="1066" font-family="Arial, sans-serif" font-size="38" font-weight="800" fill="#275377">Numero d'autorisation</text>
+    <text x="108" y="1122" font-family="Arial, sans-serif" font-size="34" fill="#275377">123456</text>
+    <path d="M742 1110H250" stroke="#ed1b2f" stroke-width="46" stroke-linecap="square"/>
+    <path d="M230 1110l92-58v116z" fill="#ed1b2f"/>
+</svg>

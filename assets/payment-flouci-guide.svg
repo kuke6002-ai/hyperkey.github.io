@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1200" viewBox="0 0 900 1200" role="img" aria-labelledby="title desc">
+    <title id="title">Flouci transaction ID guide</title>
+    <desc id="desc">Fake Flouci receipt guide showing where to find the transaction ID.</desc>
+    <rect width="900" height="1200" fill="#101010"/>
+    <path d="M82 47l-36 36 36 36" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="138" y="91" font-family="Arial, sans-serif" font-size="34" font-weight="800" fill="#fff">Thursday, 21 May 2026 - 23:13</text>
+    <rect x="38" y="140" width="824" height="880" rx="28" fill="#111" stroke="#283252" stroke-width="4"/>
+    <circle cx="450" cy="270" r="94" fill="#2eb467"/>
+    <text x="450" y="305" text-anchor="middle" font-family="Arial, sans-serif" font-size="84" fill="#fff">HK</text>
+    <text x="450" y="444" text-anchor="middle" font-family="Arial, sans-serif" font-size="60" font-weight="800" fill="#fff">- TND 26.300</text>
+    <text x="450" y="502" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" fill="#fff">MONEY SENT</text>
+    <line x1="80" y1="586" x2="820" y2="586" stroke="#283252" stroke-width="4"/>
+    <text x="82" y="660" font-family="Arial, sans-serif" font-size="32" fill="#fff">From</text>
+    <text x="82" y="730" font-family="Arial, sans-serif" font-size="32" fill="#fff">To</text>
+    <text x="82" y="812" font-family="Arial, sans-serif" font-size="32" fill="#fff">AMOUNT</text>
+    <text x="760" y="812" text-anchor="end" font-family="Arial, sans-serif" font-size="32" font-weight="800" fill="#fff">TND 25.300</text>
+    <text x="82" y="894" font-family="Arial, sans-serif" font-size="32" fill="#fff">FEE</text>
+    <text x="760" y="894" text-anchor="end" font-family="Arial, sans-serif" font-size="32" font-weight="800" fill="#fff">TND 1.000</text>
+    <text x="82" y="976" font-family="Arial, sans-serif" font-size="32" fill="#fff">TOTAL</text>
+    <text x="760" y="976" text-anchor="end" font-family="Arial, sans-serif" font-size="32" font-weight="800" fill="#fff">TND 26.300</text>
+    <line x1="80" y1="1048" x2="820" y2="1048" stroke="#283252" stroke-width="4"/>
+    <text x="82" y="1118" font-family="Arial, sans-serif" font-size="32" fill="#fff">TRANSACTION ID</text>
+    <text x="720" y="1118" font-family="Arial, sans-serif" font-size="32" font-weight="800" fill="#fff">AB12CD34</text>
+    <path d="M626 1110H380" stroke="#ed1b2f" stroke-width="34" stroke-linecap="square"/>
+    <path d="M660 1110l-74-47v94z" fill="#ed1b2f"/>
+</svg>
