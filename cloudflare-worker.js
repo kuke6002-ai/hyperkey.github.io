@@ -40,6 +40,7 @@ const ICONS = {
     search: "\uD83D\uDD0E",
     ticket: "\uD83C\uDFAB",
     warning: "\u26A0\uFE0F",
+    delivery: "\uD83D\uDE9A",
 };
 
 function jsonResponse(body, status = 200, corsHeaders = {}) {
@@ -57,9 +58,48 @@ function getCorsHeaders(request) {
     return {
         "Access-Control-Allow-Origin": origin,
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token",
         Vary: "Origin",
     };
+}
+
+function getOrderDb(env) {
+    if (!env.DB) {
+        const error = new Error("D1 database binding DB is not configured");
+        error.statusCode = 500;
+        throw error;
+    }
+    return env.DB;
+}
+
+function requireAdmin(request, env) {
+    if (!env.ADMIN_API_TOKEN) {
+        const error = new Error("ADMIN_API_TOKEN is not configured");
+        error.statusCode = 500;
+        throw error;
+    }
+
+    const token = request.headers.get("X-Admin-Token") || "";
+    if (token !== env.ADMIN_API_TOKEN) {
+        const error = new Error("Admin token is invalid");
+        error.statusCode = 401;
+        throw error;
+    }
+}
+
+function requireTelegramWebhook(request, env) {
+    if (!env.TELEGRAM_WEBHOOK_SECRET) {
+        const error = new Error("TELEGRAM_WEBHOOK_SECRET is not configured");
+        error.statusCode = 500;
+        throw error;
+    }
+
+    const token = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
+    if (token !== env.TELEGRAM_WEBHOOK_SECRET) {
+        const error = new Error("Telegram webhook token is invalid");
+        error.statusCode = 401;
+        throw error;
+    }
 }
 
 async function readJsonUrl(url, label) {
@@ -146,14 +186,17 @@ function getVariation(product, variationId) {
 
 function normalizePhone(value) {
     if (typeof value !== "string") return "";
-    return value.trim().replace(/\s+/g, " ").slice(0, 40);
+    const digits = value.replace(/\D/g, "");
+    if (digits.startsWith("00216") && digits.length === 13) return digits.slice(5);
+    if (digits.startsWith("216") && digits.length === 11) return digits.slice(3);
+    if (digits.length === 8) return digits;
+    return digits;
 }
 
 function validatePhone(value) {
     const phone = normalizePhone(value);
-    const digits = phone.replace(/\D/g, "");
-    if (digits.length < 6 || digits.length > 15 || !/^[+\d][+\d\s().-]*$/.test(phone)) {
-        throw new Error("A valid WhatsApp number is required");
+    if (!/^\d{8}$/.test(phone)) {
+        throw new Error("A valid Tunisian WhatsApp number is required");
     }
     return phone;
 }
@@ -266,6 +309,24 @@ function validatePaymentProof(paymentProof, details) {
     };
 }
 
+function getPaymentStatusLabel(status) {
+    const labels = {
+        pending: "Pending manual verification",
+        verified: "Verified",
+        rejected: "Rejected",
+    };
+    return labels[status] || String(status || "Pending manual verification");
+}
+
+function getDeliveryStatusLabel(status) {
+    const labels = {
+        waiting: "Waiting for delivery",
+        delivered: "Delivered",
+        cancelled: "Cancelled",
+    };
+    return labels[status] || String(status || "Waiting for delivery");
+}
+
 function formatTndAmount(amount) {
     const value = Number(amount) || 0;
     const formatted = value.toLocaleString("en-US", {
@@ -277,23 +338,9 @@ function formatTndAmount(amount) {
 }
 
 function formatTunisianPhone(phone) {
-    const raw = String(phone || "").trim();
-    const digits = raw.replace(/\D/g, "");
-    let localNumber = "";
-    let prefix = "";
-
-    if (digits.startsWith("00216") && digits.length === 13) {
-        localNumber = digits.slice(5);
-        prefix = "+216 ";
-    } else if (digits.startsWith("216") && digits.length === 11) {
-        localNumber = digits.slice(3);
-        prefix = "+216 ";
-    } else if (digits.length === 8) {
-        localNumber = digits;
-    }
-
-    if (localNumber.length !== 8) return raw;
-    return `${prefix}${localNumber.slice(0, 2)} ${localNumber.slice(2, 5)} ${localNumber.slice(5)}`;
+    const localNumber = normalizePhone(phone);
+    if (localNumber.length !== 8) return String(phone || "").trim();
+    return `${localNumber.slice(0, 2)} ${localNumber.slice(2, 5)} ${localNumber.slice(5)}`;
 }
 
 function buildOrderLines(items, database) {
@@ -348,6 +395,12 @@ function buildOrderLines(items, database) {
     return lines;
 }
 
+function generateOrderId() {
+    const values = new Uint32Array(1);
+    crypto.getRandomValues(values);
+    return `HK-${String((values[0] % 900000) + 100000)}`;
+}
+
 function buildOrder(body, database, settings) {
     const currency = database.currency || "TND";
     const lines = buildOrderLines(body.items, database);
@@ -360,20 +413,474 @@ function buildOrder(body, database, settings) {
     const createdAt = new Date();
 
     return {
-        id: `HK-${createdAt.getTime()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+        id: generateOrderId(),
         createdAt: createdAt.toISOString(),
         currency,
         customerPhone: validatePhone(body.customerPhone),
         telegramUsername: normalizeTelegramUsername(body.telegramUsername),
         paymentMethod,
         paymentMethodLabel: paymentDetails.label,
-        paymentStatus: "Pending manual verification",
+        paymentStatus: "pending",
+        paymentStatusLabel: "Pending manual verification",
         paymentProof,
         paymentDetails,
         lines,
         total,
         amountDue: paymentDetails.amountDue,
     };
+}
+
+function getResponsePayload(order) {
+    return {
+        ok: true,
+        orderId: order.id,
+        total: order.total,
+        amountDue: order.amountDue,
+        currency: order.currency,
+        paymentMethod: order.paymentMethodLabel,
+        paymentStatus: order.paymentStatusLabel,
+    };
+}
+
+function getResponsePayloadFromRecord(record) {
+    return {
+        ok: true,
+        orderId: record.id,
+        total: Number(record.product_total),
+        amountDue: Number(record.amount_due),
+        currency: record.currency,
+        paymentMethod: record.payment_method_label,
+        paymentStatus: getPaymentStatusLabel(record.payment_status),
+        duplicate: true,
+    };
+}
+
+async function getOrderByCheckoutRequestId(env, checkoutRequestId) {
+    const db = getOrderDb(env);
+    return db
+        .prepare(
+            `SELECT
+                id,
+                checkout_request_id,
+                created_at,
+                customer_phone,
+                telegram_username,
+                product_total,
+                amount_due,
+                currency,
+                payment_method,
+                payment_method_label,
+                payment_status,
+                delivery_status,
+                telegram_notified_at
+            FROM orders
+            WHERE checkout_request_id = ?`,
+        )
+        .bind(checkoutRequestId)
+        .first();
+}
+
+function normalizeOrderId(value) {
+    return String(value || "").trim().toUpperCase();
+}
+
+async function getOrderByIdAndPhone(env, orderId, customerPhone) {
+    const db = getOrderDb(env);
+    const phone = validatePhone(customerPhone);
+    return db
+        .prepare(
+            `SELECT
+                id,
+                checkout_request_id,
+                created_at,
+                customer_phone,
+                product_total,
+                amount_due,
+                currency,
+                payment_method,
+                payment_method_label,
+                payment_status,
+                delivery_status
+            FROM orders
+            WHERE id = ? AND customer_phone IN (?, ?, ?)`,
+        )
+        .bind(normalizeOrderId(orderId), phone, `+216${phone}`, `00216${phone}`)
+        .first();
+}
+
+async function getOrderById(env, orderId) {
+    const db = getOrderDb(env);
+    return db
+        .prepare(
+            `SELECT
+                id,
+                checkout_request_id,
+                created_at,
+                customer_phone,
+                telegram_username,
+                product_total,
+                amount_due,
+                currency,
+                payment_method,
+                payment_method_label,
+                payment_status,
+                delivery_status,
+                telegram_notified_at
+            FROM orders
+            WHERE id = ?`,
+        )
+        .bind(normalizeOrderId(orderId))
+        .first();
+}
+
+async function getAllResults(statement) {
+    const result = await statement.all();
+    return result.results || [];
+}
+
+async function getOrderItems(env, orderId) {
+    const db = getOrderDb(env);
+    return getAllResults(
+        db
+            .prepare(
+                `SELECT
+                    product_id,
+                    variation_id,
+                    product_name,
+                    option_label,
+                    quantity,
+                    unit_price,
+                    line_total
+                FROM order_items
+                WHERE order_id = ?
+                ORDER BY id`,
+            )
+            .bind(orderId),
+    );
+}
+
+async function getPaymentProofs(env, orderId) {
+    const db = getOrderDb(env);
+    return getAllResults(
+        db
+            .prepare(
+                `SELECT
+                    proof_type,
+                    proof_label,
+                    proof_value
+                FROM payment_proofs
+                WHERE order_id = ?
+                ORDER BY id`,
+            )
+            .bind(orderId),
+    );
+}
+
+async function getSavedOrderForNotification(env, record) {
+    const [items, proofs] = await Promise.all([getOrderItems(env, record.id), getPaymentProofs(env, record.id)]);
+    const isTtCard = record.payment_method === "tt-card";
+
+    return {
+        id: record.id,
+        createdAt: record.created_at,
+        currency: record.currency,
+        customerPhone: record.customer_phone,
+        telegramUsername: record.telegram_username || "",
+        paymentMethod: record.payment_method,
+        paymentMethodLabel: record.payment_method_label,
+        paymentStatus: record.payment_status,
+        paymentStatusLabel: getPaymentStatusLabel(record.payment_status),
+        deliveryStatus: record.delivery_status,
+        deliveryStatusLabel: getDeliveryStatusLabel(record.delivery_status),
+        paymentProof: isTtCard
+            ? {
+                  type: "tt-card",
+                  cardCodes: proofs.map((proof) => proof.proof_value),
+              }
+            : {
+                  type: "reference",
+                  label: proofs[0]?.proof_label || "Reference",
+                  reference: proofs[0]?.proof_value || "",
+              },
+        paymentDetails: {
+            cardValue: isTtCard && proofs.length ? Number(record.amount_due) / proofs.length : 0,
+        },
+        lines: items.map((item) => ({
+            productId: item.product_id,
+            variationId: item.variation_id || "",
+            name: item.product_name,
+            optionLabel: item.option_label || "",
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unit_price),
+            lineTotal: Number(item.line_total),
+        })),
+        total: Number(record.product_total),
+        amountDue: Number(record.amount_due),
+    };
+}
+
+async function getOrderStatusPayload(env, record) {
+    const items = await getOrderItems(env, record.id);
+    return {
+        ok: true,
+        order: {
+            id: record.id,
+            createdAt: record.created_at,
+            customerPhone: formatTunisianPhone(record.customer_phone),
+            productTotal: Number(record.product_total),
+            amountDue: Number(record.amount_due),
+            currency: record.currency,
+            paymentMethod: record.payment_method_label,
+            paymentStatus: getPaymentStatusLabel(record.payment_status),
+            deliveryStatus: getDeliveryStatusLabel(record.delivery_status),
+            items: items.map((item) => ({
+                productName: item.product_name,
+                optionLabel: item.option_label || "",
+                quantity: Number(item.quantity),
+                unitPrice: Number(item.unit_price),
+                lineTotal: Number(item.line_total),
+            })),
+        },
+    };
+}
+
+function formatAdminProofs(proofs) {
+    return proofs.map((proof) => ({
+        type: proof.proof_type,
+        label: proof.proof_label || "",
+        value: proof.proof_value || "",
+    }));
+}
+
+async function getAdminOrderPayload(env, record) {
+    const [items, proofs] = await Promise.all([getOrderItems(env, record.id), getPaymentProofs(env, record.id)]);
+    return {
+        id: record.id,
+        createdAt: record.created_at,
+        customerPhone: record.customer_phone,
+        customerPhoneDisplay: formatTunisianPhone(record.customer_phone),
+        telegramUsername: record.telegram_username || "",
+        productTotal: Number(record.product_total),
+        amountDue: Number(record.amount_due),
+        currency: record.currency,
+        paymentMethod: record.payment_method,
+        paymentMethodLabel: record.payment_method_label,
+        paymentStatus: record.payment_status,
+        paymentStatusLabel: getPaymentStatusLabel(record.payment_status),
+        deliveryStatus: record.delivery_status,
+        deliveryStatusLabel: getDeliveryStatusLabel(record.delivery_status),
+        telegramNotifiedAt: record.telegram_notified_at,
+        items: items.map((item) => ({
+            productId: item.product_id,
+            variationId: item.variation_id || "",
+            productName: item.product_name,
+            optionLabel: item.option_label || "",
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unit_price),
+            lineTotal: Number(item.line_total),
+        })),
+        proofs: formatAdminProofs(proofs),
+    };
+}
+
+async function listAdminOrders(env, limit = 50) {
+    const db = getOrderDb(env);
+    const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+    const records = await getAllResults(
+        db
+            .prepare(
+                `SELECT
+                    id,
+                    checkout_request_id,
+                    created_at,
+                    customer_phone,
+                    telegram_username,
+                    product_total,
+                    amount_due,
+                    currency,
+                    payment_method,
+                    payment_method_label,
+                    payment_status,
+                    delivery_status,
+                    telegram_notified_at
+                FROM orders
+                ORDER BY created_at DESC
+                LIMIT ?`,
+            )
+            .bind(safeLimit),
+    );
+
+    return Promise.all(records.map((record) => getAdminOrderPayload(env, record)));
+}
+
+async function updateAdminOrder(env, body) {
+    const orderId = normalizeOrderId(body.orderId);
+    if (!/^HK-\d{6}$/.test(orderId)) throw new Error("Enter a valid order ID");
+
+    const allowedPayment = new Set(["pending", "verified", "rejected"]);
+    const allowedDelivery = new Set(["waiting", "delivered", "cancelled"]);
+    const updates = [];
+    const values = [];
+
+    if (typeof body.paymentStatus === "string" && body.paymentStatus) {
+        if (!allowedPayment.has(body.paymentStatus)) throw new Error("Invalid payment status");
+        updates.push("payment_status = ?");
+        values.push(body.paymentStatus);
+    }
+
+    if (typeof body.deliveryStatus === "string" && body.deliveryStatus) {
+        if (!allowedDelivery.has(body.deliveryStatus)) throw new Error("Invalid delivery status");
+        updates.push("delivery_status = ?");
+        values.push(body.deliveryStatus);
+    }
+
+    if (!updates.length) throw new Error("No status update was provided");
+    values.push(orderId);
+
+    const db = getOrderDb(env);
+    await db.prepare(`UPDATE orders SET ${updates.join(", ")} WHERE id = ?`).bind(...values).run();
+
+    const record = await getOrderById(env, orderId);
+    if (!record) throw new Error("Order was not found");
+    return getAdminOrderPayload(env, record);
+}
+
+function getProofRows(order) {
+    if (order.paymentProof.type === "tt-card") {
+        return order.paymentProof.cardCodes.map((code, index) => ({
+            proofType: "tt-card",
+            proofLabel: `Card ${index + 1}`,
+            proofValue: code,
+        }));
+    }
+
+    return [
+        {
+            proofType: "reference",
+            proofLabel: order.paymentProof.label,
+            proofValue: order.paymentProof.reference,
+        },
+    ];
+}
+
+async function saveOrderToDatabase(env, checkoutRequestId, order) {
+    const db = getOrderDb(env);
+    const existingOrder = await getOrderByCheckoutRequestId(env, checkoutRequestId);
+    if (existingOrder) {
+        return {
+            duplicate: true,
+            record: existingOrder,
+            response: getResponsePayloadFromRecord(existingOrder),
+        };
+    }
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+        const orderStatement = db
+            .prepare(
+                `INSERT INTO orders (
+                    id,
+                    checkout_request_id,
+                    created_at,
+                    customer_phone,
+                    telegram_username,
+                    product_total,
+                    amount_due,
+                    currency,
+                    payment_method,
+                    payment_method_label,
+                    payment_status,
+                    delivery_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .bind(
+                order.id,
+                checkoutRequestId,
+                order.createdAt,
+                order.customerPhone,
+                order.telegramUsername || null,
+                order.total,
+                order.amountDue,
+                order.currency,
+                order.paymentMethod,
+                order.paymentMethodLabel,
+                order.paymentStatus,
+                "waiting",
+            );
+
+        const itemStatements = order.lines.map((line) =>
+            db
+                .prepare(
+                    `INSERT INTO order_items (
+                        order_id,
+                        product_id,
+                        variation_id,
+                        product_name,
+                        option_label,
+                        quantity,
+                        unit_price,
+                        line_total
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                )
+                .bind(
+                    order.id,
+                    line.productId,
+                    line.variationId || null,
+                    line.name,
+                    line.optionLabel || null,
+                    line.quantity,
+                    line.unitPrice,
+                    line.lineTotal,
+                ),
+        );
+
+        const proofStatements = getProofRows(order).map((proof) =>
+            db
+                .prepare(
+                    `INSERT INTO payment_proofs (
+                        order_id,
+                        proof_type,
+                        proof_label,
+                        proof_value,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?)`,
+                )
+                .bind(order.id, proof.proofType, proof.proofLabel, proof.proofValue, order.createdAt),
+        );
+
+        try {
+            await db.batch([orderStatement, ...itemStatements, ...proofStatements]);
+            return {
+                duplicate: false,
+                response: getResponsePayload(order),
+            };
+        } catch (error) {
+            const duplicateOrder = await getOrderByCheckoutRequestId(env, checkoutRequestId);
+            if (duplicateOrder) {
+                return {
+                    duplicate: true,
+                    record: duplicateOrder,
+                    response: getResponsePayloadFromRecord(duplicateOrder),
+                };
+            }
+
+            if (/UNIQUE|constraint/i.test(String(error?.message || "")) && attempt < 4) {
+                order.id = generateOrderId();
+                continue;
+            }
+
+            throw error;
+        }
+    }
+
+    throw new Error("Could not generate a unique order ID");
+}
+
+async function markTelegramNotified(env, orderId) {
+    const db = getOrderDb(env);
+    await db
+        .prepare("UPDATE orders SET telegram_notified_at = ? WHERE id = ?")
+        .bind(new Date().toISOString(), orderId)
+        .run();
 }
 
 function escapeHtml(value) {
@@ -420,17 +927,89 @@ function formatAdminMessage(order) {
         "",
         ...formatProofLines(order),
         "",
-        `${ICONS.warning} Payment: ${escapeHtml(order.paymentStatus)}`,
+        `${ICONS.warning} Payment: ${escapeHtml(order.paymentStatusLabel)}`,
+        `${ICONS.delivery} Delivery: ${escapeHtml(order.deliveryStatusLabel || getDeliveryStatusLabel(order.deliveryStatus || "waiting"))}`,
     ].join("\n");
 }
 
-async function sendTelegramMessage(env, chatId, text, replyMarkup) {
+function getAdminOrderKeyboard(order) {
+    const phone = normalizePhone(order.customerPhone);
+    const keyboard = [
+        [
+            {
+                text: "\u2705 Verify payment",
+                callback_data: `hk|payment|verified|${order.id}`,
+            },
+            {
+                text: "\u274C Reject payment",
+                callback_data: `hk|payment|rejected|${order.id}`,
+            },
+        ],
+        [
+            {
+                text: "\uD83D\uDE9A Delivered",
+                callback_data: `hk|delivery|delivered|${order.id}`,
+            },
+            {
+                text: "\uD83D\uDEAB Cancel order",
+                callback_data: `hk|delivery|cancelled|${order.id}`,
+            },
+        ],
+        [
+            {
+                text: "\u23F3 Payment pending",
+                callback_data: `hk|payment|pending|${order.id}`,
+            },
+            {
+                text: "\uD83D\uDD52 Delivery waiting",
+                callback_data: `hk|delivery|waiting|${order.id}`,
+            },
+        ],
+    ];
+
+    if (/^\d{8}$/.test(phone)) {
+        keyboard.push([
+            {
+                text: "WhatsApp customer",
+                url: `https://wa.me/216${phone}`,
+            },
+        ]);
+    }
+
+    if (order.telegramUsername) {
+        keyboard.push([
+            {
+                text: "Open Telegram username",
+                url: `https://t.me/${encodeURIComponent(order.telegramUsername)}`,
+            },
+        ]);
+    }
+
+    return {
+        inline_keyboard: [
+            ...keyboard,
+        ],
+    };
+}
+
+async function callTelegramApi(env, method, payload) {
     if (!env.TELEGRAM_BOT_TOKEN) {
         const error = new Error("Telegram bot token is not configured");
         error.statusCode = 500;
         throw error;
     }
 
+    const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+        throw new Error(`Telegram ${method} failed: ${await response.text()}`);
+    }
+}
+
+async function sendTelegramMessage(env, chatId, text, replyMarkup) {
     const payload = {
         chat_id: chatId,
         text,
@@ -438,15 +1017,28 @@ async function sendTelegramMessage(env, chatId, text, replyMarkup) {
         disable_web_page_preview: true,
     };
     if (replyMarkup) payload.reply_markup = replyMarkup;
+    await callTelegramApi(env, "sendMessage", payload);
+}
 
-    const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+async function answerTelegramCallback(env, callbackQueryId, text, showAlert = false) {
+    if (!callbackQueryId) return;
+    await callTelegramApi(env, "answerCallbackQuery", {
+        callback_query_id: callbackQueryId,
+        text,
+        show_alert: showAlert,
     });
-    if (!response.ok) {
-        throw new Error(`Telegram sendMessage failed: ${await response.text()}`);
-    }
+}
+
+async function editTelegramMessage(env, chatId, messageId, text, replyMarkup) {
+    const payload = {
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+    };
+    if (replyMarkup) payload.reply_markup = replyMarkup;
+    await callTelegramApi(env, "editMessageText", payload);
 }
 
 function cleanupProcessedOrders() {
@@ -456,10 +1048,123 @@ function cleanupProcessedOrders() {
     }
 }
 
+async function handleOrderStatus(body, env, corsHeaders) {
+    const orderId = normalizeOrderId(body.orderId);
+    if (!/^HK-\d{6}$/.test(orderId)) {
+        return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+    }
+
+    const record = await getOrderByIdAndPhone(env, orderId, body.customerPhone);
+    if (!record) {
+        return jsonResponse({ error: "Order was not found. Check the order ID and WhatsApp number." }, 404, corsHeaders);
+    }
+
+    return jsonResponse(await getOrderStatusPayload(env, record), 200, corsHeaders);
+}
+
+async function handleAdminAction(body, request, env, corsHeaders) {
+    requireAdmin(request, env);
+
+    if (body.action === "admin-list-orders") {
+        return jsonResponse({ ok: true, orders: await listAdminOrders(env, body.limit) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-update-order") {
+        return jsonResponse({ ok: true, order: await updateAdminOrder(env, body) }, 200, corsHeaders);
+    }
+
+    return jsonResponse({ error: "Unknown admin action" }, 400, corsHeaders);
+}
+
+function parseTelegramStatusAction(data) {
+    const [prefix, target, status, orderId] = String(data || "").split("|");
+    if (prefix !== "hk" || !["payment", "delivery"].includes(target) || !/^HK-\d{6}$/.test(normalizeOrderId(orderId))) {
+        throw new Error("Unknown Telegram action");
+    }
+
+    if (target === "payment" && !["pending", "verified", "rejected"].includes(status)) {
+        throw new Error("Invalid payment status");
+    }
+
+    if (target === "delivery" && !["waiting", "delivered", "cancelled"].includes(status)) {
+        throw new Error("Invalid delivery status");
+    }
+
+    return {
+        orderId: normalizeOrderId(orderId),
+        target,
+        status,
+    };
+}
+
+async function handleTelegramWebhook(body, request, env, corsHeaders) {
+    requireTelegramWebhook(request, env);
+
+    const callbackQuery = body.callback_query;
+    if (!callbackQuery) return jsonResponse({ ok: true }, 200, corsHeaders);
+
+    const chatId = callbackQuery.message?.chat?.id;
+    const messageId = callbackQuery.message?.message_id;
+    if (String(chatId || "") !== String(env.TELEGRAM_ADMIN_CHAT_ID || "")) {
+        await answerTelegramCallback(env, callbackQuery.id, "This action is only available in the admin chat.", true).catch((error) =>
+            console.warn("Telegram callback answer failed", error),
+        );
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    let action;
+    try {
+        action = parseTelegramStatusAction(callbackQuery.data);
+    } catch (error) {
+        await answerTelegramCallback(env, callbackQuery.id, error.message || "Unknown action", true).catch((answerError) =>
+            console.warn("Telegram callback answer failed", answerError),
+        );
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    const updateBody = {
+        orderId: action.orderId,
+        ...(action.target === "payment" ? { paymentStatus: action.status } : { deliveryStatus: action.status }),
+    };
+
+    try {
+        await updateAdminOrder(env, updateBody);
+        const record = await getOrderById(env, action.orderId);
+        const order = await getSavedOrderForNotification(env, record);
+        const statusLabel = action.target === "payment" ? getPaymentStatusLabel(action.status) : getDeliveryStatusLabel(action.status);
+
+        await answerTelegramCallback(env, callbackQuery.id, `${action.orderId}: ${statusLabel}`);
+
+        if (chatId && messageId) {
+            await editTelegramMessage(env, chatId, messageId, formatAdminMessage(order), getAdminOrderKeyboard(order)).catch((error) =>
+                console.warn("Telegram message edit failed", error),
+            );
+        }
+    } catch (error) {
+        await answerTelegramCallback(env, callbackQuery.id, error.message || "Could not update order", true).catch((answerError) =>
+            console.warn("Telegram callback answer failed", answerError),
+        );
+    }
+
+    return jsonResponse({ ok: true }, 200, corsHeaders);
+}
+
 async function handleOrder(request, env, corsHeaders) {
     cleanupProcessedOrders();
 
     const body = await request.json();
+    if (body.callback_query || body.message || body.update_id) {
+        return handleTelegramWebhook(body, request, env, corsHeaders);
+    }
+
+    if (String(body.action || "").startsWith("admin-")) {
+        return handleAdminAction(body, request, env, corsHeaders);
+    }
+
+    if (body.action === "order-status") {
+        return handleOrderStatus(body, env, corsHeaders);
+    }
+
     const checkoutRequestId = String(body.checkoutRequestId || "").trim();
     if (!checkoutRequestId) return jsonResponse({ error: "Missing checkout request ID" }, 400, corsHeaders);
 
@@ -467,6 +1172,26 @@ async function handleOrder(request, env, corsHeaders) {
         const existing = processedOrders.get(checkoutRequestId);
         if (existing.pending) return jsonResponse({ error: "Order is already being processed" }, 409, corsHeaders);
         return jsonResponse(existing.response, 200, corsHeaders);
+    }
+
+    const existingSavedOrder = await getOrderByCheckoutRequestId(env, checkoutRequestId);
+    if (existingSavedOrder) {
+        if (!existingSavedOrder.telegram_notified_at) {
+            if (!env.TELEGRAM_ADMIN_CHAT_ID) {
+                const error = new Error("Telegram admin chat ID is not configured");
+                error.statusCode = 500;
+                throw error;
+            }
+            const savedOrderForNotification = await getSavedOrderForNotification(env, existingSavedOrder);
+            await sendTelegramMessage(
+                env,
+                env.TELEGRAM_ADMIN_CHAT_ID,
+                formatAdminMessage(savedOrderForNotification),
+                getAdminOrderKeyboard(savedOrderForNotification),
+            );
+            await markTelegramNotified(env, existingSavedOrder.id);
+        }
+        return jsonResponse(getResponsePayloadFromRecord(existingSavedOrder), 200, corsHeaders);
     }
 
     if (!env.TELEGRAM_ADMIN_CHAT_ID) {
@@ -477,33 +1202,31 @@ async function handleOrder(request, env, corsHeaders) {
 
     const [database, settings] = await Promise.all([readDatabase(env), readSettings(env)]);
     const order = buildOrder(body, database, settings);
-    const responsePayload = {
-        ok: true,
-        orderId: order.id,
-        total: order.total,
-        amountDue: order.amountDue,
-        currency: order.currency,
-        paymentMethod: order.paymentMethodLabel,
-        paymentStatus: order.paymentStatus,
-    };
 
     processedOrders.set(checkoutRequestId, { createdAt: Date.now(), pending: true });
-
-    const contactButton = order.telegramUsername
-        ? {
-              inline_keyboard: [
-                  [
-                      {
-                          text: "Open Telegram username",
-                          url: `https://t.me/${encodeURIComponent(order.telegramUsername)}`,
-                      },
-                  ],
-              ],
-          }
-        : undefined;
+    const savedOrder = await saveOrderToDatabase(env, checkoutRequestId, order);
+    if (savedOrder.duplicate) {
+        if (savedOrder.record && !savedOrder.record.telegram_notified_at) {
+            const savedOrderForNotification = await getSavedOrderForNotification(env, savedOrder.record);
+            await sendTelegramMessage(
+                env,
+                env.TELEGRAM_ADMIN_CHAT_ID,
+                formatAdminMessage(savedOrderForNotification),
+                getAdminOrderKeyboard(savedOrderForNotification),
+            );
+            await markTelegramNotified(env, savedOrder.record.id);
+        }
+        processedOrders.set(checkoutRequestId, {
+            createdAt: Date.now(),
+            pending: false,
+            response: savedOrder.response,
+        });
+        return jsonResponse(savedOrder.response, 200, corsHeaders);
+    }
 
     try {
-        await sendTelegramMessage(env, env.TELEGRAM_ADMIN_CHAT_ID, formatAdminMessage(order), contactButton);
+        await sendTelegramMessage(env, env.TELEGRAM_ADMIN_CHAT_ID, formatAdminMessage(order), getAdminOrderKeyboard(order));
+        await markTelegramNotified(env, order.id);
     } catch (error) {
         processedOrders.delete(checkoutRequestId);
         throw error;
@@ -512,10 +1235,10 @@ async function handleOrder(request, env, corsHeaders) {
     processedOrders.set(checkoutRequestId, {
         createdAt: Date.now(),
         pending: false,
-        response: responsePayload,
+        response: savedOrder.response,
     });
 
-    return jsonResponse(responsePayload, 200, corsHeaders);
+    return jsonResponse(savedOrder.response, 200, corsHeaders);
 }
 
 export default {

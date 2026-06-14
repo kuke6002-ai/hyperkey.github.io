@@ -161,6 +161,7 @@ let CURRENCY = "TND";
 const DATABASE_URL = "products.json";
 const SETTINGS_URL = "settings.json";
 const ORDER_API_URL = window.GAMEVAULT_ORDER_API_URL || "";
+const SUPPORT_WHATSAPP_NUMBER = "21655159280";
 const CART_VARIATION_SEPARATOR = "::";
 let checkoutSubmitting = false;
 let paymentSubmitting = false;
@@ -301,6 +302,20 @@ function formatPlainTndAmount(amount) {
     return `${formatted} TND`;
 }
 
+function normalizeTunisianPhoneInput(value) {
+    const digits = String(value || "").replace(/\D/g, "");
+    if (digits.startsWith("00216") && digits.length === 13) return digits.slice(5);
+    if (digits.startsWith("216") && digits.length === 11) return digits.slice(3);
+    if (digits.length === 8) return digits;
+    return "";
+}
+
+function formatTunisianPhone(value) {
+    const phone = normalizeTunisianPhoneInput(value);
+    if (!phone) return String(value || "").trim();
+    return `${phone.slice(0, 2)} ${phone.slice(2, 5)} ${phone.slice(5)}`;
+}
+
 function clone(value) {
     return JSON.parse(JSON.stringify(value));
 }
@@ -439,7 +454,7 @@ function getCategories() {
 }
 
 function getCategoryPage(category) {
-    return category.page || `${category.id || slugify(category.name)}.html`;
+    return category.page || `products.html#${category.id || `category-${slugify(category.name) || "digital"}`}`;
 }
 
 function getProductDescription(product) {
@@ -862,6 +877,13 @@ function setAlert(elementId, message = "") {
     element.classList.toggle("d-none", !message);
 }
 
+function setHtmlAlert(elementId, html = "") {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    element.innerHTML = html;
+    element.classList.toggle("d-none", !html);
+}
+
 function setupCheckoutForm() {
     const form = document.getElementById("checkoutForm");
     if (!form) return;
@@ -886,8 +908,12 @@ function setupCheckoutForm() {
         const buttonText = button?.querySelector(".order-button-text");
         const checkoutRequestId = getCheckoutRequestId();
         const paymentMethod = document.getElementById("paymentMethod")?.value || "";
-        const customerPhone = document.getElementById("customerPhone")?.value.trim() || "";
-        const telegramUsername = document.getElementById("telegramUsername")?.value.trim() || "";
+        const customerPhone = normalizeTunisianPhoneInput(document.getElementById("customerPhone")?.value || "");
+
+        if (!customerPhone) {
+            setAlert("checkoutError", "Enter a valid Tunisian WhatsApp number with 8 digits.");
+            return;
+        }
 
         checkoutSubmitting = true;
         if (button) button.disabled = true;
@@ -901,7 +927,6 @@ function setupCheckoutForm() {
             cart: validCart,
             items: getCheckoutItems(validCart),
             customerPhone,
-            telegramUsername,
             paymentMethod,
         });
 
@@ -975,6 +1000,30 @@ function renderPaymentProofFields(details) {
     `;
 }
 
+function renderPaymentGuide(method) {
+    const guide = document.getElementById("paymentGuide");
+    if (!guide) return;
+
+    const guides = {
+        d17: {
+            image: "assets/payment-d17-guide.svg",
+            title: "Where to find the authorization number",
+        },
+        flouci: {
+            image: "assets/payment-flouci-guide.svg",
+            title: "Where to find the transaction ID",
+        },
+    };
+    const config = guides[method];
+    guide.classList.toggle("d-none", !config);
+    guide.innerHTML = config
+        ? `
+            <p class="form-label mb-2">${escapeHtml(config.title)}</p>
+            <img src="${escapeHtml(config.image)}" alt="${escapeHtml(config.title)}" loading="lazy" />
+        `
+        : "";
+}
+
 function readPaymentProof(method) {
     if (method === "tt-card") {
         return {
@@ -1020,6 +1069,7 @@ async function renderPaymentPage() {
 
         renderPaymentOrderSummary(validCart);
         renderPaymentProofFields(details);
+        renderPaymentGuide(details.method);
         setAlert("paymentError", "");
         return { session: { ...session, cart: validCart, items: getCheckoutItems(validCart) }, details };
     } catch (error) {
@@ -1040,7 +1090,6 @@ async function submitPaymentOrder(session) {
             paymentMethod: session.paymentMethod,
             paymentProof: readPaymentProof(session.paymentMethod),
             customerPhone: session.customerPhone,
-            telegramUsername: session.telegramUsername,
         }),
     });
 
@@ -1057,6 +1106,29 @@ async function submitPaymentOrder(session) {
     }
 
     return result;
+}
+
+function renderPaymentSuccess(result) {
+    const orderId = String(result.orderId || "");
+    const statusUrl = `order-status.html?order=${encodeURIComponent(orderId)}`;
+    setHtmlAlert(
+        "paymentSuccess",
+        `
+            <div class="order-success-box">
+                <p class="eyebrow mb-2">Order received</p>
+                <p class="mb-2">Copy and save this Order ID. You will need it later to check your order status.</p>
+                <div class="order-id-display">${escapeHtml(orderId)}</div>
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                    <button class="btn btn-dark btn-sm" type="button" data-copy-order-id="${escapeHtml(orderId)}">
+                        <i class="bi bi-clipboard me-1"></i>Copy Order ID
+                    </button>
+                    <a class="btn btn-outline-dark btn-sm" href="${escapeHtml(statusUrl)}">
+                        <i class="bi bi-search me-1"></i>Check status
+                    </a>
+                </div>
+            </div>
+        `,
+    );
 }
 
 function setupPaymentForm() {
@@ -1106,16 +1178,145 @@ function setupPaymentForm() {
             updateCartCount();
             form.reset();
             form.classList.remove("was-validated");
-            setAlert(
-                "paymentSuccess",
-                `Order submitted for manual review. Order ID: ${result.orderId}. Amount to verify: ${formatPlainTndAmount(result.amountDue || result.total)}.`,
-            );
+            renderPaymentSuccess(result);
         } catch (submitError) {
             setAlert("paymentError", submitError.message || "Order failed. Please try again.");
         } finally {
             paymentSubmitting = false;
             if (button) button.disabled = false;
             if (buttonText) buttonText.textContent = "Submit order for review";
+        }
+    });
+}
+
+async function fetchOrderStatus(orderId, customerPhone) {
+    if (!ORDER_API_URL) {
+        throw new Error("Order status backend is not configured. Check config.js.");
+    }
+
+    const response = await fetch(ORDER_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            action: "order-status",
+            orderId,
+            customerPhone,
+        }),
+    });
+
+    const responseText = await response.text();
+    let result = {};
+    try {
+        result = responseText ? JSON.parse(responseText) : {};
+    } catch {
+        throw new Error("Order status backend did not return JSON.");
+    }
+
+    if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Order could not be found.");
+    }
+
+    return result.order;
+}
+
+function renderOrderStatusResult(order) {
+    const result = document.getElementById("orderStatusResult");
+    if (!result) return;
+
+    const products = (order.items || [])
+        .map(
+            (item) => `
+                <div class="summary-line">
+                    <span>${escapeHtml(item.quantity > 1 ? `${item.quantity} x ` : "")}${escapeHtml(item.productName)}</span>
+                    <strong>${formatPlainTndAmount(item.lineTotal)}</strong>
+                </div>
+            `,
+        )
+        .join("");
+    const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleString("en-TN") : "Not available";
+
+    result.innerHTML = `
+        <div class="content-panel order-status-card">
+            <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-4">
+                <div>
+                    <p class="eyebrow mb-2">Order status</p>
+                    <h2 class="h3 fw-black mb-0">${escapeHtml(order.id)}</h2>
+                </div>
+                <button class="btn btn-outline-dark align-self-start" type="button" data-copy-order-id="${escapeHtml(order.id)}">
+                    <i class="bi bi-clipboard me-1"></i>Copy
+                </button>
+            </div>
+            <div class="status-grid mb-4">
+                <div>
+                    <span>Payment</span>
+                    <strong>${escapeHtml(order.paymentStatus)}</strong>
+                </div>
+                <div>
+                    <span>Delivery</span>
+                    <strong>${escapeHtml(order.deliveryStatus)}</strong>
+                </div>
+                <div>
+                    <span>WhatsApp</span>
+                    <strong>${escapeHtml(order.customerPhone)}</strong>
+                </div>
+                <div>
+                    <span>Created</span>
+                    <strong>${escapeHtml(createdAt)}</strong>
+                </div>
+            </div>
+            <h3 class="h5 fw-black mb-3">Products</h3>
+            ${products || '<p class="text-secondary mb-0">No products found for this order.</p>'}
+            <div class="summary-line total mt-3">
+                <span>Amount to verify</span>
+                <strong>${formatPlainTndAmount(order.amountDue)}</strong>
+            </div>
+            <p class="small text-secondary mt-3 mb-0">Payment proofs and recharge card codes are hidden after submission.</p>
+        </div>
+    `;
+    result.classList.remove("d-none");
+    document.getElementById("orderStatusEmpty")?.classList.add("d-none");
+}
+
+function setupOrderStatusPage() {
+    const form = document.getElementById("orderStatusForm");
+    if (!form) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const orderInput = document.getElementById("statusOrderId");
+    if (orderInput && params.get("order")) {
+        orderInput.value = params.get("order").toUpperCase();
+    }
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!form.checkValidity()) {
+            form.classList.add("was-validated");
+            return;
+        }
+
+        const orderId = document.getElementById("statusOrderId")?.value.trim().toUpperCase() || "";
+        const customerPhone = normalizeTunisianPhoneInput(document.getElementById("statusCustomerPhone")?.value || "");
+        const button = document.getElementById("checkOrderButton");
+        const buttonText = button?.querySelector(".check-order-button-text");
+
+        if (!customerPhone) {
+            setAlert("orderStatusError", "Enter the same Tunisian WhatsApp number used at checkout.");
+            return;
+        }
+
+        if (button) button.disabled = true;
+        if (buttonText) buttonText.textContent = "Checking...";
+        setAlert("orderStatusError", "");
+        document.getElementById("orderStatusResult")?.classList.add("d-none");
+
+        try {
+            const order = await fetchOrderStatus(orderId, customerPhone);
+            renderOrderStatusResult(order);
+        } catch (error) {
+            setAlert("orderStatusError", error.message || "Could not check this order.");
+        } finally {
+            if (button) button.disabled = false;
+            if (buttonText) buttonText.textContent = "Check order";
         }
     });
 }
@@ -1168,6 +1369,8 @@ function setupProductOptions() {
 }
 
 function getProductIntro(product) {
+    if (product.description) return product.description;
+
     const intros = {
         "Gift card": "Redeem this digital gift card for wallet credit, games, add-ons, and platform content.",
         "Top up": "Fast in-game credit support for eligible accounts through Telegram checkout.",
@@ -1179,6 +1382,10 @@ function getProductIntro(product) {
 }
 
 function getProductDetail(product) {
+    if (product.detailDescription) return product.detailDescription;
+    if (product.longDescription) return product.longDescription;
+    if (product.description) return product.description;
+
     const details = {
         "Gift card":
             "This digital wallet code is ideal for gamers who want quick account credit without waiting for physical delivery. Confirm your account region before purchase because digital codes may have region limitations.",
@@ -1303,7 +1510,54 @@ function setupThemeToggle() {
     applyTheme(savedTheme);
 }
 
+function setupOrderStatusLinks() {
+    const isStatusPage = window.location.pathname.toLowerCase().endsWith("order-status.html");
+    document.querySelectorAll("#mainNavbar .navbar-nav").forEach((nav) => {
+        if (nav.querySelector('a[href="order-status.html"]')) return;
+        const item = document.createElement("li");
+        item.className = "nav-item";
+        item.innerHTML = `<a class="nav-link ${isStatusPage ? "active" : ""}" ${isStatusPage ? 'aria-current="page"' : ""} href="order-status.html">Check Order</a>`;
+        nav.append(item);
+    });
+
+    document.querySelectorAll(".site-footer .d-flex").forEach((footer) => {
+        if (footer.querySelector('a[href="order-status.html"]')) return;
+        const link = document.createElement("a");
+        link.href = "order-status.html";
+        link.textContent = "Check order status";
+        footer.append(link);
+    });
+}
+
+function setupSupportWhatsApp() {
+    if (document.querySelector(".support-whatsapp")) return;
+
+    const link = document.createElement("a");
+    link.className = "support-whatsapp";
+    link.href = `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.setAttribute("aria-label", "Contact HyperKey Store on WhatsApp");
+    link.innerHTML = `<i class="bi bi-whatsapp"></i><span>Support</span>`;
+    document.body.append(link);
+}
+
 document.addEventListener("click", (event) => {
+    const copyOrderButton = event.target.closest("[data-copy-order-id]");
+    if (copyOrderButton) {
+        const orderId = copyOrderButton.dataset.copyOrderId || "";
+        const copyPromise = navigator.clipboard?.writeText(orderId);
+        if (copyPromise) {
+            copyPromise.then(() => {
+                copyOrderButton.textContent = "Copied";
+            }).catch(() => {
+                copyOrderButton.textContent = orderId;
+            });
+        } else {
+            copyOrderButton.textContent = orderId;
+        }
+    }
+
     const addButton = event.target.closest("[data-add-to-cart]");
     if (addButton) {
         addToCart(addButton.dataset.addToCart, addButton.dataset.productVariation || "");
@@ -1316,7 +1570,9 @@ document.addEventListener("click", (event) => {
 });
 
 async function initSite() {
+    setupOrderStatusLinks();
     setupThemeToggle();
+    setupSupportWhatsApp();
     await loadProductDatabase();
     updateCartCount();
     renderProductsPage();
@@ -1329,6 +1585,7 @@ async function initSite() {
     setupCheckoutForm();
     await renderPaymentPage();
     setupPaymentForm();
+    setupOrderStatusPage();
     setupProductDetailPage();
     setupProductOptions();
 }

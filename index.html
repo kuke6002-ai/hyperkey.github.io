@@ -6,7 +6,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta
             name="description"
-            content="Buy digital games, wallet top ups, gaming accounts, and gift cards with instant delivery."
+            content="Buy digital games, top ups, accounts, and gift cards in Tunisia with manual payment review and WhatsApp delivery."
         />
         <link
             href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
@@ -18,7 +18,7 @@
             rel="stylesheet"
             href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css"
         />
-        <link rel="stylesheet" href="styles.css?v=20260613-1" />
+        <link rel="stylesheet" href="styles.css?v=20260615-2" />
     </head>
 
     <body>
@@ -50,15 +50,18 @@
                                 <a class="nav-link" href="products.html">Products</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" href="#topup">Top Up</a>
+                                <a class="nav-link" href="gift-cards.html">Gift Cards</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" href="#support">Support</a>
+                                <a class="nav-link" href="top-ups.html">Top Ups</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="order-status.html">Check Order</a>
                             </li>
                         </ul>
 
                         <div class="d-flex align-items-center gap-2">
-                            <a class="btn btn-outline-dark" href="product.html">View Deal</a>
+                            <a class="btn btn-outline-dark" href="products.html">Shop</a>
                             <a class="btn btn-dark position-relative" href="cart.html" aria-label="Cart">
                                 <i class="bi bi-bag"></i>
                                 <span class="cart-count badge rounded-pill text-bg-warning">0</span>
@@ -70,54 +73,64 @@
         </header>
 
         <main>
-            <section class="hero">
-                <div class="container py-5">
+            <section class="home-hero">
+                <div class="container">
                     <div class="row align-items-center g-5">
                         <div class="col-lg-6">
-                            <p class="eyebrow mb-3">Instant digital delivery</p>
-                            <h1 class="display-4 fw-black mb-3">
-                                Games, top ups, accounts, and gift cards in one secure store.
-                            </h1>
-                            <p class="lead text-secondary mb-4">
-                                Buy Steam, Xbox, PlayStation, mobile game credits, and verified
-                                gaming accounts with fast Telegram order handling.
+                            <p class="eyebrow mb-3">Digital products for Tunisia</p>
+                            <h1 class="display-3 fw-black mb-3">HyperKey Store</h1>
+                            <p class="home-hero-copy mb-4">
+                                Gift cards, game top ups, accounts, and game keys with manual payment review,
+                                short Order ID tracking, and WhatsApp delivery.
                             </p>
                             <div class="d-flex flex-wrap gap-3 mb-4">
                                 <a class="btn btn-primary btn-lg" href="products.html">
-                                    <i class="bi bi-controller me-2"></i>Shop products
+                                    <i class="bi bi-grid-3x3-gap me-2"></i>Browse products
                                 </a>
-                                <a class="btn btn-outline-dark btn-lg" href="cart.html">
-                                    <i class="bi bi-bag-check me-2"></i>Open cart
+                                <a class="btn btn-outline-dark btn-lg" href="order-status.html">
+                                    <i class="bi bi-search me-2"></i>Check order
                                 </a>
                             </div>
-                            <div class="trust-row">
-                                <div>
-                                    <strong>24/7</strong>
-                                    <span>Code delivery</span>
-                                </div>
-                                <div>
-                                    <strong>50k+</strong>
-                                    <span>Orders served</span>
-                                </div>
-                                <div>
-                                    <strong>4.9</strong>
-                                    <span>Buyer rating</span>
-                                </div>
+                            <div class="home-trust-strip">
+                                <span><i class="bi bi-credit-card"></i>D17</span>
+                                <span><i class="bi bi-wallet2"></i>Flouci</span>
+                                <span><i class="bi bi-ticket-perforated"></i>TT cards</span>
+                                <span><i class="bi bi-whatsapp"></i>WhatsApp delivery</span>
                             </div>
                         </div>
 
                         <div class="col-lg-6">
-                            <div class="hero-media">
-                                <img
-                                    src="https://images.unsplash.com/photo-1598550476439-6847785fcea6?auto=format&fit=crop&w=1200&q=80"
-                                    alt="Gaming setup with colorful lights"
-                                    class="img-fluid"
-                                />
-                                <div class="floating-card shadow">
-                                    <i class="bi bi-lightning-charge-fill"></i>
+                            <div class="hero-console">
+                                <div class="hero-console-top">
+                                    <span class="brand-mark hero-logo-mark">
+                                        <img src="assets/hyperlogo.png" alt="HyperKey Store logo" />
+                                    </span>
                                     <div>
-                                        <span>Average delivery</span>
-                                        <strong>Under 2 minutes</strong>
+                                        <p class="eyebrow mb-1">HyperKey checkout</p>
+                                        <strong>Manual review, local payment</strong>
+                                    </div>
+                                </div>
+
+                                <div class="hero-payment-list">
+                                    <div>
+                                        <i class="bi bi-credit-card"></i>
+                                        <span>D17 transfer</span>
+                                        <strong>Authorization number</strong>
+                                    </div>
+                                    <div>
+                                        <i class="bi bi-wallet2"></i>
+                                        <span>Flouci transfer</span>
+                                        <strong>Transaction ID</strong>
+                                    </div>
+                                    <div>
+                                        <i class="bi bi-ticket-perforated"></i>
+                                        <span>TT recharge cards</span>
+                                        <strong>15 digit codes</strong>
+                                    </div>
+                                    <div>
+                                        <i class="bi bi-whatsapp"></i>
+                                        <span>Delivery contact</span>
+                                        <strong>WhatsApp support</strong>
                                     </div>
                                 </div>
                             </div>
@@ -126,65 +139,57 @@
                 </div>
             </section>
 
-            <section class="py-5">
+            <section class="home-band py-5">
                 <div class="container">
+                    <div class="section-heading-row">
+                        <div>
+                            <p class="eyebrow mb-2">Categories</p>
+                            <h2 class="h2 fw-black mb-0">Shop by product type</h2>
+                        </div>
+                        <a class="btn btn-outline-dark" href="products.html">View all</a>
+                    </div>
                     <div class="row g-3" id="homeCategoryGrid"></div>
                 </div>
             </section>
 
-            <section class="py-5" id="topup">
+            <section class="py-5">
                 <div class="container">
-                    <div class="deal-panel">
-                        <div class="row align-items-center g-4">
-                            <div class="col-lg-8">
-                                <p class="eyebrow mb-2">Fast top ups</p>
-                                <h2 class="fw-black mb-3">Need credits right now?</h2>
-                                <p class="mb-0">
-                                    Place the order from Telegram and we will review payment before
-                                    sending your code or top up confirmation.
-                                </p>
+                    <div class="home-process">
+                        <div>
+                            <p class="eyebrow mb-2">How orders work</p>
+                            <h2 class="h2 fw-black mb-0">Simple checkout, manual verification</h2>
+                        </div>
+                        <div class="process-steps">
+                            <div>
+                                <i class="bi bi-bag-plus"></i>
+                                <strong>Add product</strong>
+                                <span>Choose gift cards, top ups, accounts, or keys.</span>
                             </div>
-                            <div class="col-lg-4 text-lg-end">
-                                <a class="btn btn-light btn-lg" href="product.html">
-                                    See product detail
-                                </a>
+                            <div>
+                                <i class="bi bi-receipt"></i>
+                                <strong>Submit proof</strong>
+                                <span>Send D17, Flouci, or TT card proof on payment page.</span>
+                            </div>
+                            <div>
+                                <i class="bi bi-search"></i>
+                                <strong>Track order</strong>
+                                <span>Save the short Order ID and check status anytime.</span>
                             </div>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <section class="py-5" id="support">
+            <section class="home-band py-5">
                 <div class="container">
-                    <div class="row g-4">
-                        <div class="col-md-4">
-                            <div class="service-card">
-                                <i class="bi bi-send-check"></i>
-                                <h3 class="h5">Telegram orders</h3>
-                                <p class="text-secondary mb-0">
-                                    Orders are identified through your verified Telegram Mini App session.
-                                </p>
-                            </div>
+                    <div class="section-heading-row">
+                        <div>
+                            <p class="eyebrow mb-2">Featured</p>
+                            <h2 class="h2 fw-black mb-0">Popular digital products</h2>
                         </div>
-                        <div class="col-md-4">
-                            <div class="service-card">
-                                <i class="bi bi-lock"></i>
-                                <h3 class="h5">Secure payments</h3>
-                                <p class="text-secondary mb-0">
-                                    Checkout is designed for protected digital purchases.
-                                </p>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="service-card">
-                                <i class="bi bi-headset"></i>
-                                <h3 class="h5">Order support</h3>
-                                <p class="text-secondary mb-0">
-                                    Get help with region rules, redemption steps, and account access.
-                                </p>
-                            </div>
-                        </div>
+                        <a class="btn btn-outline-dark" href="products.html">Browse catalog</a>
                     </div>
+                    <div class="row g-4" id="featuredProducts"></div>
                 </div>
             </section>
         </main>
@@ -197,14 +202,14 @@
                             <span class="brand-mark"><img src="assets/hyperlogo.png" alt="HyperKey Store logo" /></span>
                             HyperKey Store
                         </a>
-                        <p class="text-white-50 mb-0 mt-2">Digital gaming products delivered fast.</p>
+                        <p class="text-white-50 mb-0 mt-2">Digital gaming products with local manual payment review.</p>
                     </div>
                     <div class="col-md-6">
                         <ul class="nav justify-content-md-end">
                             <li class="nav-item"><a class="nav-link text-white-50" href="products.html">Products</a></li>
-                            <li class="nav-item"><a class="nav-link text-white-50" href="product.html">Product</a></li>
                             <li class="nav-item"><a class="nav-link text-white-50" href="cart.html">Cart</a></li>
                             <li class="nav-item"><a class="nav-link text-white-50" href="checkout.html">Checkout</a></li>
+                            <li class="nav-item"><a class="nav-link text-white-50" href="order-status.html">Check Order</a></li>
                         </ul>
                     </div>
                 </div>
@@ -218,6 +223,6 @@
         </div>
 
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
-        <script src="app.js?v=20260613-1"></script>
+        <script src="app.js?v=20260615-3"></script>
     </body>
 </html>

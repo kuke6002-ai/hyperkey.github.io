@@ -39,6 +39,9 @@ const DEFAULT_PAYMENT_SETTINGS = {
     },
 };
 
+const ADMIN_TOKEN_KEY = "hyperkey-admin-token";
+const ORDER_API_URL = window.GAMEVAULT_ORDER_API_URL || "";
+
 const state = {
     database: {
         currency: "TND",
@@ -51,6 +54,7 @@ const state = {
     originalId: "",
     draftVariations: [],
     previewImages: {},
+    orders: [],
 };
 
 function slugify(value) {
@@ -72,6 +76,16 @@ function money(amount, currency = "TND") {
         style: "currency",
         currency,
     }).format(Number(amount) || 0);
+}
+
+function formatPlainTndAmount(amount) {
+    const value = Number(amount) || 0;
+    const formatted = value.toLocaleString("en-US", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 3,
+        useGrouping: false,
+    });
+    return `${formatted} TND`;
 }
 
 function escapeHtml(value) {
@@ -108,6 +122,17 @@ function getProducts() {
 
 function getCategories() {
     return Array.isArray(state.database.categories) ? state.database.categories : [];
+}
+
+function getUniqueCategoryName(baseName = "New category") {
+    const existing = new Set(getCategories().map((category) => String(category.name || "").toLowerCase()));
+    let name = baseName;
+    let counter = 2;
+    while (existing.has(name.toLowerCase())) {
+        name = `${baseName} ${counter}`;
+        counter += 1;
+    }
+    return name;
 }
 
 function getProductEntries() {
@@ -167,6 +192,7 @@ async function loadSettings() {
 }
 
 function renderAll() {
+    renderCategoryEditor();
     renderCategoryOptions();
     renderArtOptions();
     renderProductList();
@@ -174,14 +200,70 @@ function renderAll() {
     updateJsonOutput();
 }
 
+function renderCategoryEditor() {
+    const list = document.getElementById("categoryEditorList");
+    if (!list) return;
+
+    const categories = getCategories();
+    list.innerHTML = categories.length
+        ? categories
+              .map(
+                  (category, index) => `
+                    <div class="admin-category-row" data-category-index="${index}">
+                        <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                            <strong>${escapeHtml(category.label || category.name || `Category ${index + 1}`)}</strong>
+                            <button class="btn btn-outline-danger btn-sm" type="button" data-remove-category="${index}" aria-label="Remove category">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label">Name</label>
+                                <input class="form-control form-control-sm" data-category-field="name" value="${escapeHtml(category.name || "")}" />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Label</label>
+                                <input class="form-control form-control-sm" data-category-field="label" value="${escapeHtml(category.label || "")}" />
+                            </div>
+                            <div class="col-7">
+                                <label class="form-label">Page</label>
+                                <input class="form-control form-control-sm" data-category-field="page" value="${escapeHtml(category.page || "")}" />
+                            </div>
+                            <div class="col-5">
+                                <label class="form-label">Icon</label>
+                                <input class="form-control form-control-sm" data-category-field="icon" value="${escapeHtml(category.icon || "bi-box")}" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Teaser</label>
+                                <input class="form-control form-control-sm" data-category-field="teaser" value="${escapeHtml(category.teaser || "")}" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Heading</label>
+                                <input class="form-control form-control-sm" data-category-field="heading" value="${escapeHtml(category.heading || "")}" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Description</label>
+                                <textarea class="form-control form-control-sm" rows="2" data-category-field="description">${escapeHtml(category.description || "")}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                `,
+              )
+              .join("")
+        : `<div class="empty-state py-3"><p class="text-secondary mb-0">No categories yet.</p></div>`;
+}
+
 function renderCategoryOptions() {
     const categorySelect = document.getElementById("productCategory");
     if (!categorySelect) return;
 
     const currentValue = categorySelect.value;
-    categorySelect.innerHTML = getCategories()
-        .map((category) => `<option value="${escapeHtml(category.name)}">${escapeHtml(category.label || category.name)}</option>`)
-        .join("");
+    const categories = getCategories();
+    categorySelect.innerHTML = categories.length
+        ? categories
+              .map((category) => `<option value="${escapeHtml(category.name)}">${escapeHtml(category.label || category.name)}</option>`)
+              .join("")
+        : `<option value="">Add a category first</option>`;
     categorySelect.value = currentValue || categorySelect.options[0]?.value || "";
 }
 
@@ -306,6 +388,8 @@ function renderVariations() {
 }
 
 function readFormProduct() {
+    validateCategories();
+
     const id = document.getElementById("productId").value.trim();
     const name = document.getElementById("productName").value.trim();
     const category = document.getElementById("productCategory").value;
@@ -320,6 +404,7 @@ function readFormProduct() {
     if (!id) throw new Error("Product ID is required");
     if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error("Product ID must use lowercase letters, numbers, and hyphens");
     if (!name) throw new Error("Product name is required");
+    if (!category) throw new Error("Choose or add a category");
     if (!Number.isFinite(price) || price < 0) throw new Error("Price must be zero or more");
     if (id !== state.originalId && getProducts()[id]) throw new Error("Product ID already exists");
 
@@ -415,6 +500,90 @@ function duplicateProduct() {
     showToast("Product duplicated");
 }
 
+function addCategory() {
+    const name = getUniqueCategoryName();
+    const id = slugify(name);
+    getCategories().push({
+        name,
+        id,
+        page: `products.html#${id}`,
+        label: name,
+        icon: "bi-box",
+        teaser: "Digital products",
+        heading: name,
+        description: `Browse ${name.toLowerCase()} products.`,
+    });
+    renderCategoryEditor();
+    renderCategoryOptions();
+    updateJsonOutput();
+    showToast("Category added");
+}
+
+function updateCategory(index, field, value) {
+    const category = getCategories()[index];
+    if (!category) return;
+
+    const previousName = category.name;
+    category[field] = value;
+
+    if (field === "name") {
+        Object.values(getProducts()).forEach((product) => {
+            if (product.category === previousName) product.category = value;
+        });
+        if (!category.id) category.id = slugify(value);
+        if (!category.label || category.label === previousName) category.label = value;
+        if (!category.heading || category.heading === previousName) category.heading = value;
+    }
+
+    const categorySelect = document.getElementById("productCategory");
+    const selectedCategory = categorySelect?.value;
+    renderCategoryOptions();
+    if (field === "name" && selectedCategory === previousName && categorySelect) {
+        categorySelect.value = value;
+    }
+    renderProductList();
+    renderPreview();
+    updateJsonOutput();
+}
+
+function removeCategory(index) {
+    const category = getCategories()[index];
+    if (!category) return;
+
+    const usedCount = Object.values(getProducts()).filter((product) => product.category === category.name).length;
+    if (usedCount) {
+        showToast(`Move ${usedCount} product${usedCount === 1 ? "" : "s"} out of this category first`);
+        return;
+    }
+
+    getCategories().splice(index, 1);
+    renderCategoryEditor();
+    renderCategoryOptions();
+    updateJsonOutput();
+    showToast("Category removed");
+}
+
+function validateCategories() {
+    const seen = new Set();
+    getCategories().forEach((category, index) => {
+        const name = String(category.name || "").trim();
+        if (!name) throw new Error(`Category ${index + 1} needs a name`);
+
+        const key = name.toLowerCase();
+        if (seen.has(key)) throw new Error(`Duplicate category: ${name}`);
+        seen.add(key);
+
+        category.name = name;
+        category.id = String(category.id || slugify(name) || `category-${index + 1}`).trim();
+        category.page = String(category.page || `products.html#${category.id}`).trim();
+        category.label = String(category.label || name).trim();
+        category.icon = String(category.icon || "bi-box").trim();
+        category.teaser = String(category.teaser || "").trim();
+        category.heading = String(category.heading || category.label || name).trim();
+        category.description = String(category.description || `Browse ${name.toLowerCase()} products.`).trim();
+    });
+}
+
 function addVariation() {
     const label = `${state.database.currency || "TND"} option`;
     let id = slugify(label);
@@ -503,12 +672,18 @@ function handlePhotoFile(file) {
 }
 
 function getOutputJson() {
+    validateCategories();
     return JSON.stringify(state.database, null, 4);
 }
 
 function updateJsonOutput() {
     const output = document.getElementById("jsonOutput");
-    if (output) output.value = getOutputJson();
+    if (!output) return;
+    try {
+        output.value = getOutputJson();
+    } catch {
+        output.value = JSON.stringify(state.database, null, 4);
+    }
 }
 
 function fillSettingsForm() {
@@ -652,12 +827,184 @@ async function importSettingsJson(file) {
     showToast("Imported settings.json");
 }
 
+function getAdminToken() {
+    return sessionStorage.getItem(ADMIN_TOKEN_KEY) || document.getElementById("adminApiToken")?.value.trim() || "";
+}
+
+function setAdminToken(token) {
+    sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+}
+
+async function adminRequest(body) {
+    if (!ORDER_API_URL) throw new Error("Worker URL is not configured in config.js");
+    const token = getAdminToken();
+    if (!token) throw new Error("Enter and save the admin token");
+
+    const response = await fetch(ORDER_API_URL, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Token": token,
+        },
+        body: JSON.stringify(body),
+    });
+
+    const responseText = await response.text();
+    let result = {};
+    try {
+        result = responseText ? JSON.parse(responseText) : {};
+    } catch {
+        throw new Error("Worker did not return JSON");
+    }
+
+    if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Admin request failed");
+    }
+
+    return result;
+}
+
+function renderProofs(proofs) {
+    if (!Array.isArray(proofs) || !proofs.length) return `<p class="text-secondary mb-0">No proof saved.</p>`;
+    return proofs
+        .map(
+            (proof) => `
+                <div class="admin-proof-line">
+                    <span>${escapeHtml(proof.label || proof.type || "Proof")}</span>
+                    <strong>${escapeHtml(proof.value || "")}</strong>
+                </div>
+            `,
+        )
+        .join("");
+}
+
+function renderOrderItems(items) {
+    if (!Array.isArray(items) || !items.length) return `<p class="text-secondary mb-0">No items saved.</p>`;
+    return items
+        .map(
+            (item) => `
+                <div class="admin-order-line">
+                    <span>${escapeHtml(item.quantity > 1 ? `${item.quantity} x ` : "")}${escapeHtml(item.productName)}</span>
+                    <strong>${formatPlainTndAmount(item.lineTotal)}</strong>
+                </div>
+            `,
+        )
+        .join("");
+}
+
+function renderAdminOrders() {
+    const list = document.getElementById("adminOrdersList");
+    if (!list) return;
+
+    if (!state.orders.length) {
+        list.innerHTML = `<div class="empty-state py-4"><p class="text-secondary mb-0">No orders found.</p></div>`;
+        return;
+    }
+
+    list.innerHTML = state.orders
+        .map((order) => {
+            const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleString("en-TN") : "Not available";
+            return `
+                <article class="admin-order-card" data-admin-order-id="${escapeHtml(order.id)}">
+                    <div class="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-3">
+                        <div>
+                            <p class="eyebrow mb-2">${escapeHtml(createdAt)}</p>
+                            <h3 class="h4 fw-black mb-1">${escapeHtml(order.id)}</h3>
+                            <p class="text-secondary mb-0">WhatsApp: ${escapeHtml(order.customerPhoneDisplay)}</p>
+                        </div>
+                        <div class="admin-order-actions">
+                            <button class="btn btn-outline-dark btn-sm" type="button" data-copy-admin-text="${escapeHtml(order.customerPhone)}">
+                                <i class="bi bi-clipboard me-1"></i>Copy phone
+                            </button>
+                            <button class="btn btn-outline-dark btn-sm" type="button" data-copy-admin-text="${escapeHtml(order.id)}">
+                                <i class="bi bi-clipboard me-1"></i>Copy ID
+                            </button>
+                        </div>
+                    </div>
+                    <div class="status-grid mb-3">
+                        <div>
+                            <span>Payment</span>
+                            <strong>${escapeHtml(order.paymentStatusLabel)}</strong>
+                        </div>
+                        <div>
+                            <span>Delivery</span>
+                            <strong>${escapeHtml(order.deliveryStatusLabel)}</strong>
+                        </div>
+                        <div>
+                            <span>Method</span>
+                            <strong>${escapeHtml(order.paymentMethodLabel)}</strong>
+                        </div>
+                        <div>
+                            <span>To verify</span>
+                            <strong>${formatPlainTndAmount(order.amountDue)}</strong>
+                        </div>
+                    </div>
+                    <div class="admin-order-grid">
+                        <div>
+                            <p class="form-label mb-2">Products</p>
+                            ${renderOrderItems(order.items)}
+                        </div>
+                        <div>
+                            <p class="form-label mb-2">Payment proof</p>
+                            ${renderProofs(order.proofs)}
+                        </div>
+                    </div>
+                    <div class="admin-status-controls mt-3">
+                        <select class="form-select form-select-sm" data-order-payment-status>
+                            <option value="pending" ${order.paymentStatus === "pending" ? "selected" : ""}>Payment pending</option>
+                            <option value="verified" ${order.paymentStatus === "verified" ? "selected" : ""}>Payment verified</option>
+                            <option value="rejected" ${order.paymentStatus === "rejected" ? "selected" : ""}>Payment rejected</option>
+                        </select>
+                        <select class="form-select form-select-sm" data-order-delivery-status>
+                            <option value="waiting" ${order.deliveryStatus === "waiting" ? "selected" : ""}>Waiting delivery</option>
+                            <option value="delivered" ${order.deliveryStatus === "delivered" ? "selected" : ""}>Delivered</option>
+                            <option value="cancelled" ${order.deliveryStatus === "cancelled" ? "selected" : ""}>Cancelled</option>
+                        </select>
+                        <button class="btn btn-primary btn-sm" type="button" data-update-order-status="${escapeHtml(order.id)}">Save status</button>
+                    </div>
+                </article>
+            `;
+        })
+        .join("");
+}
+
+async function loadAdminOrders() {
+    const list = document.getElementById("adminOrdersList");
+    if (list) {
+        list.innerHTML = `<div class="empty-state py-4"><p class="text-secondary mb-0">Loading orders...</p></div>`;
+    }
+
+    const result = await adminRequest({ action: "admin-list-orders", limit: 50 });
+    state.orders = result.orders || [];
+    renderAdminOrders();
+    showToast("Loaded orders");
+}
+
+async function updateAdminOrderStatus(orderId) {
+    const card = [...document.querySelectorAll("[data-admin-order-id]")].find((item) => item.dataset.adminOrderId === orderId);
+    if (!card) return;
+
+    const paymentStatus = card.querySelector("[data-order-payment-status]")?.value || "";
+    const deliveryStatus = card.querySelector("[data-order-delivery-status]")?.value || "";
+    const result = await adminRequest({
+        action: "admin-update-order",
+        orderId,
+        paymentStatus,
+        deliveryStatus,
+    });
+
+    state.orders = state.orders.map((order) => (order.id === result.order.id ? result.order : order));
+    renderAdminOrders();
+    showToast("Order status updated");
+}
+
 function bindEvents() {
     document.getElementById("productSearch")?.addEventListener("input", renderProductList);
     document.getElementById("newProductButton")?.addEventListener("click", createNewProduct);
     document.getElementById("duplicateProductButton")?.addEventListener("click", duplicateProduct);
     document.getElementById("deleteProductButton")?.addEventListener("click", deleteProduct);
     document.getElementById("addVariationButton")?.addEventListener("click", addVariation);
+    document.getElementById("addCategoryButton")?.addEventListener("click", addCategory);
     document.getElementById("resetFormButton")?.addEventListener("click", fillForm);
     document.getElementById("downloadJsonButton")?.addEventListener("click", downloadJson);
     document.getElementById("copyJsonButton")?.addEventListener("click", copyJson);
@@ -665,6 +1012,18 @@ function bindEvents() {
     document.getElementById("downloadSettingsButton")?.addEventListener("click", downloadSettingsJson);
     document.getElementById("settingsImport")?.addEventListener("change", (event) => importSettingsJson(event.target.files[0]));
     document.getElementById("productPhotoFile")?.addEventListener("change", (event) => handlePhotoFile(event.target.files[0]));
+    document.getElementById("saveAdminTokenButton")?.addEventListener("click", () => {
+        const token = document.getElementById("adminApiToken")?.value.trim() || "";
+        if (!token) {
+            showToast("Enter the admin token");
+            return;
+        }
+        setAdminToken(token);
+        showToast("Admin token saved for this tab");
+    });
+    document.getElementById("loadOrdersButton")?.addEventListener("click", () => {
+        loadAdminOrders().catch((error) => showToast(error.message || "Could not load orders"));
+    });
 
     document.querySelectorAll(".admin-setting-group input, .admin-setting-group textarea").forEach((input) => {
         input.addEventListener("input", saveSettingsFromForm);
@@ -691,6 +1050,19 @@ function bindEvents() {
         removeVariation(Number(button.dataset.removeVariation));
     });
 
+    document.getElementById("categoryEditorList")?.addEventListener("input", (event) => {
+        const input = event.target.closest("[data-category-field]");
+        if (!input) return;
+        const row = input.closest("[data-category-index]");
+        updateCategory(Number(row.dataset.categoryIndex), input.dataset.categoryField, input.value);
+    });
+
+    document.getElementById("categoryEditorList")?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-remove-category]");
+        if (!button) return;
+        removeCategory(Number(button.dataset.removeCategory));
+    });
+
     document.getElementById("productForm")?.addEventListener("submit", (event) => {
         event.preventDefault();
         try {
@@ -703,8 +1075,32 @@ function bindEvents() {
     document.getElementById("productForm")?.addEventListener("input", () => {
         renderPreview();
     });
+
+    document.getElementById("adminOrdersList")?.addEventListener("click", (event) => {
+        const updateButton = event.target.closest("[data-update-order-status]");
+        if (updateButton) {
+            updateAdminOrderStatus(updateButton.dataset.updateOrderStatus).catch((error) =>
+                showToast(error.message || "Could not update order"),
+            );
+            return;
+        }
+
+        const copyButton = event.target.closest("[data-copy-admin-text]");
+        if (copyButton) {
+            const value = copyButton.dataset.copyAdminText || "";
+            navigator.clipboard
+                ?.writeText(value)
+                .then(() => showToast("Copied"))
+                .catch(() => showToast(value));
+        }
+    });
 }
 
 bindEvents();
+const savedAdminToken = getAdminToken();
+if (savedAdminToken) {
+    const tokenInput = document.getElementById("adminApiToken");
+    if (tokenInput) tokenInput.value = savedAdminToken;
+}
 loadDatabase();
 loadSettings();
