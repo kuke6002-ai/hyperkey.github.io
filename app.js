@@ -1711,6 +1711,7 @@ function setupProductDetailPage() {
     const productBadge = document.getElementById("productBadge");
     const productIntro = document.getElementById("productIntro");
     const productDetailDescription = document.getElementById("productDetailDescription");
+    const productStockAlert = document.getElementById("productStockAlert");
     const breadcrumbProductName = document.getElementById("breadcrumbProductName");
     const productVariationSection = document.getElementById("productVariationSection");
     const productVariationOptions = document.getElementById("productVariationOptions");
@@ -1753,6 +1754,14 @@ function setupProductDetailPage() {
         productBadge.textContent = inStock ? productCategoryText : "Out of stock";
         productBadge.classList.toggle("text-bg-dark", inStock);
         productBadge.classList.toggle("text-bg-secondary", !inStock);
+    }
+    if (productStockAlert) {
+        productStockAlert.classList.toggle("d-none", inStock);
+        productStockAlert.innerHTML = inStock
+            ? ""
+            : `Currently unavailable. <a class="alert-link" href="${escapeHtml(
+                  getWhatsAppSupportUrl(`Hello HyperKey Store, is ${product.name} available?`),
+              )}" target="_blank" rel="noopener">Contact support</a>.`;
     }
     if (productIntro) productIntro.textContent = getProductIntro(product);
     if (productDetailDescription) productDetailDescription.textContent = getProductDetail(product);
