@@ -6,7 +6,7 @@
 const PRODUCTS = {
     "steam-wallet": {
         name: "Steam Wallet",
-        category: "Gift card",
+        category: "Game Keys",
         price: 108.99,
         icon: "bi-steam",
         art: "steam-art",
@@ -41,7 +41,7 @@ const PRODUCTS = {
     },
     "ss-10": {
         name: "SwdawdaND",
-        category: "Gift card",
+        category: "Game Keys",
         price: 1808.8799,
         icon: "bi-steam",
         art: "steam-art",
@@ -49,7 +49,7 @@ const PRODUCTS = {
     },
     "steam-10": {
         name: "Steam Wassssllet 10 TND",
-        category: "Gift card",
+        category: "Game Keys",
         price: 108.8799,
         icon: "bi-steam",
         art: "steam-art",
@@ -57,7 +57,7 @@ const PRODUCTS = {
     },
     "steam-25": {
         name: "Steam Wallwdet 25 TND",
-        category: "Gift card",
+        category: "Game Keys",
         price: 258,
         icon: "bi-steam",
         art: "steam-art",
@@ -65,7 +65,7 @@ const PRODUCTS = {
     },
     "steam-50": {
         name: "Steam Wallet 50 TND",
-        category: "Gift card",
+        category: "Game Keys",
         price: 50,
         icon: "bi-steam",
         art: "steam-art",
@@ -74,7 +74,7 @@ const PRODUCTS = {
     },
     "steam-100": {
         name: "Steam Wallet 100 TND",
-        category: "Gift card",
+        category: "Game Keys",
         price: 100,
         icon: "bi-steam",
         art: "steam-art",
@@ -82,7 +82,7 @@ const PRODUCTS = {
     },
     "xbox-25": {
         name: "Xbox Gift Card 25 TND",
-        category: "Gift card",
+        category: "Game Keys",
         price: 25,
         icon: "bi-xbox",
         art: "xbox-art",
@@ -90,7 +90,7 @@ const PRODUCTS = {
     },
     "playstation-30": {
         name: "PlayStation Store 30 TND",
-        category: "Gift card",
+        category: "Game Keys",
         price: 30,
         icon: "bi-playstation",
         art: "playstation-art",
@@ -98,7 +98,7 @@ const PRODUCTS = {
     },
     "ml-diamonds-500": {
         name: "Mobile Legends 500 Diamonds",
-        category: "Top up",
+        category: "Game Top-Ups",
         price: 9.99,
         icon: "bi-gem",
         art: "topup-art",
@@ -106,7 +106,7 @@ const PRODUCTS = {
     },
     "free-fire-diamonds-100": {
         name: "Free Fire 100 Diamonds",
-        category: "Top up",
+        category: "Game Top-Ups",
         price: 3.5,
         icon: "bi-fire",
         art: "topup-art",
@@ -118,7 +118,7 @@ const PRODUCTS = {
     },
     "fortnite-vbucks-1000": {
         name: "Fortnite 1,000 V-Bucks",
-        category: "Top up",
+        category: "Game Top-Ups",
         price: 7.99,
         icon: "bi-lightning-charge",
         art: "vbucks-art",
@@ -126,7 +126,7 @@ const PRODUCTS = {
     },
     "valorant-2050": {
         name: "Valorant 2,050 Points",
-        category: "Top up",
+        category: "Game Top-Ups",
         price: 19.99,
         icon: "bi-crosshair",
         art: "valorant-art",
@@ -134,7 +134,7 @@ const PRODUCTS = {
     },
     "minecraft-java-key": {
         name: "Minecraft Java & Bedrock Key",
-        category: "Game key",
+        category: "Game Keys",
         price: 29.99,
         icon: "bi-joystick",
         art: "gamekey-art",
@@ -142,7 +142,7 @@ const PRODUCTS = {
     },
     "starter-account": {
         name: "Starter Game Account",
-        category: "Account",
+        category: "Game Keys",
         price: 39,
         icon: "bi-shield-check",
         art: "account-art",
@@ -150,7 +150,7 @@ const PRODUCTS = {
     },
     "roblox-25": {
         name: "Roblox Gift Card 25 TND",
-        category: "Gift card",
+        category: "Game Keys",
         price: 25,
         icon: "bi-box",
         art: "roblox-art",
@@ -228,40 +228,67 @@ const DEFAULT_PAYMENT_SETTINGS = {
 // Add a category here if you introduce a new product category in PRODUCTS.
 const CATEGORIES = [
     {
-        name: "Gift card",
-        id: "gift-cards",
-        label: "Gift Cards",
-        icon: "bi-gift",
-        teaser: "Steam, Xbox, PlayStation, Roblox",
-        heading: "Platform wallet codes",
-        description: "Digital gift cards handled through Telegram order support.",
-    },
-    {
-        name: "Top up",
-        id: "top-ups",
-        label: "Top Ups",
+        name: "Game Top-Ups",
+        id: "game-top-ups",
+        label: "Game Top-Ups",
         icon: "bi-gem",
-        teaser: "Diamonds, points, V-Bucks",
-        heading: "In-game credit and currency",
-        description: "Top up orders handled through Telegram order support.",
+        teaser: "Diamonds, Robux, coins, V-Bucks",
+        heading: "Game credits and currencies",
+        description: "In-game currencies and top-ups with manual payment review and WhatsApp delivery.",
     },
     {
-        name: "Game key",
+        name: "Game Keys",
         id: "game-keys",
         label: "Game Keys",
         icon: "bi-joystick",
-        teaser: "Activation keys and codes",
-        heading: "Activation codes",
-        description: "Buy game keys with redemption instructions included.",
+        teaser: "Wallet cards, activation keys, accounts",
+        heading: "Game keys and wallet codes",
+        description: "Game keys, wallet codes, and game account products delivered digitally.",
     },
     {
-        name: "Account",
-        id: "accounts",
-        label: "Accounts",
-        icon: "bi-person-badge",
-        teaser: "Verified starter accounts",
-        heading: "Verified game accounts",
-        description: "Starter accounts with access notes and recovery guidance.",
+        name: "AI Subscriptions",
+        id: "ai-subscriptions",
+        label: "AI Subscriptions",
+        icon: "bi-cpu",
+        teaser: "ChatGPT and AI tools",
+        heading: "AI subscriptions and credits",
+        description: "AI subscriptions and top-ups with manual payment review.",
+    },
+    {
+        name: "Creative & Productivity Apps",
+        id: "creative-productivity-apps",
+        label: "Creative & Productivity Apps",
+        icon: "bi-brush",
+        teaser: "Design and work apps",
+        heading: "Creative and productivity apps",
+        description: "Digital app subscriptions for design, productivity, and creator workflows.",
+    },
+    {
+        name: "Streaming & Entertainment",
+        id: "streaming-entertainment",
+        label: "Streaming & Entertainment",
+        icon: "bi-play-btn",
+        teaser: "Netflix and entertainment",
+        heading: "Streaming and entertainment",
+        description: "Streaming and entertainment subscriptions with WhatsApp delivery.",
+    },
+    {
+        name: "Software Licenses",
+        id: "software-licenses",
+        label: "Software Licenses",
+        icon: "bi-patch-check",
+        teaser: "Software keys and licenses",
+        heading: "Software licenses",
+        description: "Software activation keys and license products delivered digitally.",
+    },
+    {
+        name: "Social Media Services",
+        id: "social-media-services",
+        label: "Social Media Services",
+        icon: "bi-share",
+        teaser: "Followers, likes, coins, sponsorships",
+        heading: "Social media services",
+        description: "Social media growth, coins, and sponsorship services with manual review.",
     },
 ];
 const PRODUCT_ROUTES = {
@@ -1946,10 +1973,13 @@ function getProductIntro(product) {
     if (product.description) return product.description;
 
     const intros = {
-        "Gift card": "Redeem this digital gift card for wallet credit, games, add-ons, and platform content.",
-        "Top up": "Fast in-game credit support for eligible accounts through Telegram checkout.",
-        "Game key": "Activate this digital game key with the included redemption instructions.",
-        Account: "Receive verified account access details and recovery guidance after checkout.",
+        "Game Top-Ups": "Fast in-game credit support for eligible accounts with manual payment review.",
+        "Game Keys": "Digital game keys, wallet codes, and account products delivered after checkout.",
+        "AI Subscriptions": "AI subscriptions and credits handled through manual payment review.",
+        "Creative & Productivity Apps": "Creative and productivity app access delivered digitally.",
+        "Streaming & Entertainment": "Streaming and entertainment subscriptions delivered through WhatsApp support.",
+        "Software Licenses": "Software license keys and activation products delivered digitally.",
+        "Social Media Services": "Social media services handled with manual review and WhatsApp support.",
     };
 
     return intros[getProductCategory(product)] || "Digital product handled through Telegram checkout.";
@@ -1961,14 +1991,20 @@ function getProductDetail(product) {
     if (product.description) return product.description;
 
     const details = {
-        "Gift card":
-            "This digital wallet code is ideal for gamers who want quick account credit without waiting for physical delivery. Confirm your account region before purchase because digital codes may have region limitations.",
-        "Top up":
-            "This top up is processed after the order is reviewed. Please confirm the product region and platform before placing the order.",
-        "Game key":
-            "This product includes a digital activation key and redemption steps. Make sure your platform account meets the region and age requirements before purchase.",
-        Account:
-            "This account product includes access details and a recovery guide. Change credentials after receiving access and review all account notes before using it.",
+        "Game Top-Ups":
+            "This top-up is processed after payment review. Please confirm the game, region, and account information before placing the order.",
+        "Game Keys":
+            "This product includes a digital key, wallet code, or game account details. Confirm platform and region compatibility before purchase.",
+        "AI Subscriptions":
+            "This AI product is processed manually after payment review. Delivery details are sent through WhatsApp support.",
+        "Creative & Productivity Apps":
+            "This digital app product is delivered after payment review. Check account and platform compatibility before purchase.",
+        "Streaming & Entertainment":
+            "This subscription product is delivered after manual review. Keep your Order ID and WhatsApp number for support.",
+        "Software Licenses":
+            "This software license product is delivered digitally. Review platform, region, and activation requirements before purchase.",
+        "Social Media Services":
+            "This service is reviewed manually before processing. Delivery timing can depend on the selected platform and service type.",
     };
 
     return details[getProductCategory(product)] || "Your digital product will be processed after Telegram checkout.";
