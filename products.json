@@ -1,220 +1,833 @@
+```json
 {
-    "currency": "TND",
-    "categories": [
-        {
-            "name": "Gift card",
-            "id": "gift-cards",
-            "page": "gift-cards.html",
-            "label": "Gift Cards",
-            "icon": "bi-gift",
-            "teaser": "Steam, Xbox, PlayStation, Roblox",
-            "heading": "Platform wallet codes",
-            "description": "Digital gift cards handled through Telegram order support."
-        },
-        {
-            "name": "Top up",
-            "id": "top-ups",
-            "page": "top-ups.html",
-            "label": "Top Ups",
-            "icon": "bi-gem",
-            "teaser": "Diamonds, points, V-Bucks",
-            "heading": "In-game credit and currency",
-            "description": "Top up orders handled through Telegram order support."
-        },
-        {
-            "name": "Game key",
-            "id": "game-keys",
-            "page": "game-keys.html",
-            "label": "Game Keys",
-            "icon": "bi-joystick",
-            "teaser": "Activation keys and codes",
-            "heading": "Activation codes",
-            "description": "Buy game keys with redemption instructions included."
-        },
-        {
-            "name": "Account",
-            "id": "accounts",
-            "page": "accounts.html",
-            "label": "Accounts",
-            "icon": "bi-person-badge",
-            "teaser": "Verified starter accounts",
-            "heading": "Verified game accounts",
-            "description": "Starter accounts with access notes and recovery guidance."
-        }
-    ],
-    "routes": {
-        "steam-10": { "productId": "steam-wallet", "variationId": "steam-10" },
-        "steam-25": { "productId": "steam-wallet", "variationId": "steam-25" },
-        "steam-50": { "productId": "steam-wallet", "variationId": "steam-50" },
-        "steam-100": { "productId": "steam-wallet", "variationId": "steam-100" }
-    },
-    "products": {
-        "steam-wallet": {
-            "name": "Steam Wallet",
-            "category": "Gift card",
-            "price": 108.99,
-            "icon": "bi-steam",
-            "art": "steam-art",
-            "description": "Choose a Steam wallet value and receive a digital code for games and DLC.",
-            "defaultVariation": "steam-10",
-            "variations": [
-                {
-                    "id": "steam-10",
-                    "label": "10 TND",
-                    "name": "Steam Wallet 10 TND",
-                    "price": 108.99
-                },
-                {
-                    "id": "steam-25",
-                    "label": "2554 TND",
-                    "name": "Steam Wallet 25 TND",
-                    "price": 258
-                },
-                {
-                    "id": "steam-2wd5",
-                    "label": "0 TND",
-                    "name": "StewdwaTND",
-                    "price": 8
-                },               
-                {
-                    "id": "steam-50",
-                    "label": "50 TND",
-                    "name": "Steam Wallet 50 TND",
-                    "price": 50
-                },
-                {
-                    "id": "steam-100",
-                    "label": "100 TND",
-                    "name": "Steam Wallet 100 TND",
-                    "price": 100
-                }
-            ]
-        },
-        "steam-10": {
-            "name": "Steam Wallet 10 TND",
-            "category": "Gift card",
-            "price": 108.8799,
-            "icon": "bi-steam",
-            "art": "steam-art",
-            "visible": false
-        },
-        "steam-25": {
-            "name": "Steam Wallet 25 TND",
-            "category": "Gift card",
-            "price": 258,
-            "icon": "bi-steam",
-            "art": "steam-art",
-            "visible": false
-        },
-        "steam-50": {
-            "name": "Steam Wallet 50 TND",
-            "category": "Gift card",
-            "price": 50,
-            "icon": "bi-steam",
-            "art": "steam-art",
-            "description": "Global Steam wallet code for games and DLC.",
-            "visible": false
-        },
-        "steam-100": {
-            "name": "Steam Wallet 100 TND",
-            "category": "Gift card",
-            "price": 100,
-            "icon": "bi-steam",
-            "art": "steam-art",
-            "visible": false
-        },
-        "xbox-25": {
-            "name": "Xbox Gift Card 25 TND",
-            "category": "Gift card",
-            "price": 25,
-            "icon": "bi-xbox",
-            "art": "xbox-art",
-            "description": "Redeem for games, add-ons, movies, and subscriptions."
-        },
-        "playstation-30": {
-            "name": "PlayStation Store 30 TND",
-            "category": "Gift card",
-            "price": 30,
-            "icon": "bi-playstation",
-            "art": "playstation-art",
-            "description": "Buy games, expansions, and wallet credit."
-        },
-        "ml-diamonds-500": {
-            "name": "Mobile Legends 500 Diamonds",
-            "category": "Top up",
-            "price": 9.99,
-            "icon": "bi-gem",
-            "art": "topup-art",
-            "description": "Fast top up handled through Telegram order support."
-        },
-        "free-fire-diamonds-100": {
-            "name": "Free Fire 100 Diamonds",
-            "category": "Top up",
-            "price": 3.5,
-            "icon": "bi-fire",
-            "art": "topup-art",
-            "description": "Free Fire 100 diamond top up handled through Telegram order support.",
-            "customerInput": {
-                "enabled": true,
-                "label": "Player ID"
-            }
-        },
-        "fortnite-vbucks-1000": {
-            "name": "Fortnite 1,000 V-Bucks",
-            "category": "Top up",
-            "price": 7.99,
-            "icon": "bi-lightning-charge",
-            "art": "vbucks-art",
-            "description": "Add V-Bucks for outfits, emotes, and battle pass items."
-        },
-        "valorant-2050": {
-            "name": "Valorant 2,050 Points",
-            "category": "Top up",
-            "price": 19.99,
-            "icon": "bi-crosshair",
-            "art": "valorant-art",
-            "description": "Wallet points for skins, bundles, and passes."
-        },
-        "minecraft-java-key": {
-            "name": "Minecraft Java & Bedrock Key",
-            "category": "Game key",
-            "price": 29.99,
-            "icon": "bi-joystick",
-            "art": "gamekey-art",
-            "description": "Full game key with digital activation instructions."
-        },
-        "starter-account": {
-            "name": "Starter Game Account",
-            "category": "Account",
-            "price": 39,
-            "icon": "bi-shield-check",
-            "art": "account-art",
-            "description": "Verified starter account with recovery guide included."
-        },
-        "roblox-25": {
-            "name": "Roblox Gift Card 25 TND",
-            "category": "Gift card",
-            "price": 25,
-            "icon": "bi-box",
-            "art": "roblox-art",
-            "description": "Robux and premium credit delivered digitally."
-        },
-        "hhas-25": {
-            "name": "Rwada 25 TND",
-            "category": "Gift card",
-            "price": 25888,
-            "icon": "bi-box",
-            "art": "roblox-art",
-            "description": "Robux and premium credit delivered digitally."
-        }
-        ,
-        "xxxaw": {
-            "name": "wsa4d 255785785 TND",
-            "category": "Gift card",
-            "price": 2,
-            "icon": "bi-box",
-            "art": "roblox-art",
-            "description": "Rasflaufoipwagitally."
-        }
+  "currency": "TND",
+  "categories": [
+    {
+      "name": "Top up",
+      "id": "top-ups",
+      "page": "top-ups.html",
+      "label": "Top Ups",
+      "icon": "bi-gem",
+      "teaser": "Game credits and digital currency",
+      "heading": "In-game top ups",
+      "description": "Purchase in-game credits, points, coins, passes, and digital currency."
     }
+  ],
+  "routes": {
+    "roblox-card-10-usd": {
+      "productId": "roblox-robux",
+      "variationId": "roblox-card-10-usd"
+    },
+    "roblox-card-15-usd": {
+      "productId": "roblox-robux",
+      "variationId": "roblox-card-15-usd"
+    },
+    "roblox-card-20-usd": {
+      "productId": "roblox-robux",
+      "variationId": "roblox-card-20-usd"
+    },
+    "roblox-card-25-usd": {
+      "productId": "roblox-robux",
+      "variationId": "roblox-card-25-usd"
+    },
+    "roblox-card-50-usd": {
+      "productId": "roblox-robux",
+      "variationId": "roblox-card-50-usd"
+    },
+    "roblox-card-100-usd": {
+      "productId": "roblox-robux",
+      "variationId": "roblox-card-100-usd"
+    },
+    "fortnite-vbucks-1000-fr": {
+      "productId": "fortnite-vbucks",
+      "variationId": "fortnite-vbucks-1000-fr"
+    },
+    "fortnite-vbucks-2800-fr": {
+      "productId": "fortnite-vbucks",
+      "variationId": "fortnite-vbucks-2800-fr"
+    },
+    "fortnite-vbucks-5000-fr": {
+      "productId": "fortnite-vbucks",
+      "variationId": "fortnite-vbucks-5000-fr"
+    },
+    "fortnite-vbucks-13500-fr": {
+      "productId": "fortnite-vbucks",
+      "variationId": "fortnite-vbucks-13500-fr"
+    },
+    "lol-card-5-eur-europe": {
+      "productId": "league-of-legends-riot-points",
+      "variationId": "lol-card-5-eur-europe"
+    },
+    "lol-card-10-eur-europe": {
+      "productId": "league-of-legends-riot-points",
+      "variationId": "lol-card-10-eur-europe"
+    },
+    "lol-card-20-eur-europe": {
+      "productId": "league-of-legends-riot-points",
+      "variationId": "lol-card-20-eur-europe"
+    },
+    "lol-card-35-eur-europe": {
+      "productId": "league-of-legends-riot-points",
+      "variationId": "lol-card-35-eur-europe"
+    },
+    "lol-card-50-eur-europe": {
+      "productId": "league-of-legends-riot-points",
+      "variationId": "lol-card-50-eur-europe"
+    },
+    "lol-card-100-eur-europe": {
+      "productId": "league-of-legends-riot-points",
+      "variationId": "lol-card-100-eur-europe"
+    },
+    "valorant-card-10-eur-europe": {
+      "productId": "valorant-points",
+      "variationId": "valorant-card-10-eur-europe"
+    },
+    "valorant-card-20-eur-fr": {
+      "productId": "valorant-points",
+      "variationId": "valorant-card-20-eur-fr"
+    },
+    "valorant-card-35-eur-fr": {
+      "productId": "valorant-points",
+      "variationId": "valorant-card-35-eur-fr"
+    },
+    "valorant-card-50-eur-fr": {
+      "productId": "valorant-points",
+      "variationId": "valorant-card-50-eur-fr"
+    },
+    "valorant-card-100-eur-fr": {
+      "productId": "valorant-points",
+      "variationId": "valorant-card-100-eur-fr"
+    },
+    "valorant-card-500-try": {
+      "productId": "valorant-points",
+      "variationId": "valorant-card-500-try"
+    },
+    "valorant-card-850-try": {
+      "productId": "valorant-points",
+      "variationId": "valorant-card-850-try"
+    },
+    "valorant-card-1230-try": {
+      "productId": "valorant-points",
+      "variationId": "valorant-card-1230-try"
+    },
+    "valorant-card-2450-try": {
+      "productId": "valorant-points",
+      "variationId": "valorant-card-2450-try"
+    },
+    "valorant-points-1000-tr": {
+      "productId": "valorant-points",
+      "variationId": "valorant-points-1000-tr"
+    },
+    "fc26-points-1050-ea-app": {
+      "productId": "fc26-ultimate-team-points",
+      "variationId": "fc26-points-1050-ea-app"
+    },
+    "fc26-points-2800-ea-app": {
+      "productId": "fc26-ultimate-team-points",
+      "variationId": "fc26-points-2800-ea-app"
+    },
+    "fc26-points-5900-ea-app": {
+      "productId": "fc26-ultimate-team-points",
+      "variationId": "fc26-points-5900-ea-app"
+    },
+    "fc26-points-12000-ea-app": {
+      "productId": "fc26-ultimate-team-points",
+      "variationId": "fc26-points-12000-ea-app"
+    },
+    "pubg-mobile-uc-60": {
+      "productId": "pubg-mobile-uc",
+      "variationId": "pubg-mobile-uc-60"
+    },
+    "pubg-mobile-uc-300-25": {
+      "productId": "pubg-mobile-uc",
+      "variationId": "pubg-mobile-uc-300-25"
+    },
+    "pubg-mobile-uc-600-60": {
+      "productId": "pubg-mobile-uc",
+      "variationId": "pubg-mobile-uc-600-60"
+    },
+    "pubg-mobile-uc-1500-300": {
+      "productId": "pubg-mobile-uc",
+      "variationId": "pubg-mobile-uc-1500-300"
+    },
+    "pubg-mobile-uc-3000-850": {
+      "productId": "pubg-mobile-uc",
+      "variationId": "pubg-mobile-uc-3000-850"
+    },
+    "pubg-mobile-uc-6000-2100": {
+      "productId": "pubg-mobile-uc",
+      "variationId": "pubg-mobile-uc-6000-2100"
+    },
+    "free-fire-diamonds-100-10": {
+      "productId": "free-fire-diamonds",
+      "variationId": "free-fire-diamonds-100-10"
+    },
+    "free-fire-diamonds-210-21": {
+      "productId": "free-fire-diamonds",
+      "variationId": "free-fire-diamonds-210-21"
+    },
+    "free-fire-diamonds-530-53": {
+      "productId": "free-fire-diamonds",
+      "variationId": "free-fire-diamonds-530-53"
+    },
+    "free-fire-diamonds-1080-108": {
+      "productId": "free-fire-diamonds",
+      "variationId": "free-fire-diamonds-1080-108"
+    },
+    "free-fire-diamonds-2200-220": {
+      "productId": "free-fire-diamonds",
+      "variationId": "free-fire-diamonds-2200-220"
+    },
+    "brawl-stars-gems-30": {
+      "productId": "brawl-stars-gems",
+      "variationId": "brawl-stars-gems-30"
+    },
+    "brawl-stars-gems-80": {
+      "productId": "brawl-stars-gems",
+      "variationId": "brawl-stars-gems-80"
+    },
+    "brawl-stars-gems-170": {
+      "productId": "brawl-stars-gems",
+      "variationId": "brawl-stars-gems-170"
+    },
+    "brawl-stars-gems-360": {
+      "productId": "brawl-stars-gems",
+      "variationId": "brawl-stars-gems-360"
+    },
+    "brawl-stars-gems-950": {
+      "productId": "brawl-stars-gems",
+      "variationId": "brawl-stars-gems-950"
+    },
+    "brawl-stars-gems-2000": {
+      "productId": "brawl-stars-gems",
+      "variationId": "brawl-stars-gems-2000"
+    },
+    "brawl-stars-brawl-pass": {
+      "productId": "brawl-stars-gems",
+      "variationId": "brawl-stars-brawl-pass"
+    },
+    "brawl-stars-brawl-pass-plus": {
+      "productId": "brawl-stars-gems",
+      "variationId": "brawl-stars-brawl-pass-plus"
+    },
+    "brawl-stars-brawl-pass-pro": {
+      "productId": "brawl-stars-gems",
+      "variationId": "brawl-stars-brawl-pass-pro"
+    },
+    "apex-coins-1000": {
+      "productId": "apex-legends-coins",
+      "variationId": "apex-coins-1000"
+    },
+    "apex-coins-2150": {
+      "productId": "apex-legends-coins",
+      "variationId": "apex-coins-2150"
+    },
+    "apex-coins-4350": {
+      "productId": "apex-legends-coins",
+      "variationId": "apex-coins-4350"
+    },
+    "apex-coins-6700": {
+      "productId": "apex-legends-coins",
+      "variationId": "apex-coins-6700"
+    },
+    "apex-coins-11500": {
+      "productId": "apex-legends-coins",
+      "variationId": "apex-coins-11500"
+    },
+    "efootball-mobile-coins-550": {
+      "productId": "efootball-coins",
+      "variationId": "efootball-mobile-coins-550"
+    },
+    "efootball-mobile-coins-750": {
+      "productId": "efootball-coins",
+      "variationId": "efootball-mobile-coins-750"
+    },
+    "efootball-mobile-coins-1040": {
+      "productId": "efootball-coins",
+      "variationId": "efootball-mobile-coins-1040"
+    },
+    "efootball-mobile-coins-2130": {
+      "productId": "efootball-coins",
+      "variationId": "efootball-mobile-coins-2130"
+    },
+    "efootball-mobile-coins-3250": {
+      "productId": "efootball-coins",
+      "variationId": "efootball-mobile-coins-3250"
+    },
+    "efootball-mobile-coins-5700": {
+      "productId": "efootball-coins",
+      "variationId": "efootball-mobile-coins-5700"
+    },
+    "efootball-mobile-coins-12800": {
+      "productId": "efootball-coins",
+      "variationId": "efootball-mobile-coins-12800"
+    },
+    "mobile-legends-diamonds-56": {
+      "productId": "mobile-legends-diamonds",
+      "variationId": "mobile-legends-diamonds-56"
+    },
+    "mobile-legends-diamonds-278": {
+      "productId": "mobile-legends-diamonds",
+      "variationId": "mobile-legends-diamonds-278"
+    },
+    "mobile-legends-diamonds-571": {
+      "productId": "mobile-legends-diamonds",
+      "variationId": "mobile-legends-diamonds-571"
+    },
+    "mobile-legends-diamonds-1167": {
+      "productId": "mobile-legends-diamonds",
+      "variationId": "mobile-legends-diamonds-1167"
+    },
+    "mobile-legends-diamonds-1783": {
+      "productId": "mobile-legends-diamonds",
+      "variationId": "mobile-legends-diamonds-1783"
+    },
+    "mobile-legends-diamonds-2975": {
+      "productId": "mobile-legends-diamonds",
+      "variationId": "mobile-legends-diamonds-2975"
+    },
+    "mobile-legends-diamonds-6000": {
+      "productId": "mobile-legends-diamonds",
+      "variationId": "mobile-legends-diamonds-6000"
+    }
+  },
+  "products": {
+    "roblox-robux": {
+      "name": "Roblox Gift Card",
+      "category": "Top up",
+      "price": 40,
+      "icon": "bi-box",
+      "art": "roblox-art",
+      "description": "Digital Roblox gift card delivered as a redeemable code.",
+      "variations": [
+        {
+          "id": "roblox-card-10-usd",
+          "label": "$10",
+          "name": "Roblox Gift Card $10",
+          "price": 40
+        },
+        {
+          "id": "roblox-card-15-usd",
+          "label": "$15",
+          "name": "Roblox Gift Card $15",
+          "price": 60
+        },
+        {
+          "id": "roblox-card-20-usd",
+          "label": "$20",
+          "name": "Roblox Gift Card $20",
+          "price": 80
+        },
+        {
+          "id": "roblox-card-25-usd",
+          "label": "$25",
+          "name": "Roblox Gift Card $25",
+          "price": 100
+        },
+        {
+          "id": "roblox-card-50-usd",
+          "label": "$50",
+          "name": "Roblox Gift Card $50",
+          "price": 200
+        },
+        {
+          "id": "roblox-card-100-usd",
+          "label": "$100",
+          "name": "Roblox Gift Card $100",
+          "price": 400
+        }
+      ],
+      "defaultVariation": "roblox-card-10-usd"
+    },
+    "fortnite-vbucks": {
+      "name": "V-Bucks - Fortnite",
+      "category": "Top up",
+      "price": 45,
+      "icon": "bi-lightning-charge",
+      "art": "fortnite-art",
+      "description": "France-region Fortnite V-Bucks cards delivered as digital redemption codes.",
+      "variations": [
+        {
+          "id": "fortnite-vbucks-1000-fr",
+          "label": "1,000 V-Bucks",
+          "name": "Fortnite 1,000 V-Bucks - France",
+          "price": 45
+        },
+        {
+          "id": "fortnite-vbucks-2800-fr",
+          "label": "2,800 V-Bucks",
+          "name": "Fortnite 2,800 V-Bucks - France",
+          "price": 110
+        },
+        {
+          "id": "fortnite-vbucks-5000-fr",
+          "label": "5,000 V-Bucks",
+          "name": "Fortnite 5,000 V-Bucks - France",
+          "price": 200
+        },
+        {
+          "id": "fortnite-vbucks-13500-fr",
+          "label": "13,500 V-Bucks",
+          "name": "Fortnite 13,500 V-Bucks - France",
+          "price": 420
+        }
+      ],
+      "defaultVariation": "fortnite-vbucks-1000-fr"
+    },
+    "league-of-legends-riot-points": {
+      "name": "Riot Points - League of Legends",
+      "category": "Top up",
+      "price": 20,
+      "icon": "bi-controller",
+      "art": "league-of-legends-art",
+      "description": "Europe-region League of Legends gift cards delivered as digital redemption codes.",
+      "variations": [
+        {
+          "id": "lol-card-5-eur-europe",
+          "label": "€5",
+          "name": "League of Legends Gift Card €5 - Europe",
+          "price": 20
+        },
+        {
+          "id": "lol-card-10-eur-europe",
+          "label": "€10",
+          "name": "League of Legends Gift Card €10 - Europe",
+          "price": 40
+        },
+        {
+          "id": "lol-card-20-eur-europe",
+          "label": "€20",
+          "name": "League of Legends Gift Card €20 - Europe",
+          "price": 80
+        },
+        {
+          "id": "lol-card-35-eur-europe",
+          "label": "€35",
+          "name": "League of Legends Gift Card €35 - Europe",
+          "price": 140
+        },
+        {
+          "id": "lol-card-50-eur-europe",
+          "label": "€50",
+          "name": "League of Legends Gift Card €50 - Europe",
+          "price": 200
+        },
+        {
+          "id": "lol-card-100-eur-europe",
+          "label": "€100",
+          "name": "League of Legends Gift Card €100 - Europe",
+          "price": 400
+        }
+      ],
+      "defaultVariation": "lol-card-5-eur-europe"
+    },
+    "valorant-points": {
+      "name": "Valorant Points - Valorant",
+      "category": "Top up",
+      "price": 40,
+      "icon": "bi-crosshair",
+      "art": "valorant-art",
+      "description": "Valorant gift cards and points for supported France, Europe, and Turkey accounts. Verify the account region before ordering.",
+      "variations": [
+        {
+          "id": "valorant-card-10-eur-europe",
+          "label": "€10 - Europe",
+          "name": "Valorant Gift Card €10 - Europe",
+          "price": 40
+        },
+        {
+          "id": "valorant-card-20-eur-fr",
+          "label": "€20 - France",
+          "name": "Valorant Gift Card €20 - France",
+          "price": 80
+        },
+        {
+          "id": "valorant-card-35-eur-fr",
+          "label": "€35 - France",
+          "name": "Valorant Gift Card €35 - France",
+          "price": 140
+        },
+        {
+          "id": "valorant-card-50-eur-fr",
+          "label": "€50 - France",
+          "name": "Valorant Gift Card €50 - France",
+          "price": 200
+        },
+        {
+          "id": "valorant-card-100-eur-fr",
+          "label": "€100 - France",
+          "name": "Valorant Gift Card €100 - France",
+          "price": 400
+        },
+        {
+          "id": "valorant-card-500-try",
+          "label": "500 TRY - Turkey",
+          "name": "Valorant Gift Card 500 TRY - Turkey",
+          "price": 50
+        },
+        {
+          "id": "valorant-card-850-try",
+          "label": "850 TRY - Turkey",
+          "name": "Valorant Gift Card 850 TRY - Turkey",
+          "price": 80
+        },
+        {
+          "id": "valorant-card-1230-try",
+          "label": "1,230 TRY - Turkey",
+          "name": "Valorant Gift Card 1,230 TRY - Turkey",
+          "price": 120
+        },
+        {
+          "id": "valorant-card-2450-try",
+          "label": "2,450 TRY - Turkey",
+          "name": "Valorant Gift Card 2,450 TRY - Turkey",
+          "price": 220
+        },
+        {
+          "id": "valorant-points-1000-tr",
+          "label": "1,000 Points - Turkey",
+          "name": "Valorant 1,000 Points - Turkey",
+          "price": 40,
+          "available": false
+        }
+      ],
+      "defaultVariation": "valorant-card-10-eur-europe"
+    },
+    "fc26-ultimate-team-points": {
+      "name": "EA SPORTS FC 26 - Ultimate Team Points",
+      "category": "Top up",
+      "price": 50,
+      "icon": "bi-trophy",
+      "art": "fc26-art",
+      "description": "EA SPORTS FC 26 Ultimate Team Points for EA App accounts on PC. Verify the platform before ordering.",
+      "variations": [
+        {
+          "id": "fc26-points-1050-ea-app",
+          "label": "1,050 Points",
+          "name": "EA SPORTS FC 26 - 1,050 Points - EA App",
+          "price": 50
+        },
+        {
+          "id": "fc26-points-2800-ea-app",
+          "label": "2,800 Points",
+          "name": "EA SPORTS FC 26 - 2,800 Points - EA App",
+          "price": 125
+        },
+        {
+          "id": "fc26-points-5900-ea-app",
+          "label": "5,900 Points",
+          "name": "EA SPORTS FC 26 - 5,900 Points - EA App",
+          "price": 260
+        },
+        {
+          "id": "fc26-points-12000-ea-app",
+          "label": "12,000 Points",
+          "name": "EA SPORTS FC 26 - 12,000 Points - EA App",
+          "price": 500
+        }
+      ],
+      "defaultVariation": "fc26-points-1050-ea-app"
+    },
+    "pubg-mobile-uc": {
+      "name": "UC - PUBG Mobile",
+      "category": "Top up",
+      "price": 4,
+      "icon": "bi-bullseye",
+      "art": "pubg-mobile-art",
+      "description": "Digital PUBG Mobile UC codes. Check code compatibility before ordering.",
+      "variations": [
+        {
+          "id": "pubg-mobile-uc-60",
+          "label": "60 UC",
+          "name": "PUBG Mobile - 60 UC",
+          "price": 4
+        },
+        {
+          "id": "pubg-mobile-uc-300-25",
+          "label": "300 UC + 25 Bonus",
+          "name": "PUBG Mobile - 300 UC + 25 Bonus UC",
+          "price": 20
+        },
+        {
+          "id": "pubg-mobile-uc-600-60",
+          "label": "600 UC + 60 Bonus",
+          "name": "PUBG Mobile - 600 UC + 60 Bonus UC",
+          "price": 36
+        },
+        {
+          "id": "pubg-mobile-uc-1500-300",
+          "label": "1,500 UC + 300 Bonus",
+          "name": "PUBG Mobile - 1,500 UC + 300 Bonus UC",
+          "price": 90
+        },
+        {
+          "id": "pubg-mobile-uc-3000-850",
+          "label": "3,000 UC + 850 Bonus",
+          "name": "PUBG Mobile - 3,000 UC + 850 Bonus UC",
+          "price": 180
+        },
+        {
+          "id": "pubg-mobile-uc-6000-2100",
+          "label": "6,000 UC + 2,100 Bonus",
+          "name": "PUBG Mobile - 6,000 UC + 2,100 Bonus UC",
+          "price": 360
+        }
+      ],
+      "defaultVariation": "pubg-mobile-uc-60"
+    },
+    "free-fire-diamonds": {
+      "name": "Diamonds - Garena Free Fire",
+      "category": "Top up",
+      "price": 4,
+      "icon": "bi-fire",
+      "art": "free-fire-art",
+      "description": "Digital Garena Free Fire Diamond codes with included bonus Diamonds.",
+      "variations": [
+        {
+          "id": "free-fire-diamonds-100-10",
+          "label": "100 + 10 Diamonds",
+          "name": "Garena Free Fire - 100 Diamonds + 10 Bonus",
+          "price": 4
+        },
+        {
+          "id": "free-fire-diamonds-210-21",
+          "label": "210 + 21 Diamonds",
+          "name": "Garena Free Fire - 210 Diamonds + 21 Bonus",
+          "price": 8
+        },
+        {
+          "id": "free-fire-diamonds-530-53",
+          "label": "530 + 53 Diamonds",
+          "name": "Garena Free Fire - 530 Diamonds + 53 Bonus",
+          "price": 20
+        },
+        {
+          "id": "free-fire-diamonds-1080-108",
+          "label": "1,080 + 108 Diamonds",
+          "name": "Garena Free Fire - 1,080 Diamonds + 108 Bonus",
+          "price": 40
+        },
+        {
+          "id": "free-fire-diamonds-2200-220",
+          "label": "2,200 + 220 Diamonds",
+          "name": "Garena Free Fire - 2,200 Diamonds + 220 Bonus",
+          "price": 80
+        }
+      ],
+      "defaultVariation": "free-fire-diamonds-100-10"
+    },
+    "brawl-stars-gems": {
+      "name": "Gems and Brawl Pass - Brawl Stars",
+      "category": "Top up",
+      "price": 5,
+      "icon": "bi-star",
+      "art": "brawl-stars-art",
+      "description": "Brawl Stars Gems and Brawl Pass recharge options.",
+      "variations": [
+        {
+          "id": "brawl-stars-gems-30",
+          "label": "30 Gems",
+          "name": "Brawl Stars - 30 Gems",
+          "price": 5
+        },
+        {
+          "id": "brawl-stars-gems-80",
+          "label": "80 Gems",
+          "name": "Brawl Stars - 80 Gems",
+          "price": 12
+        },
+        {
+          "id": "brawl-stars-gems-170",
+          "label": "170 Gems",
+          "name": "Brawl Stars - 170 Gems",
+          "price": 23
+        },
+        {
+          "id": "brawl-stars-gems-360",
+          "label": "360 Gems",
+          "name": "Brawl Stars - 360 Gems",
+          "price": 45
+        },
+        {
+          "id": "brawl-stars-gems-950",
+          "label": "950 Gems",
+          "name": "Brawl Stars - 950 Gems",
+          "price": 113
+        },
+        {
+          "id": "brawl-stars-gems-2000",
+          "label": "2,000 Gems",
+          "name": "Brawl Stars - 2,000 Gems",
+          "price": 225
+        },
+        {
+          "id": "brawl-stars-brawl-pass",
+          "label": "Brawl Pass",
+          "name": "Brawl Stars - Brawl Pass",
+          "price": 30
+        },
+        {
+          "id": "brawl-stars-brawl-pass-plus",
+          "label": "Brawl Pass Plus",
+          "name": "Brawl Stars - Brawl Pass Plus",
+          "price": 41
+        },
+        {
+          "id": "brawl-stars-brawl-pass-pro",
+          "label": "Brawl Pass Pro",
+          "name": "Brawl Stars - Brawl Pass Pro",
+          "price": 57
+        }
+      ],
+      "defaultVariation": "brawl-stars-gems-30"
+    },
+    "apex-legends-coins": {
+      "name": "Apex Coins - Apex Legends",
+      "category": "Top up",
+      "price": 60,
+      "icon": "bi-triangle",
+      "art": "apex-legends-art",
+      "description": "Digital Apex Coins codes. Verify platform and account compatibility before ordering.",
+      "variations": [
+        {
+          "id": "apex-coins-1000",
+          "label": "1,000 Coins",
+          "name": "Apex Legends - 1,000 Apex Coins",
+          "price": 60
+        },
+        {
+          "id": "apex-coins-2150",
+          "label": "2,150 Coins",
+          "name": "Apex Legends - 2,150 Apex Coins",
+          "price": 100
+        },
+        {
+          "id": "apex-coins-4350",
+          "label": "4,350 Coins",
+          "name": "Apex Legends - 4,350 Apex Coins",
+          "price": 160
+        },
+        {
+          "id": "apex-coins-6700",
+          "label": "6,700 Coins",
+          "name": "Apex Legends - 6,700 Apex Coins",
+          "price": 225
+        },
+        {
+          "id": "apex-coins-11500",
+          "label": "11,500 Coins",
+          "name": "Apex Legends - 11,500 Apex Coins",
+          "price": 400
+        }
+      ],
+      "defaultVariation": "apex-coins-1000"
+    },
+    "efootball-coins": {
+      "name": "eFootball Coins - eFootball Mobile",
+      "category": "Top up",
+      "price": 21,
+      "icon": "bi-dribbble",
+      "art": "efootball-art",
+      "description": "eFootball Mobile Coin recharge options. Verify account compatibility before ordering.",
+      "variations": [
+        {
+          "id": "efootball-mobile-coins-550",
+          "label": "550 Coins",
+          "name": "eFootball Mobile - 550 Coins",
+          "price": 21
+        },
+        {
+          "id": "efootball-mobile-coins-750",
+          "label": "750 Coins",
+          "name": "eFootball Mobile - 750 Coins",
+          "price": 30
+        },
+        {
+          "id": "efootball-mobile-coins-1040",
+          "label": "1,040 Coins",
+          "name": "eFootball Mobile - 1,040 Coins",
+          "price": 39
+        },
+        {
+          "id": "efootball-mobile-coins-2130",
+          "label": "2,130 Coins",
+          "name": "eFootball Mobile - 2,130 Coins",
+          "price": 81
+        },
+        {
+          "id": "efootball-mobile-coins-3250",
+          "label": "3,250 Coins",
+          "name": "eFootball Mobile - 3,250 Coins",
+          "price": 121
+        },
+        {
+          "id": "efootball-mobile-coins-5700",
+          "label": "5,700 Coins",
+          "name": "eFootball Mobile - 5,700 Coins",
+          "price": 198
+        },
+        {
+          "id": "efootball-mobile-coins-12800",
+          "label": "12,800 Coins",
+          "name": "eFootball Mobile - 12,800 Coins",
+          "price": 423
+        }
+      ],
+      "defaultVariation": "efootball-mobile-coins-550"
+    },
+    "mobile-legends-diamonds": {
+      "name": "Diamonds - Mobile Legends",
+      "category": "Top up",
+      "price": 4,
+      "icon": "bi-gem",
+      "art": "mobile-legends-art",
+      "description": "Digital Mobile Legends Diamond codes. Verify account and region compatibility before ordering.",
+      "variations": [
+        {
+          "id": "mobile-legends-diamonds-56",
+          "label": "56 Diamonds",
+          "name": "Mobile Legends - 56 Diamonds",
+          "price": 4
+        },
+        {
+          "id": "mobile-legends-diamonds-278",
+          "label": "278 Diamonds",
+          "name": "Mobile Legends - 278 Diamonds",
+          "price": 20
+        },
+        {
+          "id": "mobile-legends-diamonds-571",
+          "label": "571 Diamonds",
+          "name": "Mobile Legends - 571 Diamonds",
+          "price": 40
+        },
+        {
+          "id": "mobile-legends-diamonds-1167",
+          "label": "1,167 Diamonds",
+          "name": "Mobile Legends - 1,167 Diamonds",
+          "price": 80
+        },
+        {
+          "id": "mobile-legends-diamonds-1783",
+          "label": "1,783 Diamonds",
+          "name": "Mobile Legends - 1,783 Diamonds",
+          "price": 120
+        },
+        {
+          "id": "mobile-legends-diamonds-2975",
+          "label": "2,975 Diamonds",
+          "name": "Mobile Legends - 2,975 Diamonds",
+          "price": 200
+        },
+        {
+          "id": "mobile-legends-diamonds-6000",
+          "label": "6,000 Diamonds",
+          "name": "Mobile Legends - 6,000 Diamonds",
+          "price": 400
+        }
+      ],
+      "defaultVariation": "mobile-legends-diamonds-56"
+    }
+  }
 }
+```
