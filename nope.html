@@ -6,7 +6,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css" />
-        <link rel="stylesheet" href="styles.css?v=20260615-2" />
+        <link rel="stylesheet" href="styles.css?v=20260615-7" />
     </head>
 
     <body>
@@ -26,7 +26,7 @@
             <div class="container-fluid px-3 px-lg-4">
                 <div class="row g-4">
                     <aside class="col-lg-4 col-xl-3">
-                        <div class="content-panel admin-panel">
+                        <div class="content-panel admin-panel admin-sticky">
                             <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
                                 <h1 class="h4 fw-black mb-0">Products</h1>
                                 <button class="btn btn-primary btn-sm" type="button" id="newProductButton"><i class="bi bi-plus-lg"></i></button>
@@ -99,6 +99,22 @@
                                         <label class="form-check-label" for="productVisible">Show in store</label>
                                     </div>
                                 </div>
+                                <div class="col-md-6 d-flex align-items-end">
+                                    <div class="form-check form-switch admin-switch">
+                                        <input class="form-check-input" id="productInStock" type="checkbox" />
+                                        <label class="form-check-label" for="productInStock">Available to buy</label>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="admin-setting-group product-customer-input">
+                                        <div class="form-check form-switch admin-switch mb-3">
+                                            <input class="form-check-input" id="productCustomerInputEnabled" type="checkbox" />
+                                            <label class="form-check-label" for="productCustomerInputEnabled">Ask customer for delivery info after payment</label>
+                                        </div>
+                                        <label class="form-label" for="productCustomerInputLabel">Customer input label</label>
+                                        <input class="form-control" id="productCustomerInputLabel" type="text" placeholder="Player ID" maxlength="80" />
+                                    </div>
+                                </div>
                             </div>
 
                             <hr class="my-4" />
@@ -117,108 +133,156 @@
                     </section>
 
                     <aside class="col-xl-3">
-                        <div class="content-panel admin-panel mb-4">
-                            <p class="eyebrow mb-2">Import</p>
-                            <input class="form-control" id="jsonImport" type="file" accept="application/json,.json" />
-                        </div>
-
-                        <div class="content-panel admin-panel mb-4">
-                            <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
-                                <p class="eyebrow mb-0">Categories</p>
-                                <button class="btn btn-outline-dark btn-sm" type="button" id="addCategoryButton"><i class="bi bi-plus-lg"></i></button>
-                            </div>
-                            <div class="admin-category-list" id="categoryEditorList"></div>
-                        </div>
-
-                        <div class="content-panel admin-panel mb-4">
-                            <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
-                                <p class="eyebrow mb-0">Payment settings</p>
-                                <button class="btn btn-outline-dark btn-sm" type="button" id="downloadSettingsButton"><i class="bi bi-download"></i></button>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label" for="settingsImport">Import settings.json</label>
-                                <input class="form-control" id="settingsImport" type="file" accept="application/json,.json" />
+                        <div class="admin-tools-stack">
+                            <div class="content-panel admin-panel">
+                                <p class="eyebrow mb-2">Workspace</p>
+                                <h2 class="h5 fw-black mb-0">Store tools</h2>
                             </div>
 
-                            <div class="admin-settings-list">
-                                <div class="admin-setting-group">
-                                    <div class="form-check form-switch admin-switch mb-3">
-                                        <input class="form-check-input" id="d17Enabled" type="checkbox" />
-                                        <label class="form-check-label" for="d17Enabled">D17 enabled</label>
-                                    </div>
-                                    <label class="form-label" for="d17Instructions">D17 instructions</label>
-                                    <textarea class="form-control mb-2" id="d17Instructions" rows="2"></textarea>
-                                    <label class="form-label" for="d17ProofLabel">D17 proof label</label>
-                                    <input class="form-control mb-2" id="d17ProofLabel" type="text" />
-                                    <div class="row g-2">
-                                        <div class="col-6">
-                                            <label class="form-label" for="d17FeePercent">Fee %</label>
-                                            <input class="form-control" id="d17FeePercent" type="number" min="0" step="0.001" />
-                                        </div>
-                                        <div class="col-6">
-                                            <label class="form-label" for="d17RoundUpToDecimal">Decimals</label>
-                                            <input class="form-control" id="d17RoundUpToDecimal" type="number" min="0" step="1" />
+                            <div class="accordion admin-accordion" id="adminToolsAccordion">
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#adminPreviewTool" aria-expanded="true" aria-controls="adminPreviewTool">
+                                            <i class="bi bi-eye me-2"></i>Preview
+                                        </button>
+                                    </h2>
+                                    <div class="accordion-collapse collapse show" id="adminPreviewTool">
+                                        <div class="accordion-body">
+                                            <article class="card product-card h-100" id="adminPreviewCard"></article>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div class="admin-setting-group">
-                                    <div class="form-check form-switch admin-switch mb-3">
-                                        <input class="form-check-input" id="flouciEnabled" type="checkbox" />
-                                        <label class="form-check-label" for="flouciEnabled">Flouci enabled</label>
-                                    </div>
-                                    <label class="form-label" for="flouciInstructions">Flouci instructions</label>
-                                    <textarea class="form-control mb-2" id="flouciInstructions" rows="2"></textarea>
-                                    <label class="form-label" for="flouciProofLabel">Flouci proof label</label>
-                                    <input class="form-control mb-2" id="flouciProofLabel" type="text" />
-                                    <div class="row g-2">
-                                        <div class="col-6">
-                                            <label class="form-label" for="flouciFeeUnder100">Under 100</label>
-                                            <input class="form-control" id="flouciFeeUnder100" type="number" min="0" step="0.001" />
-                                        </div>
-                                        <div class="col-6">
-                                            <label class="form-label" for="flouciFeeFrom100">100 and up</label>
-                                            <input class="form-control" id="flouciFeeFrom100" type="number" min="0" step="0.001" />
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#adminCategoryTool" aria-expanded="true" aria-controls="adminCategoryTool">
+                                            <i class="bi bi-tags me-2"></i>Categories
+                                        </button>
+                                    </h2>
+                                    <div class="accordion-collapse collapse show" id="adminCategoryTool">
+                                        <div class="accordion-body">
+                                            <div class="d-flex justify-content-end mb-3">
+                                                <button class="btn btn-outline-dark btn-sm" type="button" id="addCategoryButton"><i class="bi bi-plus-lg me-1"></i>Add category</button>
+                                            </div>
+                                            <div class="admin-category-list" id="categoryEditorList"></div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div class="admin-setting-group">
-                                    <div class="form-check form-switch admin-switch mb-3">
-                                        <input class="form-check-input" id="ttCardEnabled" type="checkbox" />
-                                        <label class="form-check-label" for="ttCardEnabled">TT card enabled</label>
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#adminPaymentTool" aria-expanded="false" aria-controls="adminPaymentTool">
+                                            <i class="bi bi-credit-card me-2"></i>Payment settings
+                                        </button>
+                                    </h2>
+                                    <div class="accordion-collapse collapse" id="adminPaymentTool">
+                                        <div class="accordion-body">
+                                            <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+                                                <label class="form-label mb-0" for="settingsImport">Import settings.json</label>
+                                                <button class="btn btn-outline-dark btn-sm" type="button" id="downloadSettingsButton"><i class="bi bi-download"></i></button>
+                                            </div>
+                                            <input class="form-control mb-3" id="settingsImport" type="file" accept="application/json,.json" />
+
+                                            <div class="admin-settings-list">
+                                                <div class="admin-setting-group">
+                                                    <div class="form-check form-switch admin-switch mb-3">
+                                                        <input class="form-check-input" id="d17Enabled" type="checkbox" />
+                                                        <label class="form-check-label" for="d17Enabled">D17 enabled</label>
+                                                    </div>
+                                                    <label class="form-label" for="d17Instructions">D17 instructions</label>
+                                                    <textarea class="form-control mb-2" id="d17Instructions" rows="2"></textarea>
+                                                    <label class="form-label" for="d17ProofLabel">D17 proof label</label>
+                                                    <input class="form-control mb-2" id="d17ProofLabel" type="text" />
+                                                    <div class="row g-2">
+                                                        <div class="col-6">
+                                                            <label class="form-label" for="d17FeePercent">Fee %</label>
+                                                            <input class="form-control" id="d17FeePercent" type="number" min="0" step="0.001" />
+                                                        </div>
+                                                        <div class="col-6">
+                                                            <label class="form-label" for="d17RoundUpToDecimal">Decimals</label>
+                                                            <input class="form-control" id="d17RoundUpToDecimal" type="number" min="0" step="1" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="admin-setting-group">
+                                                    <div class="form-check form-switch admin-switch mb-3">
+                                                        <input class="form-check-input" id="flouciEnabled" type="checkbox" />
+                                                        <label class="form-check-label" for="flouciEnabled">Flouci enabled</label>
+                                                    </div>
+                                                    <label class="form-label" for="flouciInstructions">Flouci instructions</label>
+                                                    <textarea class="form-control mb-2" id="flouciInstructions" rows="2"></textarea>
+                                                    <label class="form-label" for="flouciProofLabel">Flouci proof label</label>
+                                                    <input class="form-control mb-2" id="flouciProofLabel" type="text" />
+                                                    <div class="row g-2">
+                                                        <div class="col-6">
+                                                            <label class="form-label" for="flouciFeeUnder100">Under 100</label>
+                                                            <input class="form-control" id="flouciFeeUnder100" type="number" min="0" step="0.001" />
+                                                        </div>
+                                                        <div class="col-6">
+                                                            <label class="form-label" for="flouciFeeFrom100">100 and up</label>
+                                                            <input class="form-control" id="flouciFeeFrom100" type="number" min="0" step="0.001" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="admin-setting-group">
+                                                    <div class="form-check form-switch admin-switch mb-3">
+                                                        <input class="form-check-input" id="ttCardEnabled" type="checkbox" />
+                                                        <label class="form-check-label" for="ttCardEnabled">TT card enabled</label>
+                                                    </div>
+                                                    <label class="form-label" for="ttCardInstructions">TT card instructions</label>
+                                                    <textarea class="form-control mb-2" id="ttCardInstructions" rows="2"></textarea>
+                                                    <div class="row g-2">
+                                                        <div class="col-4">
+                                                            <label class="form-label" for="ttCardValue">Card TND</label>
+                                                            <input class="form-control" id="ttCardValue" type="number" min="1" step="0.001" />
+                                                        </div>
+                                                        <div class="col-4">
+                                                            <label class="form-label" for="ttCardFeePercent">Fee %</label>
+                                                            <input class="form-control" id="ttCardFeePercent" type="number" min="0" step="0.001" />
+                                                        </div>
+                                                        <div class="col-4">
+                                                            <label class="form-label" for="ttCardCodeLength">Digits</label>
+                                                            <input class="form-control" id="ttCardCodeLength" type="number" min="1" step="1" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <label class="form-label" for="ttCardInstructions">TT card instructions</label>
-                                    <textarea class="form-control mb-2" id="ttCardInstructions" rows="2"></textarea>
-                                    <div class="row g-2">
-                                        <div class="col-4">
-                                            <label class="form-label" for="ttCardValue">Card TND</label>
-                                            <input class="form-control" id="ttCardValue" type="number" min="1" step="0.001" />
+                                </div>
+
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#adminImportTool" aria-expanded="false" aria-controls="adminImportTool">
+                                            <i class="bi bi-upload me-2"></i>Import products
+                                        </button>
+                                    </h2>
+                                    <div class="accordion-collapse collapse" id="adminImportTool">
+                                        <div class="accordion-body">
+                                            <label class="form-label" for="jsonImport">Import products.json</label>
+                                            <input class="form-control" id="jsonImport" type="file" accept="application/json,.json" />
                                         </div>
-                                        <div class="col-4">
-                                            <label class="form-label" for="ttCardFeePercent">Fee %</label>
-                                            <input class="form-control" id="ttCardFeePercent" type="number" min="0" step="0.001" />
-                                        </div>
-                                        <div class="col-4">
-                                            <label class="form-label" for="ttCardCodeLength">Digits</label>
-                                            <input class="form-control" id="ttCardCodeLength" type="number" min="1" step="1" />
+                                    </div>
+                                </div>
+
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#adminOutputTool" aria-expanded="false" aria-controls="adminOutputTool">
+                                            <i class="bi bi-code-square me-2"></i>Output JSON
+                                        </button>
+                                    </h2>
+                                    <div class="accordion-collapse collapse" id="adminOutputTool">
+                                        <div class="accordion-body">
+                                            <div class="d-flex justify-content-end mb-3">
+                                                <button class="btn btn-outline-dark btn-sm" type="button" id="copyJsonButton"><i class="bi bi-clipboard me-1"></i>Copy</button>
+                                            </div>
+                                            <textarea class="form-control admin-json-output" id="jsonOutput" readonly></textarea>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-
-                        <div class="content-panel admin-panel mb-4">
-                            <p class="eyebrow mb-2">Preview</p>
-                            <article class="card product-card h-100" id="adminPreviewCard"></article>
-                        </div>
-
-                        <div class="content-panel admin-panel">
-                            <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
-                                <p class="eyebrow mb-0">Output</p>
-                                <button class="btn btn-outline-dark btn-sm" type="button" id="copyJsonButton"><i class="bi bi-clipboard"></i></button>
-                            </div>
-                            <textarea class="form-control admin-json-output" id="jsonOutput" readonly></textarea>
                         </div>
                     </aside>
                 </div>
@@ -236,6 +300,30 @@
                             </div>
                             <button class="btn btn-outline-dark" type="button" id="saveAdminTokenButton"><i class="bi bi-key me-1"></i>Save</button>
                             <button class="btn btn-primary" type="button" id="loadOrdersButton"><i class="bi bi-arrow-clockwise me-1"></i>Load orders</button>
+                        </div>
+                    </div>
+                    <div class="admin-order-filters mb-4">
+                        <div>
+                            <label class="form-label" for="adminOrderSearch">Search orders</label>
+                            <input class="form-control" id="adminOrderSearch" type="search" placeholder="Order ID, phone, product, proof" />
+                        </div>
+                        <div>
+                            <label class="form-label" for="adminPaymentFilter">Payment</label>
+                            <select class="form-select" id="adminPaymentFilter">
+                                <option value="">All payments</option>
+                                <option value="pending">Pending</option>
+                                <option value="verified">Verified</option>
+                                <option value="rejected">Rejected</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label" for="adminDeliveryFilter">Delivery</label>
+                            <select class="form-select" id="adminDeliveryFilter">
+                                <option value="">All delivery</option>
+                                <option value="waiting">Waiting</option>
+                                <option value="delivered">Delivered</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
                         </div>
                     </div>
                     <div class="alert alert-warning mb-4" role="alert">
@@ -261,6 +349,6 @@
 
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
         <script src="config.js?v=20260614-1"></script>
-        <script src="admin.js?v=20260615-2"></script>
+        <script src="admin.js?v=20260615-5"></script>
     </body>
 </html>

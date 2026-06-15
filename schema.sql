@@ -37,8 +37,17 @@ CREATE TABLE IF NOT EXISTS payment_proofs (
     FOREIGN KEY (order_id) REFERENCES orders(id)
 );
 
+CREATE TABLE IF NOT EXISTS order_deliveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id TEXT NOT NULL,
+    delivery_text TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status);
 CREATE INDEX IF NOT EXISTS idx_orders_delivery_status ON orders(delivery_status);
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_payment_proofs_order_id ON payment_proofs(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_deliveries_order_id ON order_deliveries(order_id);

@@ -55,6 +55,11 @@ const state = {
     draftVariations: [],
     previewImages: {},
     orders: [],
+    orderFilters: {
+        search: "",
+        payment: "",
+        delivery: "",
+    },
 };
 
 function slugify(value) {
@@ -291,7 +296,9 @@ function renderProductList() {
               .map(([id, product]) => {
                   const isActive = id === state.selectedId;
                   const hidden = product.visible === false;
+                  const outOfStock = product.inStock === false;
                   const variationCount = Array.isArray(product.variations) ? product.variations.length : 0;
+                  const needsInput = product.customerInput?.enabled === true;
                   return `
                     <button class="admin-product-item ${isActive ? "active" : ""}" type="button" data-select-product="${escapeHtml(id)}">
                         <span>
@@ -300,6 +307,8 @@ function renderProductList() {
                         </span>
                         <span class="admin-item-meta">
                             ${variationCount ? `<em>${variationCount} options</em>` : `<em>${money(product.price, state.database.currency)}</em>`}
+                            ${needsInput ? '<i class="bi bi-input-cursor-text" title="Customer input required"></i>' : ""}
+                            ${outOfStock ? '<i class="bi bi-slash-circle" title="Out of stock"></i>' : '<i class="bi bi-check-circle" title="Available"></i>'}
                             ${hidden ? '<i class="bi bi-eye-slash" title="Hidden"></i>' : '<i class="bi bi-eye" title="Visible"></i>'}
                         </span>
                     </button>
@@ -331,6 +340,9 @@ function fillForm() {
     const productPhotoFile = document.getElementById("productPhotoFile");
     const productDescription = document.getElementById("productDescription");
     const productVisible = document.getElementById("productVisible");
+    const productInStock = document.getElementById("productInStock");
+    const productCustomerInputEnabled = document.getElementById("productCustomerInputEnabled");
+    const productCustomerInputLabel = document.getElementById("productCustomerInputLabel");
 
     if (productId) productId.value = state.selectedId || "";
     if (productName) productName.value = product?.name || "";
@@ -342,6 +354,9 @@ function fillForm() {
     if (productPhotoFile) productPhotoFile.value = "";
     if (productDescription) productDescription.value = product?.description || "";
     if (productVisible) productVisible.checked = product?.visible !== false;
+    if (productInStock) productInStock.checked = product?.inStock !== false;
+    if (productCustomerInputEnabled) productCustomerInputEnabled.checked = product?.customerInput?.enabled === true;
+    if (productCustomerInputLabel) productCustomerInputLabel.value = product?.customerInput?.label || "Player ID";
 
     renderVariations();
     renderPreview();
@@ -399,7 +414,10 @@ function readFormProduct() {
     const image = document.getElementById("productImage").value.trim();
     const description = document.getElementById("productDescription").value.trim();
     const visible = document.getElementById("productVisible").checked;
+    const inStock = document.getElementById("productInStock")?.checked !== false;
     const defaultVariation = document.getElementById("defaultVariation").value;
+    const customerInputEnabled = document.getElementById("productCustomerInputEnabled")?.checked || false;
+    const customerInputLabel = (document.getElementById("productCustomerInputLabel")?.value.trim() || "Player ID").slice(0, 80);
 
     if (!id) throw new Error("Product ID is required");
     if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error("Product ID must use lowercase letters, numbers, and hyphens");
@@ -418,6 +436,13 @@ function readFormProduct() {
     if (image) product.image = image;
     if (description) product.description = description;
     if (!visible) product.visible = false;
+    if (!inStock) product.inStock = false;
+    if (customerInputEnabled) {
+        product.customerInput = {
+            enabled: true,
+            label: customerInputLabel || "Player ID",
+        };
+    }
 
     const variations = state.draftVariations
         .map((variation) => ({
@@ -629,6 +654,13 @@ function getPreviewProduct() {
                 art: document.getElementById("productArt")?.value || "gamekey-art",
                 image: document.getElementById("productImage")?.value || "",
                 description: document.getElementById("productDescription")?.value || "",
+                inStock: document.getElementById("productInStock")?.checked !== false,
+                customerInput: document.getElementById("productCustomerInputEnabled")?.checked
+                    ? {
+                          enabled: true,
+                          label: document.getElementById("productCustomerInputLabel")?.value || "Player ID",
+                      }
+                    : undefined,
                 variations: state.draftVariations,
             },
         };
@@ -653,8 +685,14 @@ function renderPreview() {
         </div>
         <div class="card-body">
             <span class="badge text-bg-dark mb-2">${escapeHtml(product.category || "Digital")}</span>
+            ${product.inStock === false ? '<span class="badge text-bg-secondary mb-2 ms-1">Out of stock</span>' : ""}
             <h3 class="h5 fw-black">${escapeHtml(product.name || "New product")}</h3>
             <p class="text-secondary">${escapeHtml(product.description || "Product description")}</p>
+            ${
+                product.customerInput?.enabled
+                    ? `<span class="badge text-bg-warning mb-3">${escapeHtml(product.customerInput.label || "Player ID")} required</span>`
+                    : ""
+            }
             <strong class="price">${money(price, state.database.currency)}</strong>
         </div>
     `;
@@ -892,6 +930,68 @@ function renderOrderItems(items) {
         .join("");
 }
 
+function getDeliveryText(order) {
+    return (order.deliveries || []).map((delivery) => delivery.text || "").filter(Boolean).join("\n\n");
+}
+
+function renderDeliveryControls(order) {
+    const deliveryText = getDeliveryText(order);
+    return `
+        <div class="admin-delivery-box mt-3">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-2 mb-2">
+                <div>
+                    <p class="form-label mb-1">Delivery code / note</p>
+                    <p class="small text-secondary mb-0">Use Note: CODE. Enter 0 when no code should be delivered.</p>
+                </div>
+                <button class="btn btn-outline-dark btn-sm align-self-lg-start" type="button" data-save-order-delivery="${escapeHtml(order.id)}">
+                    <i class="bi bi-key me-1"></i>Save delivery
+                </button>
+            </div>
+            <textarea class="form-control admin-delivery-text" rows="3" data-order-delivery-text placeholder="Steam 25 TND: AAAA-BBBB-CCCC">${escapeHtml(deliveryText)}</textarea>
+        </div>
+    `;
+}
+
+function getStatusTone(status, label = "") {
+    const value = String(status || label || "").toLowerCase();
+    if (["verified", "delivered"].some((item) => value.includes(item))) return "good";
+    if (["rejected", "cancelled", "canceled"].some((item) => value.includes(item))) return "bad";
+    if (["pending", "waiting", "manual"].some((item) => value.includes(item))) return "pending";
+    return "neutral";
+}
+
+function statusBadge(label, status) {
+    return `
+        <strong class="status-badge status-${getStatusTone(status, label)}">
+            <span class="status-dot" aria-hidden="true"></span>
+            ${escapeHtml(label)}
+        </strong>
+    `;
+}
+
+function getFilteredOrders() {
+    const search = state.orderFilters.search.trim().toLowerCase();
+    return state.orders.filter((order) => {
+        if (state.orderFilters.payment && order.paymentStatus !== state.orderFilters.payment) return false;
+        if (state.orderFilters.delivery && order.deliveryStatus !== state.orderFilters.delivery) return false;
+
+        if (!search) return true;
+        const haystack = [
+            order.id,
+            order.customerPhone,
+            order.customerPhoneDisplay,
+            order.paymentMethodLabel,
+            order.paymentStatusLabel,
+            order.deliveryStatusLabel,
+            ...(order.items || []).map((item) => item.productName),
+            ...(order.proofs || []).map((proof) => `${proof.label} ${proof.value}`),
+        ]
+            .join(" ")
+            .toLowerCase();
+        return haystack.includes(search);
+    });
+}
+
 function renderAdminOrders() {
     const list = document.getElementById("adminOrdersList");
     if (!list) return;
@@ -901,7 +1001,13 @@ function renderAdminOrders() {
         return;
     }
 
-    list.innerHTML = state.orders
+    const orders = getFilteredOrders();
+    if (!orders.length) {
+        list.innerHTML = `<div class="empty-state py-4"><p class="text-secondary mb-0">No orders match these filters.</p></div>`;
+        return;
+    }
+
+    list.innerHTML = orders
         .map((order) => {
             const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleString("en-TN") : "Not available";
             return `
@@ -924,11 +1030,11 @@ function renderAdminOrders() {
                     <div class="status-grid mb-3">
                         <div>
                             <span>Payment</span>
-                            <strong>${escapeHtml(order.paymentStatusLabel)}</strong>
+                            ${statusBadge(order.paymentStatusLabel, order.paymentStatus)}
                         </div>
                         <div>
                             <span>Delivery</span>
-                            <strong>${escapeHtml(order.deliveryStatusLabel)}</strong>
+                            ${statusBadge(order.deliveryStatusLabel, order.deliveryStatus)}
                         </div>
                         <div>
                             <span>Method</span>
@@ -962,6 +1068,7 @@ function renderAdminOrders() {
                         </select>
                         <button class="btn btn-primary btn-sm" type="button" data-update-order-status="${escapeHtml(order.id)}">Save status</button>
                     </div>
+                    ${renderDeliveryControls(order)}
                 </article>
             `;
         })
@@ -998,6 +1105,22 @@ async function updateAdminOrderStatus(orderId) {
     showToast("Order status updated");
 }
 
+async function saveAdminOrderDelivery(orderId) {
+    const card = [...document.querySelectorAll("[data-admin-order-id]")].find((item) => item.dataset.adminOrderId === orderId);
+    if (!card) return;
+
+    const deliveryText = card.querySelector("[data-order-delivery-text]")?.value || "";
+    const result = await adminRequest({
+        action: "admin-save-delivery",
+        orderId,
+        deliveryText,
+    });
+
+    state.orders = state.orders.map((order) => (order.id === result.order.id ? result.order : order));
+    renderAdminOrders();
+    showToast("Delivery details saved");
+}
+
 function bindEvents() {
     document.getElementById("productSearch")?.addEventListener("input", renderProductList);
     document.getElementById("newProductButton")?.addEventListener("click", createNewProduct);
@@ -1024,8 +1147,20 @@ function bindEvents() {
     document.getElementById("loadOrdersButton")?.addEventListener("click", () => {
         loadAdminOrders().catch((error) => showToast(error.message || "Could not load orders"));
     });
+    document.getElementById("adminOrderSearch")?.addEventListener("input", (event) => {
+        state.orderFilters.search = event.target.value || "";
+        renderAdminOrders();
+    });
+    document.getElementById("adminPaymentFilter")?.addEventListener("change", (event) => {
+        state.orderFilters.payment = event.target.value || "";
+        renderAdminOrders();
+    });
+    document.getElementById("adminDeliveryFilter")?.addEventListener("change", (event) => {
+        state.orderFilters.delivery = event.target.value || "";
+        renderAdminOrders();
+    });
 
-    document.querySelectorAll(".admin-setting-group input, .admin-setting-group textarea").forEach((input) => {
+    document.querySelectorAll(".admin-settings-list .admin-setting-group input, .admin-settings-list .admin-setting-group textarea").forEach((input) => {
         input.addEventListener("input", saveSettingsFromForm);
         input.addEventListener("change", saveSettingsFromForm);
     });
@@ -1077,6 +1212,14 @@ function bindEvents() {
     });
 
     document.getElementById("adminOrdersList")?.addEventListener("click", (event) => {
+        const saveDeliveryButton = event.target.closest("[data-save-order-delivery]");
+        if (saveDeliveryButton) {
+            saveAdminOrderDelivery(saveDeliveryButton.dataset.saveOrderDelivery).catch((error) =>
+                showToast(error.message || "Could not save delivery details"),
+            );
+            return;
+        }
+
         const updateButton = event.target.closest("[data-update-order-status]");
         if (updateButton) {
             updateAdminOrderStatus(updateButton.dataset.updateOrderStatus).catch((error) =>

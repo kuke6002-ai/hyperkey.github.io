@@ -153,7 +153,11 @@
             "price": 3.5,
             "icon": "bi-fire",
             "art": "topup-art",
-            "description": "Free Fire 100 diamond top up handled through Telegram order support."
+            "description": "Free Fire 100 diamond top up handled through Telegram order support.",
+            "customerInput": {
+                "enabled": true,
+                "label": "Player ID"
+            }
         },
         "fortnite-vbucks-1000": {
             "name": "Fortnite 1,000 V-Bucks",

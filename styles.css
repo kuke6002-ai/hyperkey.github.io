@@ -48,6 +48,13 @@ a {
     font-weight: 850;
 }
 
+.navbar-brand {
+    align-items: center;
+    display: inline-flex;
+    gap: 8px;
+    line-height: 1.1;
+}
+
 .brand-mark {
     align-items: center;
     background: #050505;
@@ -56,8 +63,9 @@ a {
     display: inline-flex;
     height: 42px;
     justify-content: center;
-    margin-right: 8px;
+    margin-right: 0;
     overflow: hidden;
+    flex: 0 0 auto;
     width: 42px;
 }
 
@@ -950,6 +958,140 @@ a {
     text-align: center;
 }
 
+.order-delivery-box,
+.customer-input-form {
+    background: var(--gv-soft);
+    border: 1px solid var(--gv-border);
+    border-radius: 8px;
+    padding: 18px;
+}
+
+.order-delivery-box > .d-flex i,
+.customer-input-form > .d-flex i {
+    color: var(--gv-primary);
+    font-size: 1.2rem;
+}
+
+.delivery-code-list,
+.customer-input-list {
+    display: grid;
+    gap: 12px;
+}
+
+.delivery-code-row {
+    align-items: center;
+    background: var(--gv-panel);
+    border: 1px solid var(--gv-border);
+    border-radius: 8px;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 12px;
+}
+
+.delivery-code-row span,
+.delivery-code-row code {
+    display: block;
+}
+
+.delivery-code-row span {
+    color: var(--gv-muted);
+    font-size: 0.84rem;
+    font-weight: 800;
+    margin-bottom: 4px;
+}
+
+.delivery-code-row code {
+    color: var(--gv-ink);
+    font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+    font-size: 0.95rem;
+    overflow-wrap: anywhere;
+}
+
+.order-timeline {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.order-timeline-step {
+    background: var(--gv-soft);
+    border: 1px solid var(--gv-border);
+    border-radius: 8px;
+    min-height: 88px;
+    padding: 13px;
+    position: relative;
+}
+
+.order-timeline-step span {
+    background: #7f8796;
+    border-radius: 999px;
+    box-shadow: 0 0 0 4px rgba(127, 135, 150, 0.12);
+    display: block;
+    height: 12px;
+    margin-bottom: 12px;
+    width: 12px;
+}
+
+.order-timeline-step strong {
+    display: block;
+    font-size: 0.9rem;
+    line-height: 1.25;
+}
+
+.timeline-complete {
+    border-color: rgba(44, 236, 132, 0.32);
+}
+
+.timeline-complete span {
+    background: #2cec84;
+    box-shadow: 0 0 0 4px rgba(44, 236, 132, 0.14), 0 0 18px rgba(44, 236, 132, 0.4);
+}
+
+.timeline-current {
+    border-color: rgba(255, 190, 70, 0.42);
+}
+
+.timeline-current span {
+    animation: statusPulse 1.8s ease-in-out infinite;
+    background: #ffbe46;
+    box-shadow: 0 0 0 4px rgba(255, 190, 70, 0.16), 0 0 18px rgba(255, 190, 70, 0.46);
+}
+
+.timeline-bad {
+    border-color: rgba(255, 83, 97, 0.42);
+}
+
+.timeline-bad span {
+    background: #ff5361;
+    box-shadow: 0 0 0 4px rgba(255, 83, 97, 0.16), 0 0 18px rgba(255, 83, 97, 0.42);
+}
+
+.guide-card .guide-icon {
+    color: var(--gv-primary);
+    display: inline-block;
+    font-size: 2rem;
+    margin-bottom: 18px;
+}
+
+.guide-steps {
+    color: var(--gv-muted);
+    display: grid;
+    gap: 9px;
+    margin: 0;
+    padding-left: 18px;
+}
+
+.policy-panel {
+    display: grid;
+    gap: 14px;
+}
+
+.policy-panel p {
+    color: var(--gv-muted);
+    margin-bottom: 6px;
+}
+
 .status-grid {
     display: grid;
     gap: 12px;
@@ -974,6 +1116,81 @@ a {
 .status-grid strong {
     display: block;
     font-weight: 850;
+}
+
+.status-grid .status-badge {
+    align-items: center;
+    border: 1px solid var(--status-border, var(--gv-border));
+    border-radius: 8px;
+    box-shadow: 0 0 22px var(--status-glow, rgba(255, 255, 255, 0.08));
+    color: var(--status-text, var(--gv-ink));
+    display: inline-flex;
+    gap: 9px;
+    justify-content: flex-start;
+    line-height: 1.2;
+    min-height: 38px;
+    padding: 9px 11px;
+    vertical-align: middle;
+    width: fit-content;
+}
+
+.status-dot {
+    align-self: center;
+    animation: statusPulse 1.8s ease-in-out infinite;
+    background: var(--status-color, #a9adb4);
+    border-radius: 999px;
+    box-shadow: 0 0 0 4px var(--status-halo, rgba(169, 173, 180, 0.16)), 0 0 18px var(--status-color, #a9adb4);
+    flex: 0 0 auto;
+    height: 10px;
+    width: 10px;
+}
+
+.status-good {
+    --status-border: rgba(44, 236, 132, 0.36);
+    --status-color: #2cec84;
+    --status-glow: rgba(44, 236, 132, 0.18);
+    --status-halo: rgba(44, 236, 132, 0.14);
+    --status-text: #bfffd8;
+}
+
+.status-pending {
+    --status-border: rgba(255, 190, 70, 0.42);
+    --status-color: #ffbe46;
+    --status-glow: rgba(255, 190, 70, 0.2);
+    --status-halo: rgba(255, 190, 70, 0.16);
+    --status-text: #ffe1a8;
+}
+
+.status-bad {
+    --status-border: rgba(255, 83, 97, 0.42);
+    --status-color: #ff5361;
+    --status-glow: rgba(255, 83, 97, 0.2);
+    --status-halo: rgba(255, 83, 97, 0.16);
+    --status-text: #ffc2c8;
+}
+
+.status-neutral {
+    --status-border: rgba(169, 173, 180, 0.32);
+    --status-color: #a9adb4;
+    --status-glow: rgba(169, 173, 180, 0.12);
+    --status-halo: rgba(169, 173, 180, 0.14);
+    --status-text: #dde0e5;
+}
+
+[data-bs-theme="light"] .status-good {
+    --status-text: #0f6835;
+}
+
+[data-bs-theme="light"] .status-pending {
+    --status-text: #765000;
+}
+
+[data-bs-theme="light"] .status-bad {
+    --status-text: #8a1c28;
+}
+
+[data-bs-theme="light"] .status-neutral {
+    --status-text: #4e545e;
 }
 
 [data-bs-theme="dark"] .form-control,
@@ -1038,6 +1255,57 @@ a {
 
 .admin-panel {
     height: auto;
+}
+
+.admin-sticky,
+.admin-tools-stack {
+    position: sticky;
+    top: 92px;
+}
+
+.admin-tools-stack {
+    display: grid;
+    gap: 14px;
+}
+
+.admin-accordion {
+    display: grid;
+    gap: 12px;
+}
+
+.admin-accordion .accordion-item {
+    background: var(--gv-panel);
+    border: 1px solid var(--gv-border);
+    border-radius: 8px;
+    box-shadow: 0 18px 42px var(--gv-shadow);
+    overflow: hidden;
+}
+
+.admin-accordion .accordion-button {
+    background: var(--gv-panel);
+    border: 0;
+    box-shadow: none;
+    color: var(--gv-ink);
+    font-weight: 850;
+    padding: 16px 18px;
+}
+
+.admin-accordion .accordion-button:not(.collapsed) {
+    background: linear-gradient(135deg, rgba(255, 122, 26, 0.14), transparent), var(--gv-panel);
+    color: var(--gv-ink);
+}
+
+.admin-accordion .accordion-button:focus {
+    box-shadow: inset 0 0 0 2px rgba(255, 122, 26, 0.42);
+}
+
+.admin-accordion .accordion-button::after {
+    filter: invert(0.5);
+}
+
+.admin-accordion .accordion-body {
+    border-top: 1px solid var(--gv-border);
+    padding: 18px;
 }
 
 .admin-list {
@@ -1124,6 +1392,10 @@ a {
     padding: 14px;
 }
 
+.product-customer-input .admin-switch {
+    background: var(--gv-panel);
+}
+
 .admin-variation-row {
     align-items: end;
     background: var(--gv-soft);
@@ -1156,6 +1428,13 @@ a {
     grid-template-columns: minmax(220px, 320px) auto auto;
 }
 
+.admin-order-filters {
+    align-items: end;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: minmax(220px, 1fr) minmax(150px, 220px) minmax(150px, 220px);
+}
+
 .admin-orders-list {
     display: grid;
     gap: 16px;
@@ -1166,6 +1445,18 @@ a {
     border: 1px solid var(--gv-border);
     border-radius: 8px;
     padding: 18px;
+}
+
+.admin-delivery-box {
+    background: var(--gv-panel);
+    border: 1px solid var(--gv-border);
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.admin-delivery-text {
+    font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+    resize: vertical;
 }
 
 .admin-order-actions,
@@ -1250,6 +1541,17 @@ a {
     }
 }
 
+@keyframes statusPulse {
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.22);
+    }
+}
+
 @keyframes homeSweep {
     from {
         transform: translateX(-55%);
@@ -1326,6 +1628,11 @@ a {
         max-height: none;
     }
 
+    .admin-sticky,
+    .admin-tools-stack {
+        position: static;
+    }
+
     .admin-variation-row {
         grid-template-columns: 1fr;
     }
@@ -1342,7 +1649,25 @@ a {
         grid-template-columns: 1fr;
     }
 
+    .order-timeline {
+        grid-template-columns: 1fr;
+    }
+
+    .order-timeline-step {
+        min-height: auto;
+    }
+
+    .delivery-code-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .delivery-code-row .btn {
+        width: 100%;
+    }
+
     .admin-order-toolbar,
+    .admin-order-filters,
     .admin-order-grid {
         grid-template-columns: 1fr;
     }

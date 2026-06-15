@@ -111,6 +111,10 @@ const PRODUCTS = {
         icon: "bi-fire",
         art: "topup-art",
         description: "Free Fire 100 diamond top up handled through Telegram order support.",
+        customerInput: {
+            enabled: true,
+            label: "Player ID",
+        },
     },
     "fortnite-vbucks-1000": {
         name: "Fortnite 1,000 V-Bucks",
@@ -165,6 +169,7 @@ const SUPPORT_WHATSAPP_NUMBER = "21655159280";
 const CART_VARIATION_SEPARATOR = "::";
 let checkoutSubmitting = false;
 let paymentSubmitting = false;
+let customerInputSubmitting = false;
 const ART_CLASSES = [...new Set(Object.values(PRODUCTS).map((product) => product.art).filter(Boolean))];
 const DEFAULT_PAYMENT_SETTINGS = {
     payment: {
@@ -502,6 +507,10 @@ function getProductImage(product) {
     return typeof product.image === "string" ? product.image.trim() : "";
 }
 
+function isProductInStock(product) {
+    return product?.inStock !== false;
+}
+
 function getVariationName(product, variation) {
     return variation?.name || product.name;
 }
@@ -532,6 +541,7 @@ function getCartLine(cartKey) {
         icon: product.icon || "bi-box",
         art: product.art || "gamekey-art",
         image: getProductImage(product),
+        inStock: isProductInStock(product),
     };
 }
 
@@ -542,6 +552,7 @@ function productCardTemplate(id, product) {
     const category = getProductCategory(product);
     const hasVariations = getProductVariations(product).length > 0;
     const priceLabel = hasVariations ? `From ${formatMoney(getProductPrice(product))}` : formatMoney(product.price ?? 0);
+    const inStock = isProductInStock(product);
 
     return `
         <div class="col-md-6 col-xl-3">
@@ -554,14 +565,17 @@ function productCardTemplate(id, product) {
                     }
                 </a>
                 <div class="card-body d-flex flex-column">
-                    <span class="badge text-bg-dark align-self-start mb-2">${escapeHtml(category)}</span>
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        <span class="badge text-bg-dark">${escapeHtml(category)}</span>
+                        <span class="badge ${inStock ? "text-bg-success" : "text-bg-secondary"}">${inStock ? "Available" : "Out of stock"}</span>
+                    </div>
                     <h2 class="h5">
                         <a class="product-title-link" href="product.html?product=${encodeURIComponent(id)}">${escapeHtml(getProductDisplayName(product))}</a>
                     </h2>
                     <p class="text-secondary flex-grow-1">${escapeHtml(getProductDescription(product))}</p>
                     <div class="d-flex justify-content-between align-items-center">
                         <strong class="price">${priceLabel}</strong>
-                        <button class="btn btn-primary btn-sm" data-add-to-cart="${escapeHtml(id)}">Add</button>
+                        <button class="btn btn-primary btn-sm" data-add-to-cart="${escapeHtml(id)}" ${inStock ? "" : "disabled"}>${inStock ? "Add" : "Unavailable"}</button>
                     </div>
                 </div>
             </article>
@@ -706,7 +720,7 @@ function saveCart(cart) {
 function getCartTotal(cart) {
     return Object.entries(cart).reduce((total, [cartKey, qty]) => {
         const line = getCartLine(cartKey);
-        return line ? total + line.price * qty : total;
+        return line && line.inStock ? total + line.price * qty : total;
     }, 0);
 }
 
@@ -718,15 +732,21 @@ function updateCartCount() {
     });
 }
 
-function showToast() {
+function showToast(message = "Added to cart.") {
     const toastElement = document.getElementById("cartToast");
     if (!toastElement || !window.bootstrap) return;
+    const toastBody = toastElement.querySelector(".toast-body");
+    if (toastBody) toastBody.textContent = message;
     bootstrap.Toast.getOrCreateInstance(toastElement, { delay: 1600 }).show();
 }
 
 function addToCart(id, variationId = "") {
     const product = PRODUCTS[id];
     if (!product) return;
+    if (!isProductInStock(product)) {
+        showToast("This product is currently out of stock.");
+        return;
+    }
 
     const selectedVariation = variationId || getDefaultVariation(product)?.id || "";
     const cartKey = makeCartKey(id, selectedVariation);
@@ -755,6 +775,7 @@ function renderCartPage() {
 
     const cart = getCart();
     const entries = Object.entries(cart).filter(([cartKey]) => getCartLine(cartKey));
+    const hasUnavailableItems = entries.some(([cartKey]) => getCartLine(cartKey)?.inStock === false);
 
     if (!entries.length) {
         cartItems.innerHTML = `
@@ -781,6 +802,7 @@ function renderCartPage() {
                         <div>
                             <p class="fw-black mb-1">${line.name}</p>
                             <p class="text-secondary mb-0">${line.category} - ${formatMoney(line.price)}</p>
+                            ${line.inStock ? "" : '<span class="badge text-bg-secondary mt-2">Out of stock</span>'}
                         </div>
                         <div class="cart-actions text-md-end">
                             <div class="qty-control mb-2" aria-label="Quantity controls">
@@ -788,7 +810,7 @@ function renderCartPage() {
                                     <i class="bi bi-dash"></i>
                                 </button>
                                 <strong>${qty}</strong>
-                                <button type="button" data-change-qty="${cartKey}" data-amount="1" aria-label="Increase quantity">
+                                <button type="button" data-change-qty="${cartKey}" data-amount="1" aria-label="Increase quantity" ${line.inStock ? "" : "disabled"}>
                                     <i class="bi bi-plus"></i>
                                 </button>
                             </div>
@@ -798,6 +820,12 @@ function renderCartPage() {
                 `;
             })
             .join("");
+        if (hasUnavailableItems) {
+            cartItems.insertAdjacentHTML(
+                "afterbegin",
+                `<div class="alert alert-warning mb-3" role="alert">Remove out-of-stock products before checkout.</div>`,
+            );
+        }
     }
 
     const total = getCartTotal(cart);
@@ -828,7 +856,7 @@ function renderCheckoutSummary() {
                 return `
                     <div class="summary-line">
                         <span>${line.name} x ${qty}</span>
-                        <strong>${formatMoney(line.price * qty)}</strong>
+                        <strong>${line.inStock ? formatMoney(line.price * qty) : "Out of stock"}</strong>
                     </div>
                 `;
             })
@@ -899,6 +927,11 @@ function setupCheckoutForm() {
 
         const cart = getCart();
         const validCart = Object.fromEntries(Object.entries(cart).filter(([cartKey, qty]) => getCartLine(cartKey) && Number(qty) > 0));
+        const hasUnavailableItems = Object.keys(validCart).some((cartKey) => getCartLine(cartKey)?.inStock === false);
+        if (hasUnavailableItems) {
+            setAlert("checkoutError", "Remove out-of-stock products before checkout.");
+            return;
+        }
         if (!Object.keys(validCart).length) {
             setAlert("checkoutError", "Your cart is empty.");
             return;
@@ -1048,10 +1081,12 @@ async function renderPaymentPage() {
         return null;
     }
 
-    const validCart = Object.fromEntries(Object.entries(session.cart || {}).filter(([cartKey, qty]) => getCartLine(cartKey) && Number(qty) > 0));
+    const validCart = Object.fromEntries(
+        Object.entries(session.cart || {}).filter(([cartKey, qty]) => getCartLine(cartKey)?.inStock && Number(qty) > 0),
+    );
     if (!Object.keys(validCart).length) {
         if (button) button.disabled = true;
-        setAlert("paymentError", "No valid products were found in this checkout session.");
+        setAlert("paymentError", "No available products were found in this checkout session. Return to cart and remove unavailable items.");
         renderPaymentOrderSummary({});
         return null;
     }
@@ -1163,7 +1198,9 @@ function setupPaymentForm() {
         setAlert("paymentError", "");
 
         try {
-            const validCart = Object.fromEntries(Object.entries(session.cart || {}).filter(([cartKey, qty]) => getCartLine(cartKey) && Number(qty) > 0));
+            const validCart = Object.fromEntries(
+                Object.entries(session.cart || {}).filter(([cartKey, qty]) => getCartLine(cartKey)?.inStock && Number(qty) > 0),
+            );
             if (!Object.keys(validCart).length) {
                 throw new Error("No valid products were found in this checkout session.");
             }
@@ -1219,6 +1256,206 @@ async function fetchOrderStatus(orderId, customerPhone) {
     return result.order;
 }
 
+function getStatusTone(status, label = "") {
+    const value = String(status || label || "").toLowerCase();
+    if (["verified", "delivered"].some((item) => value.includes(item))) return "good";
+    if (["rejected", "cancelled", "canceled"].some((item) => value.includes(item))) return "bad";
+    if (["pending", "waiting", "manual"].some((item) => value.includes(item))) return "pending";
+    return "neutral";
+}
+
+function statusBadge(label, status) {
+    return `
+        <strong class="status-badge status-${getStatusTone(status, label)}">
+            <span class="status-dot" aria-hidden="true"></span>
+            ${escapeHtml(label)}
+        </strong>
+    `;
+}
+
+function getWhatsAppSupportUrl(message = "") {
+    const text = message || "Hello HyperKey Store, I need help with my order.";
+    return `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
+}
+
+function getOrderTimelineSteps(order) {
+    const paymentStatus = String(order.paymentStatusCode || "").toLowerCase();
+    const deliveryStatus = String(order.deliveryStatusCode || "").toLowerCase();
+    const paymentVerified = paymentStatus === "verified";
+    const paymentRejected = paymentStatus === "rejected";
+    const delivered = deliveryStatus === "delivered";
+    const cancelled = deliveryStatus === "cancelled";
+
+    return [
+        {
+            label: "Order received",
+            status: "complete",
+        },
+        {
+            label: paymentRejected ? "Payment rejected" : "Payment review",
+            status: paymentRejected ? "bad" : paymentVerified ? "complete" : "current",
+        },
+        {
+            label: "Payment verified",
+            status: paymentVerified ? "complete" : "waiting",
+        },
+        {
+            label: cancelled ? "Delivery cancelled" : "Delivery waiting",
+            status: cancelled ? "bad" : delivered ? "complete" : paymentVerified ? "current" : "waiting",
+        },
+        {
+            label: "Delivered",
+            status: delivered ? "complete" : "waiting",
+        },
+    ];
+}
+
+function renderOrderTimeline(order) {
+    return `
+        <div class="order-timeline mb-4">
+            ${getOrderTimelineSteps(order)
+                .map(
+                    (step) => `
+                        <div class="order-timeline-step timeline-${step.status}">
+                            <span aria-hidden="true"></span>
+                            <strong>${escapeHtml(step.label)}</strong>
+                        </div>
+                    `,
+                )
+                .join("")}
+        </div>
+    `;
+}
+
+function getDeliveryLines(order) {
+    return (order.deliveries || []).flatMap((delivery) => (Array.isArray(delivery.lines) ? delivery.lines : []));
+}
+
+function renderDeliveryCodes(order) {
+    const lines = getDeliveryLines(order);
+    if (!lines.length) return "";
+
+    return `
+        <div class="order-delivery-box mt-4">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <i class="bi bi-key"></i>
+                <h3 class="h5 fw-black mb-0">Delivery details</h3>
+            </div>
+            <div class="delivery-code-list">
+                ${lines
+                    .map((line, index) => {
+                        const code = String(line.code || "").trim();
+                        const note = String(line.note || "").trim() || `Delivery code ${index + 1}`;
+                        return `
+                            <div class="delivery-code-row">
+                                <div>
+                                    <span>${escapeHtml(note)}</span>
+                                    ${code ? `<code>${escapeHtml(code)}</code>` : ""}
+                                </div>
+                                ${
+                                    code
+                                        ? `<button class="btn btn-outline-dark btn-sm" type="button" data-copy-text="${escapeHtml(code)}">
+                                            <i class="bi bi-clipboard me-1"></i>Copy
+                                        </button>`
+                                        : ""
+                                }
+                            </div>
+                        `;
+                    })
+                    .join("")}
+            </div>
+        </div>
+    `;
+}
+
+function renderCustomerInputForm(order) {
+    const inputs = Array.isArray(order.customerInputs) ? order.customerInputs : [];
+    if (!inputs.length) return "";
+
+    return `
+        <form class="customer-input-form mt-4" data-customer-input-form data-order-id="${escapeHtml(order.id)}">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <i class="bi bi-controller"></i>
+                <h3 class="h5 fw-black mb-0">Delivery information needed</h3>
+            </div>
+            <p class="text-secondary mb-3">Payment is verified. Send the details below so we can complete delivery.</p>
+            <div class="customer-input-list">
+                ${inputs
+                    .map(
+                        (input, index) => `
+                            <div>
+                                <label class="form-label" for="customerInput${index}">
+                                    ${escapeHtml(input.label)} for ${escapeHtml(input.productName)}
+                                </label>
+                                <input
+                                    class="form-control"
+                                    id="customerInput${index}"
+                                    type="text"
+                                    maxlength="120"
+                                    autocomplete="off"
+                                    data-customer-input
+                                    data-product-id="${escapeHtml(input.productId)}"
+                                    data-variation-id="${escapeHtml(input.variationId || "")}"
+                                    data-product-name="${escapeHtml(input.productName)}"
+                                    data-label="${escapeHtml(input.label)}"
+                                    required
+                                />
+                            </div>
+                        `,
+                    )
+                    .join("")}
+            </div>
+            <button class="btn btn-primary mt-3" type="submit" data-customer-input-button>
+                <span class="customer-input-button-text">Send for delivery</span>
+            </button>
+            <div class="alert mt-3 d-none" data-customer-input-alert role="alert"></div>
+        </form>
+    `;
+}
+
+async function submitCustomerInput(form) {
+    if (!ORDER_API_URL) throw new Error("Order backend is not configured. Check config.js.");
+
+    const orderId = form.dataset.orderId || "";
+    const customerPhone = normalizeTunisianPhoneInput(document.getElementById("statusCustomerPhone")?.value || "");
+    if (!customerPhone) throw new Error("Enter the same Tunisian WhatsApp number used at checkout.");
+
+    const inputs = [...form.querySelectorAll("[data-customer-input]")].map((input) => ({
+        productId: input.dataset.productId || "",
+        variationId: input.dataset.variationId || "",
+        productName: input.dataset.productName || "",
+        label: input.dataset.label || "",
+        value: input.value.trim(),
+    }));
+
+    if (inputs.some((input) => !input.value)) throw new Error("Fill every delivery information field.");
+
+    const response = await fetch(ORDER_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            action: "customer-input",
+            orderId,
+            customerPhone,
+            inputs,
+        }),
+    });
+
+    const responseText = await response.text();
+    let result = {};
+    try {
+        result = responseText ? JSON.parse(responseText) : {};
+    } catch {
+        throw new Error("Order backend did not return JSON.");
+    }
+
+    if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Could not send delivery information.");
+    }
+
+    return result;
+}
+
 function renderOrderStatusResult(order) {
     const result = document.getElementById("orderStatusResult");
     if (!result) return;
@@ -1234,6 +1471,7 @@ function renderOrderStatusResult(order) {
         )
         .join("");
     const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleString("en-TN") : "Not available";
+    const supportUrl = getWhatsAppSupportUrl(`Hello HyperKey Store, I need help with order ${order.id}.`);
 
     result.innerHTML = `
         <div class="content-panel order-status-card">
@@ -1246,14 +1484,15 @@ function renderOrderStatusResult(order) {
                     <i class="bi bi-clipboard me-1"></i>Copy
                 </button>
             </div>
+            ${renderOrderTimeline(order)}
             <div class="status-grid mb-4">
                 <div>
                     <span>Payment</span>
-                    <strong>${escapeHtml(order.paymentStatus)}</strong>
+                    ${statusBadge(order.paymentStatus, order.paymentStatusCode)}
                 </div>
                 <div>
                     <span>Delivery</span>
-                    <strong>${escapeHtml(order.deliveryStatus)}</strong>
+                    ${statusBadge(order.deliveryStatus, order.deliveryStatusCode)}
                 </div>
                 <div>
                     <span>WhatsApp</span>
@@ -1270,6 +1509,11 @@ function renderOrderStatusResult(order) {
                 <span>Amount to verify</span>
                 <strong>${formatPlainTndAmount(order.amountDue)}</strong>
             </div>
+            ${renderDeliveryCodes(order)}
+            ${renderCustomerInputForm(order)}
+            <a class="btn btn-outline-dark w-100 mt-4" href="${escapeHtml(supportUrl)}" target="_blank" rel="noopener">
+                <i class="bi bi-whatsapp me-2"></i>Contact support about this order
+            </a>
             <p class="small text-secondary mt-3 mb-0">Payment proofs and recharge card codes are hidden after submission.</p>
         </div>
     `;
@@ -1280,6 +1524,50 @@ function renderOrderStatusResult(order) {
 function setupOrderStatusPage() {
     const form = document.getElementById("orderStatusForm");
     if (!form) return;
+
+    document.getElementById("orderStatusResult")?.addEventListener("submit", async (event) => {
+        const inputForm = event.target.closest("[data-customer-input-form]");
+        if (!inputForm) return;
+
+        event.preventDefault();
+        if (customerInputSubmitting) return;
+        if (!inputForm.checkValidity()) {
+            inputForm.classList.add("was-validated");
+            return;
+        }
+
+        const button = inputForm.querySelector("[data-customer-input-button]");
+        const buttonText = inputForm.querySelector(".customer-input-button-text");
+        const alert = inputForm.querySelector("[data-customer-input-alert]");
+
+        customerInputSubmitting = true;
+        if (button) button.disabled = true;
+        if (buttonText) buttonText.textContent = "Sending...";
+        if (alert) {
+            alert.textContent = "";
+            alert.className = "alert mt-3 d-none";
+        }
+
+        try {
+            const result = await submitCustomerInput(inputForm);
+            if (alert) {
+                alert.textContent = result.message || "Information sent for delivery.";
+                alert.className = "alert alert-success mt-3";
+            }
+            inputForm.querySelectorAll("input, button").forEach((control) => {
+                control.disabled = true;
+            });
+        } catch (error) {
+            if (alert) {
+                alert.textContent = error.message || "Could not send delivery information.";
+                alert.className = "alert alert-danger mt-3";
+            }
+            if (button) button.disabled = false;
+        } finally {
+            customerInputSubmitting = false;
+            if (buttonText) buttonText.textContent = "Send for delivery";
+        }
+    });
 
     const params = new URLSearchParams(window.location.search);
     const orderInput = document.getElementById("statusOrderId");
@@ -1325,6 +1613,7 @@ function updateProductDetailSelection(productId, variationId = "") {
     const product = PRODUCTS[productId];
     if (!product) return;
 
+    const inStock = isProductInStock(product);
     const variation = getVariation(product, variationId) || getDefaultVariation(product);
     const displayName = getVariationName(product, variation);
     const displayPrice = variation?.price ?? product.price ?? 0;
@@ -1342,10 +1631,21 @@ function updateProductDetailSelection(productId, variationId = "") {
 
     cartButtons.forEach((item) => {
         item.dataset.addToCart = productId;
+        item.classList.toggle("disabled", !inStock);
+        item.setAttribute("aria-disabled", String(!inStock));
+        if ("disabled" in item) item.disabled = !inStock;
         if (variation) {
             item.dataset.productVariation = variation.id;
         } else {
             delete item.dataset.productVariation;
+        }
+
+        if (item.tagName === "A") {
+            if (!item.dataset.originalHref) item.dataset.originalHref = item.getAttribute("href") || "checkout.html";
+            item.setAttribute("href", inStock ? item.dataset.originalHref : "#");
+            item.textContent = inStock ? "Buy now" : "Unavailable";
+        } else {
+            item.innerHTML = inStock ? '<i class="bi bi-bag-plus me-2"></i>Add to cart' : "Unavailable";
         }
     });
 
@@ -1432,6 +1732,7 @@ function setupProductDetailPage() {
     const productIconClass = product.icon || "bi-box";
     const productImageSrc = getProductImage(product);
     const productCategoryText = getProductCategory(product);
+    const inStock = isProductInStock(product);
 
     if (productIcon) {
         productIcon.className = `bi ${productIconClass}`;
@@ -1448,7 +1749,11 @@ function setupProductDetailPage() {
         productImage.classList.toggle("d-none", !productImageSrc);
     }
     if (productCategory) productCategory.textContent = productCategoryText;
-    if (productBadge) productBadge.textContent = productCategoryText;
+    if (productBadge) {
+        productBadge.textContent = inStock ? productCategoryText : "Out of stock";
+        productBadge.classList.toggle("text-bg-dark", inStock);
+        productBadge.classList.toggle("text-bg-secondary", !inStock);
+    }
     if (productIntro) productIntro.textContent = getProductIntro(product);
     if (productDetailDescription) productDetailDescription.textContent = getProductDetail(product);
 
@@ -1529,12 +1834,27 @@ function setupOrderStatusLinks() {
     });
 }
 
+function setupFooterUtilityLinks() {
+    document.querySelectorAll(".site-footer .d-flex").forEach((footer) => {
+        [
+            ["payment-guide.html", "Payment guide"],
+            ["terms.html", "Terms"],
+        ].forEach(([href, label]) => {
+            if (footer.querySelector(`a[href="${href}"]`)) return;
+            const link = document.createElement("a");
+            link.href = href;
+            link.textContent = label;
+            footer.append(link);
+        });
+    });
+}
+
 function setupSupportWhatsApp() {
     if (document.querySelector(".support-whatsapp")) return;
 
     const link = document.createElement("a");
     link.className = "support-whatsapp";
-    link.href = `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}`;
+    link.href = getWhatsAppSupportUrl();
     link.target = "_blank";
     link.rel = "noopener";
     link.setAttribute("aria-label", "Contact HyperKey Store on WhatsApp");
@@ -1558,8 +1878,29 @@ document.addEventListener("click", (event) => {
         }
     }
 
+    const copyTextButton = event.target.closest("[data-copy-text]");
+    if (copyTextButton) {
+        const value = copyTextButton.dataset.copyText || "";
+        const copyPromise = navigator.clipboard?.writeText(value);
+        if (copyPromise) {
+            copyPromise.then(() => {
+                copyTextButton.textContent = "Copied";
+            }).catch(() => {
+                copyTextButton.textContent = value;
+            });
+        } else {
+            copyTextButton.textContent = value;
+        }
+    }
+
     const addButton = event.target.closest("[data-add-to-cart]");
     if (addButton) {
+        const product = PRODUCTS[addButton.dataset.addToCart];
+        if (!isProductInStock(product)) {
+            event.preventDefault();
+            showToast("This product is currently out of stock.");
+            return;
+        }
         addToCart(addButton.dataset.addToCart, addButton.dataset.productVariation || "");
     }
 
@@ -1571,6 +1912,7 @@ document.addEventListener("click", (event) => {
 
 async function initSite() {
     setupOrderStatusLinks();
+    setupFooterUtilityLinks();
     setupThemeToggle();
     setupSupportWhatsApp();
     await loadProductDatabase();
