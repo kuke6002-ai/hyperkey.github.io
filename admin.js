@@ -16,6 +16,9 @@ const DEFAULT_PAYMENT_SETTINGS = {
             enabled: true,
             label: "D17 transfer",
             instructions: "Send the shown amount by D17, then enter only the authorization number from your receipt.",
+            recipientName: "",
+            recipientValue: "",
+            recipientHint: "",
             proofLabel: "Authorization number",
             feePercent: 1,
             roundUpToDecimal: 1,
@@ -24,6 +27,9 @@ const DEFAULT_PAYMENT_SETTINGS = {
             enabled: true,
             label: "Flouci transfer",
             instructions: "Send the shown amount by Flouci, then enter only the transaction ID from your receipt.",
+            recipientName: "",
+            recipientValue: "",
+            recipientHint: "",
             proofLabel: "Transaction ID",
             feeUnder100: 1,
             feeFrom100: 2,
@@ -733,11 +739,17 @@ function fillSettingsForm() {
     const fields = {
         d17Enabled: d17.enabled !== false,
         d17Instructions: d17.instructions,
+        d17RecipientName: d17.recipientName,
+        d17RecipientValue: d17.recipientValue,
+        d17RecipientHint: d17.recipientHint,
         d17ProofLabel: d17.proofLabel,
         d17FeePercent: d17.feePercent,
         d17RoundUpToDecimal: d17.roundUpToDecimal,
         flouciEnabled: flouci.enabled !== false,
         flouciInstructions: flouci.instructions,
+        flouciRecipientName: flouci.recipientName,
+        flouciRecipientValue: flouci.recipientValue,
+        flouciRecipientHint: flouci.recipientHint,
         flouciProofLabel: flouci.proofLabel,
         flouciFeeUnder100: flouci.feeUnder100,
         flouciFeeFrom100: flouci.feeFrom100,
@@ -773,6 +785,9 @@ function readSettingsForm() {
                 enabled: checkedValue("d17Enabled"),
                 label: "D17 transfer",
                 instructions: textValue("d17Instructions", DEFAULT_PAYMENT_SETTINGS.payment.d17.instructions),
+                recipientName: textValue("d17RecipientName", ""),
+                recipientValue: textValue("d17RecipientValue", ""),
+                recipientHint: textValue("d17RecipientHint", ""),
                 proofLabel: textValue("d17ProofLabel", DEFAULT_PAYMENT_SETTINGS.payment.d17.proofLabel),
                 feePercent: numberValue("d17FeePercent", DEFAULT_PAYMENT_SETTINGS.payment.d17.feePercent),
                 roundUpToDecimal: numberValue("d17RoundUpToDecimal", DEFAULT_PAYMENT_SETTINGS.payment.d17.roundUpToDecimal),
@@ -781,6 +796,9 @@ function readSettingsForm() {
                 enabled: checkedValue("flouciEnabled"),
                 label: "Flouci transfer",
                 instructions: textValue("flouciInstructions", DEFAULT_PAYMENT_SETTINGS.payment.flouci.instructions),
+                recipientName: textValue("flouciRecipientName", ""),
+                recipientValue: textValue("flouciRecipientValue", ""),
+                recipientHint: textValue("flouciRecipientHint", ""),
                 proofLabel: textValue("flouciProofLabel", DEFAULT_PAYMENT_SETTINGS.payment.flouci.proofLabel),
                 feeUnder100: numberValue("flouciFeeUnder100", DEFAULT_PAYMENT_SETTINGS.payment.flouci.feeUnder100),
                 feeFrom100: numberValue("flouciFeeFrom100", DEFAULT_PAYMENT_SETTINGS.payment.flouci.feeFrom100),
@@ -863,6 +881,18 @@ async function importSettingsJson(file) {
     const settings = JSON.parse(text);
     setSettings(settings);
     showToast("Imported settings.json");
+}
+
+function getSelectedImportFile(inputId, label) {
+    const file = document.getElementById(inputId)?.files?.[0];
+    if (!file) throw new Error(`Choose ${label} first`);
+    return file;
+}
+
+function showSelectedFileMessage(inputId, label) {
+    const file = document.getElementById(inputId)?.files?.[0];
+    if (!file) return;
+    showToast(`${file.name} selected. Press ${label} to import.`);
 }
 
 function getAdminToken() {
@@ -1131,9 +1161,20 @@ function bindEvents() {
     document.getElementById("resetFormButton")?.addEventListener("click", fillForm);
     document.getElementById("downloadJsonButton")?.addEventListener("click", downloadJson);
     document.getElementById("copyJsonButton")?.addEventListener("click", copyJson);
-    document.getElementById("jsonImport")?.addEventListener("change", (event) => importJson(event.target.files[0]));
+    document.getElementById("copyJsonButtonSecondary")?.addEventListener("click", copyJson);
+    document.getElementById("jsonImport")?.addEventListener("change", () => showSelectedFileMessage("jsonImport", "Import products"));
+    document.getElementById("importJsonButton")?.addEventListener("click", () => {
+        Promise.resolve()
+            .then(() => importJson(getSelectedImportFile("jsonImport", "products.json")))
+            .catch((error) => showToast(error.message || "Could not import products.json"));
+    });
     document.getElementById("downloadSettingsButton")?.addEventListener("click", downloadSettingsJson);
-    document.getElementById("settingsImport")?.addEventListener("change", (event) => importSettingsJson(event.target.files[0]));
+    document.getElementById("settingsImport")?.addEventListener("change", () => showSelectedFileMessage("settingsImport", "Import settings"));
+    document.getElementById("importSettingsButton")?.addEventListener("click", () => {
+        Promise.resolve()
+            .then(() => importSettingsJson(getSelectedImportFile("settingsImport", "settings.json")))
+            .catch((error) => showToast(error.message || "Could not import settings.json"));
+    });
     document.getElementById("productPhotoFile")?.addEventListener("change", (event) => handlePhotoFile(event.target.files[0]));
     document.getElementById("saveAdminTokenButton")?.addEventListener("click", () => {
         const token = document.getElementById("adminApiToken")?.value.trim() || "";

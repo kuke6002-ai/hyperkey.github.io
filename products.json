@@ -42,6 +42,179 @@
             "description": "Starter accounts with access notes and recovery guidance."
         }
     ],
-    "routes": {},
-    "products": {}
+    "routes": {
+        "steam-10": { "productId": "steam-wallet", "variationId": "steam-10" },
+        "steam-25": { "productId": "steam-wallet", "variationId": "steam-25" },
+        "steam-50": { "productId": "steam-wallet", "variationId": "steam-50" },
+        "steam-100": { "productId": "steam-wallet", "variationId": "steam-100" }
+    },
+    "products": {
+        "steam-wallet": {
+            "name": "Steam Wallet",
+            "category": "Gift card",
+            "price": 108.99,
+            "icon": "bi-steam",
+            "art": "steam-art",
+            "description": "Choose a Steam wallet value and receive a digital code for games and DLC.",
+            "defaultVariation": "steam-10",
+            "variations": [
+                {
+                    "id": "steam-10",
+                    "label": "10 TND",
+                    "name": "Steam Wallet 10 TND",
+                    "price": 108.99
+                },
+                {
+                    "id": "steam-25",
+                    "label": "2554 TND",
+                    "name": "Steam Wallet 25 TND",
+                    "price": 258
+                },
+                {
+                    "id": "steam-2wd5",
+                    "label": "0 TND",
+                    "name": "StewdwaTND",
+                    "price": 8
+                },               
+                {
+                    "id": "steam-50",
+                    "label": "50 TND",
+                    "name": "Steam Wallet 50 TND",
+                    "price": 50
+                },
+                {
+                    "id": "steam-100",
+                    "label": "100 TND",
+                    "name": "Steam Wallet 100 TND",
+                    "price": 100
+                }
+            ]
+        },
+        "steam-10": {
+            "name": "Steam Wallet 10 TND",
+            "category": "Gift card",
+            "price": 108.8799,
+            "icon": "bi-steam",
+            "art": "steam-art",
+            "visible": false
+        },
+        "steam-25": {
+            "name": "Steam Wallet 25 TND",
+            "category": "Gift card",
+            "price": 258,
+            "icon": "bi-steam",
+            "art": "steam-art",
+            "visible": false
+        },
+        "steam-50": {
+            "name": "Steam Wallet 50 TND",
+            "category": "Gift card",
+            "price": 50,
+            "icon": "bi-steam",
+            "art": "steam-art",
+            "description": "Global Steam wallet code for games and DLC.",
+            "visible": false
+        },
+        "steam-100": {
+            "name": "Steam Wallet 100 TND",
+            "category": "Gift card",
+            "price": 100,
+            "icon": "bi-steam",
+            "art": "steam-art",
+            "visible": false
+        },
+        "xbox-25": {
+            "name": "Xbox Gift Card 25 TND",
+            "category": "Gift card",
+            "price": 25,
+            "icon": "bi-xbox",
+            "art": "xbox-art",
+            "description": "Redeem for games, add-ons, movies, and subscriptions."
+        },
+        "playstation-30": {
+            "name": "PlayStation Store 30 TND",
+            "category": "Gift card",
+            "price": 30,
+            "icon": "bi-playstation",
+            "art": "playstation-art",
+            "description": "Buy games, expansions, and wallet credit."
+        },
+        "ml-diamonds-500": {
+            "name": "Mobile Legends 500 Diamonds",
+            "category": "Top up",
+            "price": 9.99,
+            "icon": "bi-gem",
+            "art": "topup-art",
+            "description": "Fast top up handled through Telegram order support."
+        },
+        "free-fire-diamonds-100": {
+            "name": "Free Fire 100 Diamonds",
+            "category": "Top up",
+            "price": 3.5,
+            "icon": "bi-fire",
+            "art": "topup-art",
+            "description": "Free Fire 100 diamond top up handled through Telegram order support.",
+            "customerInput": {
+                "enabled": true,
+                "label": "Player ID"
+            }
+        },
+        "fortnite-vbucks-1000": {
+            "name": "Fortnite 1,000 V-Bucks",
+            "category": "Top up",
+            "price": 7.99,
+            "icon": "bi-lightning-charge",
+            "art": "vbucks-art",
+            "description": "Add V-Bucks for outfits, emotes, and battle pass items."
+        },
+        "valorant-2050": {
+            "name": "Valorant 2,050 Points",
+            "category": "Top up",
+            "price": 19.99,
+            "icon": "bi-crosshair",
+            "art": "valorant-art",
+            "description": "Wallet points for skins, bundles, and passes."
+        },
+        "minecraft-java-key": {
+            "name": "Minecraft Java & Bedrock Key",
+            "category": "Game key",
+            "price": 29.99,
+            "icon": "bi-joystick",
+            "art": "gamekey-art",
+            "description": "Full game key with digital activation instructions."
+        },
+        "starter-account": {
+            "name": "Starter Game Account",
+            "category": "Account",
+            "price": 39,
+            "icon": "bi-shield-check",
+            "art": "account-art",
+            "description": "Verified starter account with recovery guide included."
+        },
+        "roblox-25": {
+            "name": "Roblox Gift Card 25 TND",
+            "category": "Gift card",
+            "price": 25,
+            "icon": "bi-box",
+            "art": "roblox-art",
+            "description": "Robux and premium credit delivered digitally."
+        },
+        "hhas-25": {
+            "name": "Rwada 25 TND",
+            "category": "Gift card",
+            "price": 25888,
+            "icon": "bi-box",
+            "art": "roblox-art",
+            "description": "Robux and premium credit delivered digitally."
+        }
+        ,
+        "xxxaw": {
+            "name": "wsa4d 255785785 TND",
+            "category": "Gift card",
+            "price": 2,
+            "icon": "bi-box",
+            "art": "roblox-art",
+            "description": "Rasflaufoipwagitally."
+        }
+    }
 }

@@ -161,12 +161,32 @@ const PRODUCTS = {
 const CART_KEY = "hyperkey-cart";
 const CHECKOUT_SESSION_KEY = "hyperkey-checkout-session";
 const THEME_KEY = "hyperkey-theme-v2";
+const LANGUAGE_KEY = "hyperkey-language";
 let CURRENCY = "TND";
 const DATABASE_URL = "products.json";
 const SETTINGS_URL = "settings.json";
 const ORDER_API_URL = window.GAMEVAULT_ORDER_API_URL || "";
 const SUPPORT_WHATSAPP_NUMBER = "21655159280";
 const CART_VARIATION_SEPARATOR = "::";
+const SUPPORTED_LANGUAGES = ["en", "fr", "ar"];
+const LANGUAGE_LABELS = {
+    en: "EN",
+    fr: "FR",
+    ar: "AR",
+};
+const LANGUAGE_NAMES = {
+    en: "English",
+    fr: "French",
+    ar: "Arabic",
+};
+const LANGUAGE_FILES = {
+    fr: "lang/fr.json",
+    ar: "lang/ar.json",
+};
+let savedLanguage = localStorage.getItem(LANGUAGE_KEY);
+let CURRENT_LANGUAGE = SUPPORTED_LANGUAGES.includes(savedLanguage) ? savedLanguage : "fr";
+let TRANSLATIONS = {};
+let REVERSE_TRANSLATIONS = {};
 let checkoutSubmitting = false;
 let paymentSubmitting = false;
 let customerInputSubmitting = false;
@@ -177,6 +197,9 @@ const DEFAULT_PAYMENT_SETTINGS = {
             enabled: true,
             label: "D17 transfer",
             instructions: "Send the shown amount by D17, then enter only the authorization number from your receipt.",
+            recipientName: "",
+            recipientValue: "",
+            recipientHint: "",
             proofLabel: "Authorization number",
             feePercent: 1,
             roundUpToDecimal: 1,
@@ -185,6 +208,9 @@ const DEFAULT_PAYMENT_SETTINGS = {
             enabled: true,
             label: "Flouci transfer",
             instructions: "Send the shown amount by Flouci, then enter only the transaction ID from your receipt.",
+            recipientName: "",
+            recipientValue: "",
+            recipientHint: "",
             proofLabel: "Transaction ID",
             feeUnder100: 1,
             feeFrom100: 2,
@@ -251,6 +277,149 @@ function refreshArtClasses() {
         ART_CLASSES.length,
         ...new Set(Object.values(PRODUCTS).map((product) => product.art).filter(Boolean)),
     );
+}
+
+function normalizeI18nKey(value) {
+    return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+async function loadTranslationData() {
+    await Promise.all(
+        Object.entries(LANGUAGE_FILES).map(async ([language, url]) => {
+            try {
+                const response = await fetch(`${url}?v=${Date.now()}`, { cache: "no-store" });
+                if (!response.ok) throw new Error(`Could not load ${url}`);
+                TRANSLATIONS[language] = await response.json();
+            } catch (error) {
+                console.warn("Using English text fallback:", error);
+                TRANSLATIONS[language] = {};
+            }
+        }),
+    );
+
+    REVERSE_TRANSLATIONS = {};
+    Object.values(TRANSLATIONS).forEach((dictionary) => {
+        Object.entries(dictionary || {}).forEach(([english, translated]) => {
+            REVERSE_TRANSLATIONS[normalizeI18nKey(translated)] = english;
+        });
+    });
+}
+
+function getBaseText(value) {
+    const key = normalizeI18nKey(value);
+    return REVERSE_TRANSLATIONS[key] || key;
+}
+
+function t(value) {
+    const base = getBaseText(value);
+    if (!base) return "";
+    if (CURRENT_LANGUAGE === "en") return base;
+    return TRANSLATIONS[CURRENT_LANGUAGE]?.[base] || base;
+}
+
+function formatProductCount(count) {
+    if (CURRENT_LANGUAGE === "ar") return `${count} منتج`;
+    if (CURRENT_LANGUAGE === "fr") return `${count} produit${count === 1 ? "" : "s"}`;
+    return `${count} product${count === 1 ? "" : "s"}`;
+}
+
+function translateTextNode(node) {
+    const value = node.nodeValue || "";
+    const key = normalizeI18nKey(value);
+    if (!key) return;
+
+    const translated = t(key);
+    if (!translated || translated === key) return;
+
+    const leading = value.match(/^\s*/)?.[0] || "";
+    const trailing = value.match(/\s*$/)?.[0] || "";
+    node.nodeValue = `${leading}${translated}${trailing}`;
+}
+
+function translateElementAttributes(element) {
+    ["placeholder", "aria-label", "title", "alt"].forEach((attribute) => {
+        if (!element.hasAttribute(attribute)) return;
+        const value = element.getAttribute(attribute);
+        const translated = t(value);
+        if (translated && translated !== normalizeI18nKey(value)) element.setAttribute(attribute, translated);
+    });
+}
+
+function translateElement(root = document.body) {
+    if (!root) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+        acceptNode(node) {
+            const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+            if (!element) return NodeFilter.FILTER_REJECT;
+            if (element.closest("script, style, textarea, code, [data-no-i18n]")) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+        },
+    });
+
+    let node = walker.currentNode;
+    while (node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            translateTextNode(node);
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            translateElementAttributes(node);
+        }
+        node = walker.nextNode();
+    }
+}
+
+function translatePage() {
+    document.documentElement.lang = CURRENT_LANGUAGE;
+    document.documentElement.dir = CURRENT_LANGUAGE === "ar" ? "rtl" : "ltr";
+    translateElement(document.body);
+    document.title = t(document.title);
+    updateLanguageToggle();
+}
+
+function updateLanguageToggle() {
+    document.querySelectorAll("[data-language-toggle]").forEach((button) => {
+        const languageName = t(LANGUAGE_NAMES[CURRENT_LANGUAGE] || "English");
+        button.innerHTML = `<i class="bi bi-translate"></i><span>${LANGUAGE_LABELS[CURRENT_LANGUAGE] || "EN"}</span>`;
+        button.setAttribute("aria-label", `${t("Language")}: ${languageName}`);
+        button.setAttribute("title", `${t("Language")}: ${languageName}`);
+    });
+}
+
+function cycleLanguage() {
+    const currentIndex = SUPPORTED_LANGUAGES.indexOf(CURRENT_LANGUAGE);
+    CURRENT_LANGUAGE = SUPPORTED_LANGUAGES[(currentIndex + 1) % SUPPORTED_LANGUAGES.length];
+    localStorage.setItem(LANGUAGE_KEY, CURRENT_LANGUAGE);
+    rerenderDynamicSections();
+    translatePage();
+}
+
+function createLanguageToggle(className) {
+    const button = document.createElement("button");
+    button.className = className;
+    button.type = "button";
+    button.dataset.languageToggle = "true";
+    button.addEventListener("click", cycleLanguage);
+    return button;
+}
+
+function setupLanguageToggle() {
+    document.querySelectorAll(".navbar > .container").forEach((container) => {
+        const toggler = container.querySelector(".navbar-toggler");
+        if (!toggler || container.querySelector("[data-language-toggle-mobile]")) return;
+
+        const button = createLanguageToggle("btn btn-outline-dark language-toggle language-toggle-mobile d-inline-flex d-lg-none ms-auto me-2");
+        button.dataset.languageToggleMobile = "true";
+        toggler.before(button);
+    });
+
+    const cartLinks = document.querySelectorAll('a[href="cart.html"][aria-label="Cart"]');
+    cartLinks.forEach((cartLink) => {
+        if (cartLink.parentElement?.querySelector("[data-language-toggle-desktop]")) return;
+
+        const button = createLanguageToggle("btn btn-outline-dark language-toggle language-toggle-desktop d-none d-lg-inline-flex");
+        button.dataset.languageToggleDesktop = "true";
+        cartLink.before(button);
+    });
+    updateLanguageToggle();
 }
 
 async function loadProductDatabase() {
@@ -367,7 +536,7 @@ function roundUpToMultiple(value, multiple) {
 function calculatePaymentDetails(productTotal, method, settings) {
     const config = getPaymentConfig(settings, method);
     if (!config || config.enabled === false) {
-        throw new Error("This payment method is not available.");
+        throw new Error(t("This payment method is not available."));
     }
 
     if (method === "d17") {
@@ -376,6 +545,9 @@ function calculatePaymentDetails(productTotal, method, settings) {
             method,
             label: config.label || "D17 transfer",
             instructions: config.instructions || DEFAULT_PAYMENT_SETTINGS.payment.d17.instructions,
+            recipientName: config.recipientName || "",
+            recipientValue: config.recipientValue || "",
+            recipientHint: config.recipientHint || "",
             proofType: "reference",
             proofLabel: config.proofLabel || "Authorization number",
             amountDue,
@@ -388,6 +560,9 @@ function calculatePaymentDetails(productTotal, method, settings) {
             method,
             label: config.label || "Flouci transfer",
             instructions: config.instructions || DEFAULT_PAYMENT_SETTINGS.payment.flouci.instructions,
+            recipientName: config.recipientName || "",
+            recipientValue: config.recipientValue || "",
+            recipientHint: config.recipientHint || "",
             proofType: "reference",
             proofLabel: config.proofLabel || "Transaction ID",
             amountDue: productTotal + fee,
@@ -409,7 +584,7 @@ function calculatePaymentDetails(productTotal, method, settings) {
         };
     }
 
-    throw new Error("Choose a supported payment method.");
+    throw new Error(t("Choose a supported payment method."));
 }
 
 function escapeHtml(value) {
@@ -449,9 +624,9 @@ function getCategories() {
             id: slugify(name) || "digital",
             label: name,
             icon: product.icon || "bi-box",
-            teaser: "Digital products",
+            teaser: t("Digital products"),
             heading: name,
-            description: `Browse ${name.toLowerCase()} products.`,
+            description: t("Browse digital products."),
         });
     });
 
@@ -551,7 +726,7 @@ function productCardTemplate(id, product) {
     const image = getProductImage(product);
     const category = getProductCategory(product);
     const hasVariations = getProductVariations(product).length > 0;
-    const priceLabel = hasVariations ? `From ${formatMoney(getProductPrice(product))}` : formatMoney(product.price ?? 0);
+    const priceLabel = hasVariations ? `${t("From")} ${formatMoney(getProductPrice(product))}` : formatMoney(product.price ?? 0);
     const inStock = isProductInStock(product);
 
     return `
@@ -567,7 +742,7 @@ function productCardTemplate(id, product) {
                 <div class="card-body d-flex flex-column">
                     <div class="d-flex flex-wrap gap-2 mb-2">
                         <span class="badge text-bg-dark">${escapeHtml(category)}</span>
-                        <span class="badge ${inStock ? "text-bg-success" : "text-bg-secondary"}">${inStock ? "Available" : "Out of stock"}</span>
+                        <span class="badge ${inStock ? "text-bg-success" : "text-bg-secondary"}">${t(inStock ? "Available" : "Out of stock")}</span>
                     </div>
                     <h2 class="h5">
                         <a class="product-title-link" href="product.html?product=${encodeURIComponent(id)}">${escapeHtml(getProductDisplayName(product))}</a>
@@ -575,7 +750,7 @@ function productCardTemplate(id, product) {
                     <p class="text-secondary flex-grow-1">${escapeHtml(getProductDescription(product))}</p>
                     <div class="d-flex justify-content-between align-items-center">
                         <strong class="price">${priceLabel}</strong>
-                        <button class="btn btn-primary btn-sm" data-add-to-cart="${escapeHtml(id)}" ${inStock ? "" : "disabled"}>${inStock ? "Add" : "Unavailable"}</button>
+                        <button class="btn btn-primary btn-sm" data-add-to-cart="${escapeHtml(id)}" ${inStock ? "" : "disabled"}>${t(inStock ? "Add" : "Unavailable")}</button>
                     </div>
                 </div>
             </article>
@@ -590,7 +765,7 @@ function categoryCardTemplate(category, count, extraClass = "catalog-category-ca
                 <i class="bi ${category.icon}"></i>
                 <span>${category.label}</span>
                 ${category.teaser ? `<small>${category.teaser}</small>` : ""}
-                ${extraClass ? `<strong>${count} product${count === 1 ? "" : "s"}</strong>` : ""}
+                ${extraClass ? `<strong>${formatProductCount(count)}</strong>` : ""}
             </a>
         </div>
     `;
@@ -611,7 +786,10 @@ function renderProductsPage(searchTerm = "") {
         return categoryCardTemplate(category, count);
     }).join("");
 
-    if (!productSections) return;
+    if (!productSections) {
+        translatePage();
+        return;
+    }
 
     productSections.innerHTML = categories.map((category) => {
         const products = catalogProducts.filter(([id, product]) => {
@@ -646,6 +824,7 @@ function renderProductsPage(searchTerm = "") {
             <p class="text-secondary mb-0">Try another search term or clear the search box.</p>
         </div>
     `;
+    translatePage();
 }
 
 function setupProductSearch() {
@@ -664,6 +843,7 @@ function renderFeaturedProducts() {
     featuredProducts.innerHTML = getCatalogProducts()
         .map(([id, product]) => productCardTemplate(id, product))
         .join("");
+    translatePage();
 }
 
 function renderHomeCategories() {
@@ -676,6 +856,7 @@ function renderHomeCategories() {
             return categoryCardTemplate(category, count, "");
         })
         .join("");
+    translatePage();
 }
 
 function renderCategoryPage() {
@@ -702,6 +883,7 @@ function renderCategoryPage() {
                 <p class="text-secondary mb-0">Add products to this category in products.json.</p>
             </div>
         </div>`;
+    translatePage();
 }
 
 function getCart() {
@@ -736,7 +918,7 @@ function showToast(message = "Added to cart.") {
     const toastElement = document.getElementById("cartToast");
     if (!toastElement || !window.bootstrap) return;
     const toastBody = toastElement.querySelector(".toast-body");
-    if (toastBody) toastBody.textContent = message;
+    if (toastBody) toastBody.textContent = t(message);
     bootstrap.Toast.getOrCreateInstance(toastElement, { delay: 1600 }).show();
 }
 
@@ -833,6 +1015,7 @@ function renderCartPage() {
     const cartTotal = document.getElementById("cartTotal");
     if (subtotal) subtotal.textContent = formatMoney(total);
     if (cartTotal) cartTotal.textContent = formatMoney(total);
+    translatePage();
 }
 
 function renderCheckoutSummary() {
@@ -865,6 +1048,7 @@ function renderCheckoutSummary() {
 
     const checkoutTotal = document.getElementById("checkoutTotal");
     if (checkoutTotal) checkoutTotal.textContent = formatMoney(getCartTotal(cart));
+    translatePage();
 }
 
 function getCheckoutRequestId() {
@@ -901,7 +1085,7 @@ function clearCheckoutSession() {
 function setAlert(elementId, message = "") {
     const element = document.getElementById(elementId);
     if (!element) return;
-    element.textContent = message;
+    element.textContent = message ? t(message) : "";
     element.classList.toggle("d-none", !message);
 }
 
@@ -910,6 +1094,7 @@ function setHtmlAlert(elementId, html = "") {
     if (!element) return;
     element.innerHTML = html;
     element.classList.toggle("d-none", !html);
+    translateElement(element);
 }
 
 function setupCheckoutForm() {
@@ -950,7 +1135,7 @@ function setupCheckoutForm() {
 
         checkoutSubmitting = true;
         if (button) button.disabled = true;
-        if (buttonText) buttonText.textContent = "Opening payment...";
+        if (buttonText) buttonText.textContent = t("Opening payment...");
         setAlert("checkoutSuccess", "");
         setAlert("checkoutError", "");
 
@@ -986,6 +1171,7 @@ function renderPaymentOrderSummary(cart) {
               })
               .join("")
         : `<p class="text-secondary mb-0">No products found in this checkout session.</p>`;
+    translatePage();
 }
 
 function renderPaymentProofFields(details) {
@@ -1005,6 +1191,7 @@ function renderPaymentProofFields(details) {
                 required
             />
         `;
+        translatePage();
         return;
     }
 
@@ -1023,7 +1210,7 @@ function renderPaymentProofFields(details) {
                             pattern="\\d{${codeLength}}"
                             maxlength="${codeLength}"
                             data-card-code
-                            placeholder="Card ${index + 1} - ${codeLength} digits"
+                            placeholder="${escapeHtml(`${t("Card")} ${index + 1} - ${codeLength} ${t("digits")}`)}"
                             required
                         />
                     `,
@@ -1031,6 +1218,49 @@ function renderPaymentProofFields(details) {
                 .join("")}
         </div>
     `;
+    translatePage();
+}
+
+function renderPaymentRecipient(details) {
+    const recipient = document.getElementById("paymentRecipientDetails");
+    if (!recipient) return;
+
+    if (details.proofType !== "reference") {
+        recipient.innerHTML = "";
+        recipient.classList.add("d-none");
+        return;
+    }
+
+    const hasRecipient = Boolean(details.recipientName || details.recipientValue || details.recipientHint);
+    recipient.classList.remove("d-none");
+    recipient.innerHTML = hasRecipient
+        ? `
+            <div class="payment-recipient-card">
+                <div>
+                    <span>${t("Send money to")}</span>
+                    <strong>${escapeHtml(details.recipientName || details.label)}</strong>
+                    ${
+                        details.recipientValue
+                            ? `<code>${escapeHtml(details.recipientValue)}</code>`
+                            : `<p class="text-warning mb-0">${t("Recipient details are not configured.")}</p>`
+                    }
+                    ${details.recipientHint ? `<p class="text-secondary mb-0">${escapeHtml(details.recipientHint)}</p>` : ""}
+                </div>
+                ${
+                    details.recipientValue
+                        ? `<button class="btn btn-outline-dark btn-sm" type="button" data-copy-text="${escapeHtml(details.recipientValue)}">
+                            <i class="bi bi-clipboard me-1"></i>${t("Copy")}
+                        </button>`
+                        : ""
+                }
+            </div>
+        `
+        : `
+            <div class="alert alert-warning mb-0" role="alert">
+                ${t("Recipient details are not configured. Contact support before sending money.")}
+            </div>
+        `;
+    translatePage();
 }
 
 function renderPaymentGuide(method) {
@@ -1055,6 +1285,7 @@ function renderPaymentGuide(method) {
             <img src="${escapeHtml(config.image)}" alt="${escapeHtml(config.title)}" loading="lazy" />
         `
         : "";
+    translatePage();
 }
 
 function readPaymentProof(method) {
@@ -1103,6 +1334,7 @@ async function renderPaymentPage() {
         document.getElementById("paymentSummaryAmount").textContent = formatPlainTndAmount(details.amountDue);
 
         renderPaymentOrderSummary(validCart);
+        renderPaymentRecipient(details);
         renderPaymentProofFields(details);
         renderPaymentGuide(details.method);
         setAlert("paymentError", "");
@@ -1193,7 +1425,7 @@ function setupPaymentForm() {
 
         paymentSubmitting = true;
         if (button) button.disabled = true;
-        if (buttonText) buttonText.textContent = "Submitting...";
+        if (buttonText) buttonText.textContent = t("Submitting...");
         setAlert("paymentSuccess", "");
         setAlert("paymentError", "");
 
@@ -1221,7 +1453,7 @@ function setupPaymentForm() {
         } finally {
             paymentSubmitting = false;
             if (button) button.disabled = false;
-            if (buttonText) buttonText.textContent = "Submit order for review";
+            if (buttonText) buttonText.textContent = t("Submit order for review");
         }
     });
 }
@@ -1273,8 +1505,26 @@ function statusBadge(label, status) {
     `;
 }
 
+function getDefaultSupportMessage() {
+    if (CURRENT_LANGUAGE === "ar") return "مرحبا HyperKey Store، أحتاج مساعدة في طلبي.";
+    if (CURRENT_LANGUAGE === "fr") return "Bonjour HyperKey Store, j'ai besoin d'aide pour ma commande.";
+    return "Hello HyperKey Store, I need help with my order.";
+}
+
+function getOrderSupportMessage(orderId) {
+    if (CURRENT_LANGUAGE === "ar") return `مرحبا HyperKey Store، أحتاج مساعدة في الطلب ${orderId}.`;
+    if (CURRENT_LANGUAGE === "fr") return `Bonjour HyperKey Store, j'ai besoin d'aide pour la commande ${orderId}.`;
+    return `Hello HyperKey Store, I need help with order ${orderId}.`;
+}
+
+function getProductAvailabilityMessage(productName) {
+    if (CURRENT_LANGUAGE === "ar") return `مرحبا HyperKey Store، هل ${productName} متوفر؟`;
+    if (CURRENT_LANGUAGE === "fr") return `Bonjour HyperKey Store, est-ce que ${productName} est disponible ?`;
+    return `Hello HyperKey Store, is ${productName} available?`;
+}
+
 function getWhatsAppSupportUrl(message = "") {
-    const text = message || "Hello HyperKey Store, I need help with my order.";
+    const text = message || getDefaultSupportMessage();
     return `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
 }
 
@@ -1339,13 +1589,13 @@ function renderDeliveryCodes(order) {
         <div class="order-delivery-box mt-4">
             <div class="d-flex align-items-center gap-2 mb-3">
                 <i class="bi bi-key"></i>
-                <h3 class="h5 fw-black mb-0">Delivery details</h3>
+                <h3 class="h5 fw-black mb-0">${t("Delivery details")}</h3>
             </div>
             <div class="delivery-code-list">
                 ${lines
                     .map((line, index) => {
                         const code = String(line.code || "").trim();
-                        const note = String(line.note || "").trim() || `Delivery code ${index + 1}`;
+                        const note = String(line.note || "").trim() || `${t("Delivery code")} ${index + 1}`;
                         return `
                             <div class="delivery-code-row">
                                 <div>
@@ -1376,16 +1626,16 @@ function renderCustomerInputForm(order) {
         <form class="customer-input-form mt-4" data-customer-input-form data-order-id="${escapeHtml(order.id)}">
             <div class="d-flex align-items-center gap-2 mb-2">
                 <i class="bi bi-controller"></i>
-                <h3 class="h5 fw-black mb-0">Delivery information needed</h3>
+                <h3 class="h5 fw-black mb-0">${t("Delivery information needed")}</h3>
             </div>
-            <p class="text-secondary mb-3">Payment is verified. Send the details below so we can complete delivery.</p>
+            <p class="text-secondary mb-3">${t("Payment is verified. Send the details below so we can complete delivery.")}</p>
             <div class="customer-input-list">
                 ${inputs
                     .map(
                         (input, index) => `
                             <div>
                                 <label class="form-label" for="customerInput${index}">
-                                    ${escapeHtml(input.label)} for ${escapeHtml(input.productName)}
+                                    ${escapeHtml(t(input.label))} ${t("for")} ${escapeHtml(input.productName)}
                                 </label>
                                 <input
                                     class="form-control"
@@ -1406,7 +1656,7 @@ function renderCustomerInputForm(order) {
                     .join("")}
             </div>
             <button class="btn btn-primary mt-3" type="submit" data-customer-input-button>
-                <span class="customer-input-button-text">Send for delivery</span>
+                <span class="customer-input-button-text">${t("Send for delivery")}</span>
             </button>
             <div class="alert mt-3 d-none" data-customer-input-alert role="alert"></div>
         </form>
@@ -1471,7 +1721,7 @@ function renderOrderStatusResult(order) {
         )
         .join("");
     const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleString("en-TN") : "Not available";
-    const supportUrl = getWhatsAppSupportUrl(`Hello HyperKey Store, I need help with order ${order.id}.`);
+    const supportUrl = getWhatsAppSupportUrl(getOrderSupportMessage(order.id));
 
     result.innerHTML = `
         <div class="content-panel order-status-card">
@@ -1487,14 +1737,6 @@ function renderOrderStatusResult(order) {
             ${renderOrderTimeline(order)}
             <div class="status-grid mb-4">
                 <div>
-                    <span>Payment</span>
-                    ${statusBadge(order.paymentStatus, order.paymentStatusCode)}
-                </div>
-                <div>
-                    <span>Delivery</span>
-                    ${statusBadge(order.deliveryStatus, order.deliveryStatusCode)}
-                </div>
-                <div>
                     <span>WhatsApp</span>
                     <strong>${escapeHtml(order.customerPhone)}</strong>
                 </div>
@@ -1503,7 +1745,7 @@ function renderOrderStatusResult(order) {
                     <strong>${escapeHtml(createdAt)}</strong>
                 </div>
             </div>
-            <h3 class="h5 fw-black mb-3">Products</h3>
+            <h3 class="h5 fw-black mb-3">${t("Products")}</h3>
             ${products || '<p class="text-secondary mb-0">No products found for this order.</p>'}
             <div class="summary-line total mt-3">
                 <span>Amount to verify</span>
@@ -1512,13 +1754,14 @@ function renderOrderStatusResult(order) {
             ${renderDeliveryCodes(order)}
             ${renderCustomerInputForm(order)}
             <a class="btn btn-outline-dark w-100 mt-4" href="${escapeHtml(supportUrl)}" target="_blank" rel="noopener">
-                <i class="bi bi-whatsapp me-2"></i>Contact support about this order
+                <i class="bi bi-whatsapp me-2"></i>${t("Contact support about this order")}
             </a>
-            <p class="small text-secondary mt-3 mb-0">Payment proofs and recharge card codes are hidden after submission.</p>
+            <p class="small text-secondary mt-3 mb-0">${t("Payment proofs and recharge card codes are hidden after submission.")}</p>
         </div>
     `;
     result.classList.remove("d-none");
     document.getElementById("orderStatusEmpty")?.classList.add("d-none");
+    translatePage();
 }
 
 function setupOrderStatusPage() {
@@ -1551,7 +1794,7 @@ function setupOrderStatusPage() {
         try {
             const result = await submitCustomerInput(inputForm);
             if (alert) {
-                alert.textContent = result.message || "Information sent for delivery.";
+                alert.textContent = t(result.message || "Information sent for delivery.");
                 alert.className = "alert alert-success mt-3";
             }
             inputForm.querySelectorAll("input, button").forEach((control) => {
@@ -1559,13 +1802,13 @@ function setupOrderStatusPage() {
             });
         } catch (error) {
             if (alert) {
-                alert.textContent = error.message || "Could not send delivery information.";
+                alert.textContent = t(error.message || "Could not send delivery information.");
                 alert.className = "alert alert-danger mt-3";
             }
             if (button) button.disabled = false;
         } finally {
             customerInputSubmitting = false;
-            if (buttonText) buttonText.textContent = "Send for delivery";
+            if (buttonText) buttonText.textContent = t("Send for delivery");
         }
     });
 
@@ -1593,7 +1836,7 @@ function setupOrderStatusPage() {
         }
 
         if (button) button.disabled = true;
-        if (buttonText) buttonText.textContent = "Checking...";
+        if (buttonText) buttonText.textContent = t("Checking...");
         setAlert("orderStatusError", "");
         document.getElementById("orderStatusResult")?.classList.add("d-none");
 
@@ -1604,7 +1847,7 @@ function setupOrderStatusPage() {
             setAlert("orderStatusError", error.message || "Could not check this order.");
         } finally {
             if (button) button.disabled = false;
-            if (buttonText) buttonText.textContent = "Check order";
+            if (buttonText) buttonText.textContent = t("Check order");
         }
     });
 }
@@ -1643,9 +1886,9 @@ function updateProductDetailSelection(productId, variationId = "") {
         if (item.tagName === "A") {
             if (!item.dataset.originalHref) item.dataset.originalHref = item.getAttribute("href") || "checkout.html";
             item.setAttribute("href", inStock ? item.dataset.originalHref : "#");
-            item.textContent = inStock ? "Buy now" : "Unavailable";
+            item.textContent = t(inStock ? "Buy now" : "Unavailable");
         } else {
-            item.innerHTML = inStock ? '<i class="bi bi-bag-plus me-2"></i>Add to cart' : "Unavailable";
+            item.innerHTML = inStock ? `<i class="bi bi-bag-plus me-2"></i>${t("Add to cart")}` : t("Unavailable");
         }
     });
 
@@ -1666,6 +1909,17 @@ function setupProductOptions() {
         if (!button) return;
         updateProductDetailSelection(optionContainer.dataset.productId, button.dataset.productOption);
     });
+}
+
+function rerenderDynamicSections() {
+    renderProductsPage(document.getElementById("productSearch")?.value || "");
+    renderHomeCategories();
+    renderFeaturedProducts();
+    renderCategoryPage();
+    renderCartPage();
+    renderCheckoutSummary();
+    renderPaymentPage().then(() => translatePage()).catch(() => translatePage());
+    setupProductDetailPage();
 }
 
 function getProductIntro(product) {
@@ -1751,7 +2005,7 @@ function setupProductDetailPage() {
     }
     if (productCategory) productCategory.textContent = productCategoryText;
     if (productBadge) {
-        productBadge.textContent = inStock ? productCategoryText : "Out of stock";
+        productBadge.textContent = t(inStock ? productCategoryText : "Out of stock");
         productBadge.classList.toggle("text-bg-dark", inStock);
         productBadge.classList.toggle("text-bg-secondary", !inStock);
     }
@@ -1759,9 +2013,11 @@ function setupProductDetailPage() {
         productStockAlert.classList.toggle("d-none", inStock);
         productStockAlert.innerHTML = inStock
             ? ""
-            : `Currently unavailable. <a class="alert-link" href="${escapeHtml(
-                  getWhatsAppSupportUrl(`Hello HyperKey Store, is ${product.name} available?`),
-              )}" target="_blank" rel="noopener">Contact support</a>.`;
+            : `${t("Currently unavailable.")} <a class="alert-link" href="${escapeHtml(
+                  getWhatsAppSupportUrl(
+                      getProductAvailabilityMessage(product.name),
+                  ),
+              )}" target="_blank" rel="noopener">${t("Contact support")}</a>.`;
     }
     if (productIntro) productIntro.textContent = getProductIntro(product);
     if (productDetailDescription) productDetailDescription.textContent = getProductDetail(product);
@@ -1788,6 +2044,7 @@ function setupProductDetailPage() {
     }
 
     updateProductDetailSelection(activeProductId, selectedVariation?.id || "");
+    translatePage();
 }
 
 function applyTheme(theme) {
@@ -1798,8 +2055,8 @@ function applyTheme(theme) {
     document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
         const isDark = nextTheme === "dark";
         button.innerHTML = `<i class="bi ${isDark ? "bi-sun" : "bi-moon-stars"}"></i>`;
-        button.setAttribute("aria-label", `Switch to ${isDark ? "light" : "dark"} theme`);
-        button.setAttribute("title", `Switch to ${isDark ? "light" : "dark"} theme`);
+        button.setAttribute("aria-label", t(`Switch to ${isDark ? "light" : "dark"} theme`));
+        button.setAttribute("title", t(`Switch to ${isDark ? "light" : "dark"} theme`));
     });
 }
 
@@ -1920,8 +2177,10 @@ document.addEventListener("click", (event) => {
 });
 
 async function initSite() {
+    await loadTranslationData();
     setupOrderStatusLinks();
     setupFooterUtilityLinks();
+    setupLanguageToggle();
     setupThemeToggle();
     setupSupportWhatsApp();
     await loadProductDatabase();
@@ -1939,6 +2198,7 @@ async function initSite() {
     setupOrderStatusPage();
     setupProductDetailPage();
     setupProductOptions();
+    translatePage();
 }
 
 initSite();

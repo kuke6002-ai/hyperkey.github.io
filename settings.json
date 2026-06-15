@@ -4,6 +4,9 @@
             "enabled": true,
             "label": "D17 transfer",
             "instructions": "Send the shown amount by D17, then enter only the authorization number from your receipt.",
+            "recipientName": "",
+            "recipientValue": "97671058",
+            "recipientHint": "",
             "proofLabel": "Authorization number",
             "feePercent": 1,
             "roundUpToDecimal": 1
@@ -12,6 +15,9 @@
             "enabled": true,
             "label": "Flouci transfer",
             "instructions": "Send the shown amount by Flouci, then enter only the transaction ID from your receipt.",
+            "recipientName": "",
+            "recipientValue": "97671058",
+            "recipientHint": "",
             "proofLabel": "Transaction ID",
             "feeUnder100": 1,
             "feeFrom100": 2
