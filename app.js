@@ -634,7 +634,8 @@ function getCategories() {
 }
 
 function getCategoryPage(category) {
-    return category.page || `products.html#${category.id || `category-${slugify(category.name) || "digital"}`}`;
+    const id = category.id || slugify(category.name) || "digital";
+    return category.page || `products.html?category=${encodeURIComponent(id)}`;
 }
 
 function getProductDescription(product) {
@@ -780,6 +781,19 @@ function renderProductsPage(searchTerm = "") {
     const catalogProducts = getCatalogProducts();
 
     const categories = getCategories();
+    const selectedCategoryId = new URLSearchParams(window.location.search).get("category") || "";
+    const selectedCategory = selectedCategoryId
+        ? categories.find((category) => category.id === selectedCategoryId || slugify(category.name) === selectedCategoryId)
+        : null;
+    const visibleCategories = selectedCategory ? [selectedCategory] : categories;
+    const productsHeading = document.getElementById("productsPageHeading");
+    const productsDescription = document.getElementById("productsPageDescription");
+
+    if (selectedCategory) {
+        if (productsHeading) productsHeading.textContent = selectedCategory.label || selectedCategory.name;
+        if (productsDescription) productsDescription.textContent = selectedCategory.description || t("Browse digital products.");
+        document.title = `${selectedCategory.label || selectedCategory.name} | HyperKey Store`;
+    }
 
     categoryGrid.innerHTML = categories.map((category) => {
         const count = catalogProducts.filter(([, product]) => getProductCategory(product) === category.name).length;
@@ -791,7 +805,13 @@ function renderProductsPage(searchTerm = "") {
         return;
     }
 
-    productSections.innerHTML = categories.map((category) => {
+    if (!selectedCategory && !normalizedSearch) {
+        productSections.innerHTML = "";
+        translatePage();
+        return;
+    }
+
+    productSections.innerHTML = visibleCategories.map((category) => {
         const products = catalogProducts.filter(([id, product]) => {
             const haystack = `${id} ${product.name} ${getProductCategory(product)} ${getProductDescription(product)}`.toLowerCase();
             return getProductCategory(product) === category.name && haystack.includes(normalizedSearch);

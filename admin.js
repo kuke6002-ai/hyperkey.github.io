@@ -537,7 +537,7 @@ function addCategory() {
     getCategories().push({
         name,
         id,
-        page: `products.html#${id}`,
+        page: `products.html?category=${id}`,
         label: name,
         icon: "bi-box",
         teaser: "Digital products",
@@ -606,7 +606,7 @@ function validateCategories() {
 
         category.name = name;
         category.id = String(category.id || slugify(name) || `category-${index + 1}`).trim();
-        category.page = String(category.page || `products.html#${category.id}`).trim();
+        category.page = String(category.page || `products.html?category=${category.id}`).trim();
         category.label = String(category.label || name).trim();
         category.icon = String(category.icon || "bi-box").trim();
         category.teaser = String(category.teaser || "").trim();
