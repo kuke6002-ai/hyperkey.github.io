@@ -43,10 +43,22 @@
         }
     ],
     "routes": {
-        "steam-10": { "productId": "steam-wallet", "variationId": "steam-10" },
-        "steam-25": { "productId": "steam-wallet", "variationId": "steam-25" },
-        "steam-50": { "productId": "steam-wallet", "variationId": "steam-50" },
-        "steam-100": { "productId": "steam-wallet", "variationId": "steam-100" }
+        "steam-10": {
+            "productId": "steam-wallet",
+            "variationId": "steam-10"
+        },
+        "steam-25": {
+            "productId": "steam-wallet",
+            "variationId": "steam-25"
+        },
+        "steam-50": {
+            "productId": "steam-wallet",
+            "variationId": "steam-50"
+        },
+        "steam-100": {
+            "productId": "steam-wallet",
+            "variationId": "steam-100"
+        }
     },
     "products": {
         "steam-wallet": {
@@ -75,7 +87,7 @@
                     "label": "0 TND",
                     "name": "StewdwaTND",
                     "price": 8
-                },               
+                },
                 {
                     "id": "steam-50",
                     "label": "50 TND",
@@ -206,8 +218,7 @@
             "icon": "bi-box",
             "art": "roblox-art",
             "description": "Robux and premium credit delivered digitally."
-        }
-        ,
+        },
         "xxxaw": {
             "name": "wsa4d 255785785 TND",
             "category": "Gift card",
