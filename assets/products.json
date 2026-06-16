@@ -1,0 +1,1023 @@
+{
+    "currency": "TND",
+    "categories": [
+        {
+            "name": "Game Top-Ups",
+            "id": "game-top-ups",
+            "page": "game-top-ups.html",
+            "label": "Game Top-Ups",
+            "photo": "assets/hyperlogo.png",
+            "icon": "bi-gem",
+            "teaser": "Diamonds, Robux, coins, V-Bucks",
+            "heading": "Game credits and currencies",
+            "description": "In-game currencies and top-ups with manual payment review and WhatsApp delivery."
+        },
+        {
+            "name": "Game Keys",
+            "id": "game-keys",
+            "page": "game-keys.html",
+            "label": "Game Keys",
+            "photo": "assets/hyperlogo.png",
+            "icon": "bi-joystick",
+            "teaser": "Wallet cards, activation keys, accounts",
+            "heading": "Game keys and wallet codes",
+            "description": "Game keys, wallet codes, and game account products delivered digitally."
+        },
+        {
+            "name": "AI Subscriptions",
+            "id": "ai-subscriptions",
+            "page": "ai-subscriptions.html",
+            "label": "AI Subscriptions",
+            "photo": "assets/hyperlogo.png",
+            "icon": "bi-cpu",
+            "teaser": "ChatGPT and AI tools",
+            "heading": "AI subscriptions and credits",
+            "description": "AI subscriptions and top-ups with manual payment review."
+        },
+        {
+            "name": "Creative & Productivity Apps",
+            "id": "creative-productivity-apps",
+            "page": "creative-productivity-apps.html",
+            "label": "Creative & Productivity Apps",
+            "photo": "assets/hyperlogo.png",
+            "icon": "bi-brush",
+            "teaser": "Design and work apps",
+            "heading": "Creative and productivity apps",
+            "description": "Digital app subscriptions for design, productivity, and creator workflows."
+        },
+        {
+            "name": "Streaming & Entertainment",
+            "id": "streaming-entertainment",
+            "page": "streaming-entertainment.html",
+            "label": "Streaming & Entertainment",
+            "photo": "assets/hyperlogo.png",
+            "icon": "bi-play-btn",
+            "teaser": "Netflix and entertainment",
+            "heading": "Streaming and entertainment",
+            "description": "Streaming and entertainment subscriptions with WhatsApp delivery."
+        },
+        {
+            "name": "Software Licenses",
+            "id": "software-licenses",
+            "page": "software-licenses.html",
+            "label": "Software Licenses",
+            "photo": "assets/hyperlogo.png",
+            "icon": "bi-patch-check",
+            "teaser": "Software keys and licenses",
+            "heading": "Software licenses",
+            "description": "Software activation keys and license products delivered digitally."
+        },
+        {
+            "name": "Social Media Services",
+            "id": "social-media-services",
+            "page": "social-media-services.html",
+            "label": "Social Media Services",
+            "photo": "assets/hyperlogo.png",
+            "icon": "bi-share",
+            "teaser": "Followers, likes, coins, sponsorships",
+            "heading": "Social media services",
+            "description": "Social media growth, coins, and sponsorship services with manual review."
+        }
+    ],
+    "routes": {},
+    "products": {
+        "free-fire-top-ups": {
+            "name": "Garena Free Fire",
+            "category": "Game Top-Ups",
+            "price": 5,
+            "image": "assets/CnP_15062026_210558.png",
+            "icon": "bi-fire",
+            "art": "topup-art",
+            "description": "Choose a Free Fire membership, pass, or diamond package.",
+            "variations": [
+                {
+                    "id": "free-fire-weekly",
+                    "label": "Weekly Membership",
+                    "name": "Weekly Membership",
+                    "price": 8
+                },
+                {
+                    "id": "free-fire-monthly",
+                    "label": "Monthly Membership",
+                    "name": "Monthly Membership",
+                    "price": 40
+                },
+                {
+                    "id": "free-fire-booyah-pass",
+                    "label": "Booyah Pass",
+                    "name": "Booyah Pass",
+                    "price": 12
+                },
+                {
+                    "id": "free-fire-110-diamond",
+                    "label": "110 Diamond",
+                    "name": "110 Diamond",
+                    "price": 5
+                },
+                {
+                    "id": "free-fire-231-diamond",
+                    "label": "231 Diamond",
+                    "name": "231 Diamond",
+                    "price": 8
+                },
+                {
+                    "id": "free-fire-583-diamond",
+                    "label": "583 Diamond",
+                    "name": "583 Diamond",
+                    "price": 20
+                },
+                {
+                    "id": "free-fire-1188-diamond",
+                    "label": "1188 Diamond",
+                    "name": "1188 Diamond",
+                    "price": 40
+                },
+                {
+                    "id": "free-fire-5600-diamond",
+                    "label": "5600 Diamond",
+                    "name": "5600 Diamond",
+                    "price": 199
+                },
+                {
+                    "id": "free-fire-level-up-passes",
+                    "label": "Level-Up Passes",
+                    "name": "Level-Up Passes",
+                    "price": 15
+                }
+            ],
+            "defaultVariation": "free-fire-110-diamond",
+            "customerInput": {
+                "enabled": true,
+                "label": "Player ID"
+            }
+        },
+        "steam-gift-cards": {
+            "name": "Steam Gift Cards",
+            "category": "Game Keys",
+            "price": 20,
+            "image": "assets/CnP_16062026_175739.png",
+            "icon": "bi-steam",
+            "art": "steam-art",
+            "description": "Steam digital gift card codes in USD denominations.",
+            "variations": [
+                {
+                    "id": "steam-gift-5usd",
+                    "label": "5$",
+                    "name": "5 USD Steam Gift Card",
+                    "price": 20
+                },
+                {
+                    "id": "steam-gift-10usd",
+                    "label": "10$",
+                    "name": "10 USD Steam Gift Card",
+                    "price": 40
+                },
+                {
+                    "id": "steam-gift-25usd",
+                    "label": "25$",
+                    "name": "25 USD Steam Gift Card",
+                    "price": 100
+                },
+                {
+                    "id": "steam-gift-50usd",
+                    "label": "50$",
+                    "name": "50 USD Steam Gift Card",
+                    "price": 200
+                },
+                {
+                    "id": "steam-gift-100usd",
+                    "label": "100$",
+                    "name": "100 USD Steam Gift Card",
+                    "price": 400
+                }
+            ],
+            "defaultVariation": "steam-gift-5usd"
+        },
+        "xbox-gift-cards": {
+            "name": "Xbox Gift Cards",
+            "category": "Game Keys",
+            "price": 20,
+            "image": "assets/CnP_16062026_180036.png",
+            "icon": "bi-xbox",
+            "art": "steam-art",
+            "description": "Xbox digital gift card codes in USD denominations.",
+            "variations": [
+                {
+                    "id": "xbox-gift-5usd",
+                    "label": "5$",
+                    "name": "5 USD Xbox Gift Card",
+                    "price": 20
+                },
+                {
+                    "id": "xbox-gift-10usd",
+                    "label": "10$",
+                    "name": "10 USD Xbox Gift Card",
+                    "price": 40
+                },
+                {
+                    "id": "xbox-gift-25usd",
+                    "label": "25$",
+                    "name": "25 USD Xbox Gift Card",
+                    "price": 100
+                },
+                {
+                    "id": "xbox-gift-50usd",
+                    "label": "50$",
+                    "name": "50 USD Xbox Gift Card",
+                    "price": 200
+                },
+                {
+                    "id": "xbox-gift-100usd",
+                    "label": "100$",
+                    "name": "100 USD Xbox Gift Card",
+                    "price": 400
+                }
+            ],
+            "defaultVariation": "xbox-gift-5usd"
+        },
+        "windows-11-pro-lifetime": {
+            "name": "Windows 11 Pro Lifetime Key",
+            "category": "Software Licenses",
+            "price": 30,
+            "image": "assets/CnP_16062026_180926.png",
+            "description": "Windows 11 Pro lifetime activation key.",
+            "variations": [
+                {
+                    "id": "windows-11-pro-lifetime",
+                    "label": "Windows 11 Pro Lifetime Key",
+                    "name": "Windows 11 Pro Lifetime Key",
+                    "price": 30
+                }
+            ],
+            "defaultVariation": "windows-11-pro-lifetime"
+        },
+        "chatgpt-subscriptions": {
+            "name": "ChatGPT",
+            "category": "AI Subscriptions",
+            "price": 20,
+            "image": "assets/CnP_15062026_205811.png",
+            "icon": "bi-stars",
+            "art": "topup-art",
+            "description": "ChatGPT Plus subscription plans.",
+            "variations": [
+                {
+                    "id": "chatgpt-plus-partage-30j",
+                    "label": "Plus Partage (30j)",
+                    "name": "Plus Partage (30j)",
+                    "price": 35
+                },
+                {
+                    "id": "chatgpt-plus-prive-30j",
+                    "label": "Plus Prive (30j)",
+                    "name": "Plus Prive (30j)",
+                    "price": 80
+                }
+            ],
+            "defaultVariation": "chatgpt-plus-partage-30j",
+            "customerInput": {
+                "enabled": true,
+                "label": "Email Address"
+            }
+        },
+        "gemini-ai": {
+            "name": "Gemini AI",
+            "category": "AI Subscriptions",
+            "price": 35,
+            "image": "assets/CnP_16062026_170042.png",
+            "icon": "bi-stars",
+            "art": "topup-art",
+            "description": "Gemini AI subscription plans.",
+            "variations": [
+                {
+                    "id": "gemini-pro-prive-30j",
+                    "label": "Pro Prive (30j)",
+                    "name": "Pro Prive (30j)",
+                    "price": 35
+                },
+                {
+                    "id": "gemini-ultra-partage-30j",
+                    "label": "Ultra Partage (30j)",
+                    "name": "Ultra Partage (30j)",
+                    "price": 40
+                },
+                {
+                    "id": "gemini-ultra-prive-30j",
+                    "label": "Ultra Prive (30j)",
+                    "name": "Ultra Prive (30j)",
+                    "price": 250
+                }
+            ],
+            "defaultVariation": "gemini-pro-prive-30j",
+            "customerInput": {
+                "enabled": true,
+                "label": "Email Address"
+            }
+        },
+        "perplexity-ai": {
+            "name": "Perplexity AI",
+            "category": "AI Subscriptions",
+            "price": 100,
+            "image": "assets/CnP_16062026_172016.png",
+            "icon": "bi-stars",
+            "art": "topup-art",
+            "description": "Perplexity AI subscription plans.",
+            "variations": [
+                {
+                    "id": "perplexity-pro-partage-90j",
+                    "label": "Pro Partage (90j)",
+                    "name": "Pro Partage (90j)",
+                    "price": 100
+                },
+                {
+                    "id": "perplexity-pro-privee-90j",
+                    "label": "Pro Privee (90j)",
+                    "name": "Pro Privee (90j)",
+                    "price": 200
+                }
+            ],
+            "defaultVariation": "perplexity-pro-partage-90j",
+            "customerInput": {
+                "enabled": true,
+                "label": "Email Address"
+            }
+        },
+        "claude": {
+            "name": "Claude",
+            "category": "AI Subscriptions",
+            "price": 40,
+            "image": "assets/CnP_16062026_172815.png",
+            "icon": "bi-stars",
+            "art": "topup-art",
+            "description": "Claude subscription plans.",
+            "variations": [
+                {
+                    "id": "claude-pro-partage-30j",
+                    "label": "Pro Partage (30j)",
+                    "name": "Pro Partage (30j)",
+                    "price": 40
+                },
+                {
+                    "id": "claude-pro-privee-30j",
+                    "label": "Pro Privee (30j)",
+                    "name": "Pro Privee (30j)",
+                    "price": 80
+                }
+            ],
+            "defaultVariation": "claude-pro-partage-30j",
+            "customerInput": {
+                "enabled": true,
+                "label": "Email Address"
+            }
+        },
+        "canva-pro": {
+            "name": "Canva",
+            "category": "Creative & Productivity Apps",
+            "price": 20,
+            "image": "assets/CnP_15062026_210257.png",
+            "icon": "bi-stars",
+            "art": "topup-art",
+            "description": "Canva subscription plans.",
+            "variations": [
+                {
+                    "id": "canva-pro-prive-30j",
+                    "label": "Canva Pro Prive (30j)",
+                    "name": "Canva Pro Prive (30j)",
+                    "price": 20
+                },
+                {
+                    "id": "canva-pro-team-30j",
+                    "label": "Canva Pro Team (30j)",
+                    "name": "Canva Pro Team (30j)",
+                    "price": 30
+                }
+            ],
+            "defaultVariation": "canva-pro-prive-30j",
+            "customerInput": {
+                "enabled": true,
+                "label": "Email Address"
+            }
+        },
+        "capcut": {
+            "name": "CapCut",
+            "category": "Creative & Productivity Apps",
+            "price": 40,
+            "image": "assets/CnP_16062026_172432.png",
+            "icon": "bi-stars",
+            "art": "topup-art",
+            "description": "CapCut subscription plans.",
+            "variations": [
+                {
+                    "id": "capcut-pro-teams-30j",
+                    "label": "Pro Teams (30j)",
+                    "name": "Pro Teams (30j)",
+                    "price": 40
+                },
+                {
+                    "id": "capcut-pro-privee-30j",
+                    "label": "Pro Privee (30j)",
+                    "name": "Pro Privee (30j)",
+                    "price": 50
+                }
+            ],
+            "defaultVariation": "capcut-pro-teams-30j"
+        },
+        "cursor": {
+            "name": "CURSOR",
+            "category": "Creative & Productivity Apps",
+            "price": 80,
+            "image": "assets/CnP_16062026_172525.png",
+            "icon": "bi-stars",
+            "art": "topup-art",
+            "description": "CURSOR subscription plans.",
+            "variations": [
+                {
+                    "id": "cursor-pro-prive-30j",
+                    "label": "Pro Prive (30j)",
+                    "name": "Pro Prive (30j)",
+                    "price": 80
+                },
+                {
+                    "id": "cursor-pro-plus-prive-30j",
+                    "label": "Pro+ Prive (30j)",
+                    "name": "Pro+ Prive (30j)",
+                    "price": 200
+                },
+                {
+                    "id": "cursor-ultra-prive-30j",
+                    "label": "Ultra Prive (30j)",
+                    "name": "Ultra Prive (30j)",
+                    "price": 600
+                }
+            ],
+            "defaultVariation": "cursor-pro-prive-30j"
+        },
+        "figma": {
+            "name": "Figma",
+            "category": "Creative & Productivity Apps",
+            "price": 35,
+            "image": "assets/CnP_16062026_172916.png",
+            "icon": "bi-stars",
+            "art": "topup-art",
+            "description": "Figma subscription plans.",
+            "variations": [
+                {
+                    "id": "figma-pro-partage-30j",
+                    "label": "Pro Partage (30j)",
+                    "name": "Pro Partage (30j)",
+                    "price": 35
+                }
+            ],
+            "defaultVariation": "figma-pro-partage-30j"
+        },
+        "quillbot": {
+            "name": "QuillBot",
+            "category": "Creative & Productivity Apps",
+            "price": 35,
+            "image": "assets/CnP_16062026_173128.png",
+            "icon": "bi-stars",
+            "art": "topup-art",
+            "description": "QuillBot subscription plans.",
+            "variations": [
+                {
+                    "id": "quillbot-pro-partage-30j",
+                    "label": "Pro Partage (30j)",
+                    "name": "Pro Partage (30j)",
+                    "price": 35
+                },
+                {
+                    "id": "quillbot-pro-privee-30j",
+                    "label": "Pro Privee (30j)",
+                    "name": "Pro Privee (30j)",
+                    "price": 50
+                }
+            ],
+            "defaultVariation": "quillbot-pro-partage-30j"
+        },
+        "netflix": {
+            "name": "Netflix",
+            "category": "Streaming & Entertainment",
+            "price": 25,
+            "image": "assets/CnP_16062026_165120.png",
+            "description": "Netflix subscription plans.",
+            "variations": [
+                {
+                    "id": "netflix-partage-30j",
+                    "label": "Partage (30j)",
+                    "name": "Partage (30j)",
+                    "price": 25
+                },
+                {
+                    "id": "netflix-prive-30j",
+                    "label": "Prive (30j)",
+                    "name": "Prive (30j)",
+                    "price": 35
+                }
+            ],
+            "defaultVariation": "netflix-partage-30j"
+        },
+        "crunchyroll": {
+            "name": "CrunchyRoll",
+            "category": "Streaming & Entertainment",
+            "price": 20,
+            "image": "assets/CnP_16062026_171447.png",
+            "icon": "bi-film",
+            "art": "topup-art",
+            "description": "CrunchyRoll subscription plans.",
+            "variations": [
+                {
+                    "id": "crunchyroll-mega-fan-profile-priee-30j-20",
+                    "label": "Mega Fan Profile Priee (30j)",
+                    "name": "Mega Fan Profile Priee (30j)",
+                    "price": 20
+                },
+                {
+                    "id": "crunchyroll-mega-fan-profile-priee-30j-40",
+                    "label": "Mega Fan Profile Priee (30j)",
+                    "name": "Mega Fan Profile Priee (30j)",
+                    "price": 40
+                }
+            ],
+            "defaultVariation": "crunchyroll-mega-fan-profile-priee-30j-20"
+        },
+        "tiktok-coins": {
+            "name": "TikTok",
+            "category": "Social Media Services",
+            "price": 2,
+            "image": "assets/CnP_16062026_170042.png",
+            "icon": "bi-share",
+            "art": "topup-art",
+            "description": "TikTok coin packages.",
+            "variations": [
+                {
+                    "id": "tiktok-30-coins",
+                    "label": "TikTok 30 Coins",
+                    "name": "TikTok 30 Coins",
+                    "price": 2
+                },
+                {
+                    "id": "tiktok-350-coins",
+                    "label": "TikTok 350 Coins",
+                    "name": "TikTok 350 Coins",
+                    "price": 16
+                },
+                {
+                    "id": "tiktok-700-coins",
+                    "label": "TikTok 700 Coins",
+                    "name": "TikTok 700 Coins",
+                    "price": 30
+                },
+                {
+                    "id": "tiktok-1400-coins",
+                    "label": "TikTok 1400 Coins",
+                    "name": "TikTok 1400 Coins",
+                    "price": 60
+                },
+                {
+                    "id": "tiktok-3500-coins",
+                    "label": "TikTok 3500 Coins",
+                    "name": "TikTok 3500 Coins",
+                    "price": 150
+                },
+                {
+                    "id": "tiktok-7000-coins",
+                    "label": "TikTok 7000 Coins",
+                    "name": "TikTok 7000 Coins",
+                    "price": 300
+                }
+            ],
+            "defaultVariation": "tiktok-30-coins",
+            "customerInput": {
+                "enabled": true,
+                "label": "TikTok Username"
+            }
+        },
+        "bloodstrike": {
+            "name": "BloodStrike",
+            "category": "Game Top-Ups",
+            "price": 3,
+            "image": "assets/CnP_16062026_164243.png",
+            "icon": "bi-gem",
+            "art": "topup-art",
+            "description": "BloodStrike in-game gold packages and passes.",
+            "variations": [
+                {
+                    "id": "bloodstrike-50-golds",
+                    "label": "50 Golds",
+                    "name": "50 Golds",
+                    "price": 3
+                },
+                {
+                    "id": "bloodstrike-100-golds",
+                    "label": "100 Golds",
+                    "name": "100 Golds",
+                    "price": 5
+                },
+                {
+                    "id": "bloodstrike-300-golds",
+                    "label": "300 Golds",
+                    "name": "300 Golds",
+                    "price": 12
+                },
+                {
+                    "id": "bloodstrike-500-golds",
+                    "label": "500 Golds",
+                    "name": "500 Golds",
+                    "price": 20
+                },
+                {
+                    "id": "bloodstrike-1000-golds",
+                    "label": "1000 Golds",
+                    "name": "1000 Golds",
+                    "price": 40
+                },
+                {
+                    "id": "bloodstrike-2000-golds",
+                    "label": "2000 Golds",
+                    "name": "2000 Golds",
+                    "price": 79
+                },
+                {
+                    "id": "bloodstrike-5000-golds",
+                    "label": "5000 Golds",
+                    "name": "5000 Golds",
+                    "price": 199
+                },
+                {
+                    "id": "bloodstrike-level-up-pass",
+                    "label": "Level-Up Pass",
+                    "name": "Level-Up Pass",
+                    "price": 8
+                },
+                {
+                    "id": "bloodstrike-strike-pass-elite",
+                    "label": "Strike Pass Elite",
+                    "name": "Strike Pass Elite",
+                    "price": 16
+                },
+                {
+                    "id": "bloodstrike-strike-pass-premium",
+                    "label": "Strike Pass Premium",
+                    "name": "Strike Pass Premium",
+                    "price": 36
+                }
+            ],
+            "defaultVariation": "bloodstrike-100-golds",
+            "customerInput": {
+                "enabled": true,
+                "label": "Player ID"
+            }
+        },
+        "roblox": {
+            "name": "Roblox",
+            "category": "Game Top-Ups",
+            "price": 20,
+            "image": "assets/CnP_16062026_164525.png",
+            "icon": "bi-gem",
+            "art": "topup-art",
+            "description": "Roblox Robux packages.",
+            "variations": [
+                {
+                    "id": "roblox-500-robux",
+                    "label": "500 Robux",
+                    "name": "500 Robux",
+                    "price": 20
+                },
+                {
+                    "id": "roblox-1000-robux",
+                    "label": "1000 Robux",
+                    "name": "1000 Robux",
+                    "price": 40
+                },
+                {
+                    "id": "roblox-2000-robux",
+                    "label": "2000 Robux",
+                    "name": "2000 Robux",
+                    "price": 80
+                },
+                {
+                    "id": "roblox-5250-robux",
+                    "label": "5250 Robux",
+                    "name": "5250 Robux",
+                    "price": 199
+                }
+            ],
+            "defaultVariation": "roblox-1000-robux"
+        },
+        "efootball-mobile": {
+            "name": "eFooball Mobile",
+            "category": "Game Top-Ups",
+            "price": 5,
+            "image": "assets/CnP_16062026_164741.png",
+            "icon": "bi-gem",
+            "art": "topup-art",
+            "description": "eFootball Mobile coin packages.",
+            "variations": [
+                {
+                    "id": "efootball-130-coins",
+                    "label": "130 eFootball Coins",
+                    "name": "130 eFootball Coins",
+                    "price": 5
+                },
+                {
+                    "id": "efootball-300-coins",
+                    "label": "300 eFootball Coins",
+                    "name": "300 eFootball Coins",
+                    "price": 12
+                },
+                {
+                    "id": "efootball-550-coins",
+                    "label": "550 eFootball Coins",
+                    "name": "550 eFootball Coins",
+                    "price": 20
+                },
+                {
+                    "id": "efootball-750-coins",
+                    "label": "750 eFootball Coins",
+                    "name": "750 eFootball Coins",
+                    "price": 28
+                },
+                {
+                    "id": "efootball-1040-coins",
+                    "label": "1040 eFootball Coins",
+                    "name": "1040 eFootball Coins",
+                    "price": 36
+                },
+                {
+                    "id": "efootball-2130-coins",
+                    "label": "2130 eFootball Coins",
+                    "name": "2130 eFootball Coins",
+                    "price": 75
+                },
+                {
+                    "id": "efootball-3250-coins",
+                    "label": "3250 eFootball Coins",
+                    "name": "3250 eFootball Coins",
+                    "price": 110
+                },
+                {
+                    "id": "efootball-special-260-coins",
+                    "label": "Special Offer: 260 eFootball Coins",
+                    "name": "Special Offer: 260 eFootball Coins",
+                    "price": 5
+                },
+                {
+                    "id": "efootball-special-840-coins",
+                    "label": "Special Offer: 840 eFootball Coins",
+                    "name": "Special Offer: 840 eFootball Coins",
+                    "price": 20
+                },
+                {
+                    "id": "efootball-special-1630-coins",
+                    "label": "Special Offer: 1630 eFootball Coins",
+                    "name": "Special Offer: 1630 eFootball Coins",
+                    "price": 36
+                }
+            ],
+            "defaultVariation": "efootball-300-coins"
+        },
+        "call-of-duty-mobile": {
+            "name": "CALL OF DUTY MOBILE",
+            "category": "Game Top-Ups",
+            "price": 5,
+            "image": "assets/CnP_16062026_173646.png",
+            "icon": "bi-gem",
+            "art": "topup-art",
+            "description": "Call Of Duty Mobile CP packages.",
+            "variations": [
+                {
+                    "id": "codm-80-cp",
+                    "label": "80 CP",
+                    "name": "80 CP",
+                    "price": 5
+                },
+                {
+                    "id": "codm-440-cp",
+                    "label": "440 CP",
+                    "name": "440 CP",
+                    "price": 20
+                },
+                {
+                    "id": "codm-880-cp",
+                    "label": "880 CP",
+                    "name": "880 CP",
+                    "price": 40
+                },
+                {
+                    "id": "codm-2400-cp",
+                    "label": "2400 CP",
+                    "name": "2400 CP",
+                    "price": 100
+                },
+                {
+                    "id": "codm-5000-cp",
+                    "label": "5000 CP",
+                    "name": "5000 CP",
+                    "price": 200
+                },
+                {
+                    "id": "codm-10800-cp",
+                    "label": "10800 CP",
+                    "name": "10800 CP",
+                    "price": 400
+                }
+            ],
+            "defaultVariation": "codm-80-cp"
+        },
+        "mobile-legends-bb": {
+            "name": "MOBILE LEGENDS BB",
+            "category": "Game Top-Ups",
+            "price": 5,
+            "image": "assets/CnP_16062026_173848.png",
+            "icon": "bi-gem",
+            "art": "topup-art",
+            "description": "Mobile Legends BB diamond packages.",
+            "variations": [
+                {
+                    "id": "mlbb-38-diamonds-4-bonus",
+                    "label": "38 Diamonds + 4 Bonus",
+                    "name": "38 Diamonds + 4 Bonus",
+                    "price": 5
+                },
+                {
+                    "id": "mlbb-127-diamonds-13-bonus",
+                    "label": "127 Diamonds + 13 Bonus",
+                    "name": "127 Diamonds + 13 Bonus",
+                    "price": 12
+                },
+                {
+                    "id": "mlbb-317-diamonds-38-bonus",
+                    "label": "317 Diamonds + 38 Bonus",
+                    "name": "317 Diamonds + 38 Bonus",
+                    "price": 30
+                },
+                {
+                    "id": "mlbb-633-diamonds-83-bonus",
+                    "label": "633 Diamonds + 83 Bonus",
+                    "name": "633 Diamonds + 83 Bonus",
+                    "price": 55
+                },
+                {
+                    "id": "mlbb-1252-diamonds-194-bonus",
+                    "label": "1252 Diamonds + 194 Bonus",
+                    "name": "1252 Diamonds + 194 Bonus",
+                    "price": 100
+                }
+            ],
+            "defaultVariation": "mlbb-38-diamonds-4-bonus"
+        },
+        "pubg-mobile": {
+            "name": "PUBG MOBILE",
+            "category": "Game Top-Ups",
+            "price": 4,
+            "image": "assets/CnP_16062026_174232.png",
+            "icon": "bi-gem",
+            "art": "topup-art",
+            "description": "PUBG Mobile UC packages.",
+            "variations": [
+                {
+                    "id": "pubg-mobile-60-uc",
+                    "label": "60 UC",
+                    "name": "60 UC",
+                    "price": 4
+                },
+                {
+                    "id": "pubg-mobile-300-uc",
+                    "label": "300 UC",
+                    "name": "300 UC",
+                    "price": 20
+                },
+                {
+                    "id": "pubg-mobile-600-uc",
+                    "label": "600 UC",
+                    "name": "600 UC",
+                    "price": 40
+                },
+                {
+                    "id": "pubg-mobile-1500-uc",
+                    "label": "1500 UC",
+                    "name": "1500 UC",
+                    "price": 90
+                },
+                {
+                    "id": "pubg-mobile-3000-uc",
+                    "label": "3000 UC",
+                    "name": "3000 UC",
+                    "price": 180
+                },
+                {
+                    "id": "pubg-mobile-6000-uc",
+                    "label": "6000 UC",
+                    "name": "6000 UC",
+                    "price": 370
+                }
+            ],
+            "defaultVariation": "pubg-mobile-60-uc"
+        },
+        "brawl-stars": {
+            "name": "BRAWL STARS",
+            "category": "Game Top-Ups",
+            "price": 4,
+            "image": "assets/CnP_16062026_174634.png",
+            "icon": "bi-gem",
+            "art": "topup-art",
+            "description": "Brawl Stars gem packages and passes.",
+            "variations": [
+                {
+                    "id": "brawl-stars-30-gems",
+                    "label": "30 GEMS",
+                    "name": "30 GEMS",
+                    "price": 4
+                },
+                {
+                    "id": "brawl-stars-80-gems",
+                    "label": "80 GEMS",
+                    "name": "80 GEMS",
+                    "price": 20
+                },
+                {
+                    "id": "brawl-stars-170-gems",
+                    "label": "170 GEMS",
+                    "name": "170 GEMS",
+                    "price": 40
+                },
+                {
+                    "id": "brawl-stars-360-gems",
+                    "label": "360 GEMS",
+                    "name": "360 GEMS",
+                    "price": 80
+                },
+                {
+                    "id": "brawl-stars-950-gems",
+                    "label": "950 GEMS",
+                    "name": "950 GEMS",
+                    "price": 200
+                },
+                {
+                    "id": "brawl-stars-2000-gems",
+                    "label": "2000 GEMS",
+                    "name": "2000 GEMS",
+                    "price": 400
+                },
+                {
+                    "id": "brawl-stars-brawl-pass",
+                    "label": "BRAWL PASS",
+                    "name": "BRAWL PASS",
+                    "price": 25
+                },
+                {
+                    "id": "brawl-stars-brawl-pass-plus",
+                    "label": "BRAWL PASS PLUS",
+                    "name": "BRAWL PASS PLUS",
+                    "price": 40
+                }
+            ],
+            "defaultVariation": "brawl-stars-30-gems"
+        },
+        "clash-royal": {
+            "name": "CLASH ROYAL",
+            "category": "Game Top-Ups",
+            "price": 4,
+            "image": "assets/CnP_16062026_170938.png",
+            "description": "Clash Royal gem packages and pass.",
+            "variations": [
+                {
+                    "id": "clash-royal-80-gems",
+                    "label": "80 GEMS",
+                    "name": "80 GEMS",
+                    "price": 4
+                },
+                {
+                    "id": "clash-royal-500-gems",
+                    "label": "500 GEMS",
+                    "name": "500 GEMS",
+                    "price": 20
+                },
+                {
+                    "id": "clash-royal-1200-gems",
+                    "label": "1200 GEMS",
+                    "name": "1200 GEMS",
+                    "price": 40
+                },
+                {
+                    "id": "clash-royal-2500-gems",
+                    "label": "2500 GEMS",
+                    "name": "2500 GEMS",
+                    "price": 80
+                },
+                {
+                    "id": "clash-royal-6500-gems",
+                    "label": "6500 GEMS",
+                    "name": "6500 GEMS",
+                    "price": 200
+                },
+                {
+                    "id": "clash-royal-diamond-pass",
+                    "label": "Diamond Pass",
+                    "name": "Diamond Pass",
+                    "price": 40
+                }
+            ],
+            "defaultVariation": "clash-royal-80-gems"
+        }
+    }
+}
