@@ -2039,3 +2039,186 @@ a {
         display: none;
     }
 }
+/* ==========================================================
+   Mobile overflow / viewport safety patch
+   Add this at the END of styles.css.
+   Also make sure every HTML page has:
+   <meta name="viewport" content="width=device-width, initial-scale=1">
+   ========================================================== */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+html {
+    overflow-x: hidden;
+}
+
+body {
+    overflow-x: clip;
+}
+
+@supports not (overflow-x: clip) {
+    body {
+        overflow-x: hidden;
+    }
+}
+
+img,
+svg,
+video,
+canvas,
+iframe {
+    max-width: 100%;
+}
+
+.container,
+.container-fluid,
+.row,
+[class^="col-"],
+[class*=" col-"] {
+    min-width: 0;
+}
+
+.navbar,
+.navbar .container,
+.navbar .container-fluid,
+.navbar-brand,
+.navbar-collapse,
+.navbar-nav,
+.home-hero,
+.hero-console,
+.hero-console-top,
+.home-trust-strip,
+.category-card,
+.product-card,
+.service-card,
+.content-panel,
+.summary-card,
+.deal-panel,
+.cart-item,
+.summary-line,
+.payment-recipient-card,
+.delivery-code-row,
+.order-delivery-box,
+.customer-input-form,
+.admin-product-item,
+.admin-item-meta,
+.admin-editor-header,
+.admin-header-actions,
+.admin-save-bar {
+    max-width: 100%;
+    min-width: 0;
+}
+
+.navbar-brand,
+.hero-console-top,
+.summary-line,
+.payment-recipient-card,
+.delivery-code-row,
+.admin-product-item,
+.admin-editor-header,
+.admin-header-actions,
+.admin-save-bar {
+    flex-wrap: wrap;
+}
+
+.navbar-brand span,
+.navbar-brand strong,
+.home-trust-strip span,
+.category-card span,
+.category-card small,
+.product-title-link,
+.price,
+.product-price,
+.summary-line span,
+.summary-line strong,
+.payment-recipient-card strong,
+.payment-recipient-card code,
+.delivery-code-row code,
+.admin-product-item strong,
+.admin-product-item small,
+.admin-item-meta {
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.summary-line {
+    gap: 10px;
+}
+
+.summary-line span {
+    flex: 1 1 180px;
+}
+
+.summary-line strong {
+    flex: 0 1 auto;
+}
+
+.payment-recipient-card > *,
+.delivery-code-row > *,
+.cart-item > * {
+    min-width: 0;
+}
+
+.payment-recipient-card code {
+    max-width: 100%;
+    white-space: normal;
+}
+
+.home-trust-strip span {
+    min-width: 0;
+    text-align: center;
+}
+
+@media (max-width: 575.98px) {
+    .home-trust-strip span {
+        flex: 1 1 100%;
+    }
+
+    .hero-console-top {
+        align-items: flex-start;
+    }
+
+    .hero-logo-mark {
+        height: 52px;
+        width: 52px;
+    }
+
+    .product-showcase {
+        padding: 22px;
+    }
+
+    .product-showcase i {
+        font-size: clamp(4rem, 22vw, 7rem);
+    }
+
+    .deal-panel,
+    .service-card,
+    .content-panel,
+    .summary-card {
+        padding: 22px;
+    }
+}
+
+@media (max-width: 380px) {
+    .language-toggle {
+        min-width: 52px;
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+
+    .theme-toggle {
+        width: 38px;
+    }
+}
+
