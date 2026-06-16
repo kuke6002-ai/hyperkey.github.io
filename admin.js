@@ -59,6 +59,7 @@ const state = {
     selectedId: "",
     originalId: "",
     draftVariations: [],
+    draftCustomerInputs: [],
     previewImages: {},
     orders: [],
     orderFilters: {
@@ -74,6 +75,37 @@ function slugify(value) {
         .trim()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "");
+}
+
+function renderCustomerInputs() {
+    const container = document.getElementById("productCustomerInputs");
+    if (!container) return;
+    container.innerHTML = state.draftCustomerInputs.length
+        ? state.draftCustomerInputs
+              .map((label, index) => `
+                <div class="d-flex gap-2" data-customer-input-index="${index}">
+                    <input class="form-control form-control-sm" data-customer-input-field="label" value="${escapeHtml(label)}" />
+                    <button class="btn btn-outline-danger btn-sm" type="button" data-remove-customer-input="${index}">Remove</button>
+                </div>
+            `)
+              .join("")
+        : `<div class="text-secondary small">No customer inputs added.</div>`;
+}
+
+function addCustomerInput(label) {
+    const value = String(label || document.getElementById("productCustomerNewInput")?.value || "").trim();
+    if (!value) return;
+    state.draftCustomerInputs.push(value.slice(0, 80));
+    const inputEl = document.getElementById("productCustomerNewInput");
+    if (inputEl) inputEl.value = "";
+    renderCustomerInputs();
+    renderPreview();
+}
+
+function removeCustomerInput(index) {
+    state.draftCustomerInputs.splice(index, 1);
+    renderCustomerInputs();
+    renderPreview();
 }
 
 function safeAssetFileName(fileName) {
@@ -162,11 +194,45 @@ function showToast(message) {
 }
 
 function setDatabase(database) {
+    // migrate older product/category shapes to include `photo` / `image` fields
+    function migrateDatabase(db) {
+        if (!db) return db;
+        if (Array.isArray(db.categories)) {
+            db.categories.forEach((cat) => {
+                if (!cat.photo) {
+                    if (cat.icon && typeof cat.icon === "string") {
+                        // keep icon for backward compatibility but set a placeholder photo path
+                        cat.photo = "assets/hyperlogo.png";
+                    } else {
+                        cat.photo = "assets/hyperlogo.png";
+                    }
+                }
+            });
+        }
+
+        if (db.products && typeof db.products === "object") {
+            Object.values(db.products).forEach((product) => {
+                if (!product) return;
+                if (!product.image) {
+                    if (product.icon && typeof product.icon === "string") {
+                        // no direct mapping from icon -> image file, use default placeholder
+                        product.image = "assets/hyperlogo.png";
+                    } else {
+                        product.image = "assets/hyperlogo.png";
+                    }
+                }
+            });
+        }
+
+        return db;
+    }
+
+    const migrated = migrateDatabase(clone(database));
     state.database = {
-        currency: database.currency || "TND",
-        categories: Array.isArray(database.categories) ? database.categories : [],
-        routes: database.routes && typeof database.routes === "object" ? database.routes : {},
-        products: database.products && typeof database.products === "object" ? database.products : {},
+        currency: migrated.currency || "TND",
+        categories: Array.isArray(migrated.categories) ? migrated.categories : [],
+        routes: migrated.routes && typeof migrated.routes === "object" ? migrated.routes : {},
+        products: migrated.products && typeof migrated.products === "object" ? migrated.products : {},
     };
 
     const firstProduct = Object.keys(state.database.products)[0] || "";
@@ -205,7 +271,6 @@ async function loadSettings() {
 function renderAll() {
     renderCategoryEditor();
     renderCategoryOptions();
-    renderArtOptions();
     renderProductList();
     fillForm();
     updateJsonOutput();
@@ -241,8 +306,8 @@ function renderCategoryEditor() {
                                 <input class="form-control form-control-sm" data-category-field="page" value="${escapeHtml(category.page || "")}" />
                             </div>
                             <div class="col-5">
-                                <label class="form-label">Icon</label>
-                                <input class="form-control form-control-sm" data-category-field="icon" value="${escapeHtml(category.icon || "bi-box")}" />
+                                <label class="form-label">Photo path</label>
+                                <input class="form-control form-control-sm" data-category-field="photo" value="${escapeHtml(category.photo || "assets/hyperlogo.png")}" />
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Teaser</label>
@@ -278,14 +343,7 @@ function renderCategoryOptions() {
     categorySelect.value = currentValue || categorySelect.options[0]?.value || "";
 }
 
-function renderArtOptions() {
-    const artSelect = document.getElementById("productArt");
-    if (!artSelect) return;
-
-    const currentValue = artSelect.value;
-    artSelect.innerHTML = ART_STYLES.map((art) => `<option value="${escapeHtml(art)}">${escapeHtml(art)}</option>`).join("");
-    artSelect.value = currentValue || ART_STYLES[0];
-}
+// art options removed from admin editor
 
 function renderProductList() {
     const list = document.getElementById("productList");
@@ -340,29 +398,30 @@ function fillForm() {
     const productName = document.getElementById("productName");
     const productCategory = document.getElementById("productCategory");
     const productPrice = document.getElementById("productPrice");
-    const productIcon = document.getElementById("productIcon");
-    const productArt = document.getElementById("productArt");
     const productImage = document.getElementById("productImage");
     const productPhotoFile = document.getElementById("productPhotoFile");
     const productDescription = document.getElementById("productDescription");
     const productVisible = document.getElementById("productVisible");
     const productInStock = document.getElementById("productInStock");
     const productCustomerInputEnabled = document.getElementById("productCustomerInputEnabled");
-    const productCustomerInputLabel = document.getElementById("productCustomerInputLabel");
 
     if (productId) productId.value = state.selectedId || "";
     if (productName) productName.value = product?.name || "";
     if (productCategory) productCategory.value = product?.category || productCategory.options[0]?.value || "";
     if (productPrice) productPrice.value = Number(product?.price ?? 0);
-    if (productIcon) productIcon.value = product?.icon || "bi-box";
-    if (productArt) productArt.value = product?.art || "gamekey-art";
-    if (productImage) productImage.value = product?.image || "";
+    if (productImage) productImage.value = product?.image || "assets/hyperlogo.png";
     if (productPhotoFile) productPhotoFile.value = "";
     if (productDescription) productDescription.value = product?.description || "";
     if (productVisible) productVisible.checked = product?.visible !== false;
     if (productInStock) productInStock.checked = product?.inStock !== false;
     if (productCustomerInputEnabled) productCustomerInputEnabled.checked = product?.customerInput?.enabled === true;
-    if (productCustomerInputLabel) productCustomerInputLabel.value = product?.customerInput?.label || "Player ID";
+
+    state.draftCustomerInputs = [];
+    if (product?.customerInput) {
+        if (Array.isArray(product.customerInput.labels)) state.draftCustomerInputs = clone(product.customerInput.labels);
+        else if (product.customerInput.label) state.draftCustomerInputs = [product.customerInput.label];
+    }
+    renderCustomerInputs();
 
     renderVariations();
     renderPreview();
@@ -415,15 +474,12 @@ function readFormProduct() {
     const name = document.getElementById("productName").value.trim();
     const category = document.getElementById("productCategory").value;
     const price = Number(document.getElementById("productPrice").value || 0);
-    const icon = document.getElementById("productIcon").value.trim() || "bi-box";
-    const art = document.getElementById("productArt").value || "gamekey-art";
     const image = document.getElementById("productImage").value.trim();
     const description = document.getElementById("productDescription").value.trim();
     const visible = document.getElementById("productVisible").checked;
     const inStock = document.getElementById("productInStock")?.checked !== false;
     const defaultVariation = document.getElementById("defaultVariation").value;
     const customerInputEnabled = document.getElementById("productCustomerInputEnabled")?.checked || false;
-    const customerInputLabel = (document.getElementById("productCustomerInputLabel")?.value.trim() || "Player ID").slice(0, 80);
 
     if (!id) throw new Error("Product ID is required");
     if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error("Product ID must use lowercase letters, numbers, and hyphens");
@@ -436,18 +492,19 @@ function readFormProduct() {
         name,
         category,
         price,
-        icon,
-        art,
     };
     if (image) product.image = image;
+    else if (!state.originalId) product.image = "assets/hyperlogo.png";
     if (description) product.description = description;
     if (!visible) product.visible = false;
     if (!inStock) product.inStock = false;
     if (customerInputEnabled) {
-        product.customerInput = {
-            enabled: true,
-            label: customerInputLabel || "Player ID",
-        };
+        const labels = (state.draftCustomerInputs || []).map((l) => String(l || "").slice(0, 80)).filter(Boolean);
+        if (labels.length === 1) {
+            product.customerInput = { enabled: true, label: labels[0] };
+        } else if (labels.length > 1) {
+            product.customerInput = { enabled: true, labels };
+        }
     }
 
     const variations = state.draftVariations
@@ -476,14 +533,33 @@ function readFormProduct() {
     return { id, product };
 }
 
+function focusFieldForError(message) {
+    const msg = String(message || "").toLowerCase();
+    if (msg.includes("product id")) {
+        document.getElementById("productId")?.focus();
+    } else if (msg.includes("product name") || msg.includes("name is required") || msg.includes("product name is required")) {
+        document.getElementById("productName")?.focus();
+    } else if (msg.includes("category")) {
+        document.getElementById("productCategory")?.focus();
+    } else if (msg.includes("price")) {
+        document.getElementById("productPrice")?.focus();
+    }
+}
+
 function saveProduct(options = {}) {
-    const { id, product } = readFormProduct();
-    const products = getProducts();
-    if (state.originalId && state.originalId !== id) delete products[state.originalId];
-    products[id] = product;
-    selectProduct(id);
-    renderAll();
-    if (!options.silent) showToast("Product saved in editor");
+    try {
+        const { id, product } = readFormProduct();
+        const products = getProducts();
+        if (state.originalId && state.originalId !== id) delete products[state.originalId];
+        products[id] = product;
+        selectProduct(id);
+        renderAll();
+        if (!options.silent) showToast("Product saved in editor");
+    } catch (error) {
+        const msg = String(error?.message || error || "An error occurred");
+        showToast(msg);
+        focusFieldForError(msg);
+    }
 }
 
 function deleteProduct() {
@@ -537,7 +613,7 @@ function addCategory() {
     getCategories().push({
         name,
         id,
-        page: `products.html?category=${id}`,
+        page: `${id}.html`,
         label: name,
         icon: "bi-box",
         teaser: "Digital products",
@@ -606,9 +682,9 @@ function validateCategories() {
 
         category.name = name;
         category.id = String(category.id || slugify(name) || `category-${index + 1}`).trim();
-        category.page = String(category.page || `products.html?category=${category.id}`).trim();
+        category.page = String(category.page || `${category.id}.html`).trim();
         category.label = String(category.label || name).trim();
-        category.icon = String(category.icon || "bi-box").trim();
+        category.photo = String(category.photo || "assets/hyperlogo.png").trim();
         category.teaser = String(category.teaser || "").trim();
         category.heading = String(category.heading || category.label || name).trim();
         category.description = String(category.description || `Browse ${name.toLowerCase()} products.`).trim();
@@ -616,18 +692,19 @@ function validateCategories() {
 }
 
 function addVariation() {
-    const label = `${state.database.currency || "TND"} option`;
-    let id = slugify(label);
+    const defaultName = document.getElementById("productName").value.trim() || `${state.database.currency || "TND"} option`;
+    let baseId = slugify(defaultName) || slugify(`${state.database.currency || "TND"} option`);
+    let id = baseId;
     let counter = 2;
     const existing = new Set(state.draftVariations.map((variation) => variation.id));
-    while (existing.has(id)) {
-        id = `${slugify(label)}-${counter}`;
+    while (existing.has(id) || !id) {
+        id = `${baseId}-${counter}`;
         counter += 1;
     }
     state.draftVariations.push({
         id,
-        label,
-        name: document.getElementById("productName").value.trim() || "Product option",
+        label: defaultName,
+        name: defaultName,
         price: Number(document.getElementById("productPrice").value || 0),
     });
     renderVariations();
@@ -637,6 +714,21 @@ function addVariation() {
 function updateVariation(index, field, value) {
     if (!state.draftVariations[index]) return;
     state.draftVariations[index][field] = field === "price" ? Number(value || 0) : value;
+    // auto-generate id from name when appropriate
+    if (field === "name") {
+        const currentId = String(state.draftVariations[index].id || "").trim();
+        if (!currentId) {
+            let base = slugify(String(value || "option"));
+            let id = base;
+            let counter = 2;
+            const existing = new Set(state.draftVariations.map((v, i) => (i === index ? null : v.id)).filter(Boolean));
+            while (existing.has(id) || !id) {
+                id = `${base}-${counter}`;
+                counter += 1;
+            }
+            state.draftVariations[index].id = id;
+        }
+    }
     renderPreview();
 }
 
@@ -656,15 +748,13 @@ function getPreviewProduct() {
                 name: document.getElementById("productName")?.value || "New product",
                 category: document.getElementById("productCategory")?.value || "Digital",
                 price: Number(document.getElementById("productPrice")?.value || 0),
-                icon: document.getElementById("productIcon")?.value || "bi-box",
-                art: document.getElementById("productArt")?.value || "gamekey-art",
-                image: document.getElementById("productImage")?.value || "",
+                image: document.getElementById("productImage")?.value || "assets/hyperlogo.png",
                 description: document.getElementById("productDescription")?.value || "",
                 inStock: document.getElementById("productInStock")?.checked !== false,
                 customerInput: document.getElementById("productCustomerInputEnabled")?.checked
                     ? {
                           enabled: true,
-                          label: document.getElementById("productCustomerInputLabel")?.value || "Player ID",
+                          labels: (state.draftCustomerInputs && state.draftCustomerInputs.length) ? state.draftCustomerInputs : [document.getElementById("productCustomerNewInput")?.value || "Player ID"],
                       }
                     : undefined,
                 variations: state.draftVariations,
@@ -679,27 +769,45 @@ function renderPreview() {
     const { product } = getPreviewProduct();
     const firstVariation = product.variations?.[0];
     const price = firstVariation?.price ?? product.price ?? 0;
-    const image = product.image ? state.previewImages[product.image] || product.image : "";
+    const image = product.image ? state.previewImages[product.image] || product.image : "assets/hyperlogo.png";
+
+    const badges = [];
+    if (product.customerInput?.enabled) {
+        const labels = Array.isArray(product.customerInput.labels)
+            ? product.customerInput.labels
+            : product.customerInput.label
+            ? [product.customerInput.label]
+            : [];
+        labels.forEach((lbl) => badges.push(`<span class="badge text-bg-warning mb-2">${escapeHtml(lbl)} required</span>`));
+    }
+
+    // Match store product card markup so preview visually matches the storefront
+    const inStock = product.inStock !== false;
+    const category = escapeHtml(product.category || "Digital");
+    const title = escapeHtml(product.name || "New product");
+    const desc = escapeHtml(product.description || "Product description");
+    const priceLabel = Array.isArray(product.variations) && product.variations.length ? `From ${money(price, state.database.currency)}` : money(price, state.database.currency);
 
     preview.innerHTML = `
-        <div class="product-art ${escapeHtml(product.art || "gamekey-art")}">
-            ${
-                image
-                    ? `<img class="product-image" src="${escapeHtml(image)}" alt="${escapeHtml(product.name || "Product photo")}" />`
-                    : `<i class="bi ${escapeHtml(product.icon || "bi-box")}"></i>`
-            }
-        </div>
-        <div class="card-body">
-            <span class="badge text-bg-dark mb-2">${escapeHtml(product.category || "Digital")}</span>
-            ${product.inStock === false ? '<span class="badge text-bg-secondary mb-2 ms-1">Out of stock</span>' : ""}
-            <h3 class="h5 fw-black">${escapeHtml(product.name || "New product")}</h3>
-            <p class="text-secondary">${escapeHtml(product.description || "Product description")}</p>
-            ${
-                product.customerInput?.enabled
-                    ? `<span class="badge text-bg-warning mb-3">${escapeHtml(product.customerInput.label || "Player ID")} required</span>`
-                    : ""
-            }
-            <strong class="price">${money(price, state.database.currency)}</strong>
+        <div class="col-12">
+            <article class="card product-card h-100">
+                <div class="product-art" aria-hidden="true">
+                    ${image ? `<img class="product-image" src="${escapeHtml(image)}" alt="${title}" />` : `<i class="bi bi-box"></i>`}
+                </div>
+                <div class="card-body d-flex flex-column">
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        <span class="badge text-bg-dark">${category}</span>
+                        <span class="badge ${inStock ? "text-bg-success" : "text-bg-secondary"}">${inStock ? "Available" : "Out of stock"}</span>
+                    </div>
+                    <h2 class="h5">${title}</h2>
+                    <p class="text-secondary flex-grow-1">${desc}</p>
+                    ${badges.join(" ")}
+                    <div class="d-flex justify-content-between align-items-center">
+                        <strong class="price">${priceLabel}</strong>
+                        <button class="btn btn-primary btn-sm" disabled>Add</button>
+                    </div>
+                </div>
+            </article>
         </div>
     `;
 }
@@ -1055,6 +1163,9 @@ function renderAdminOrders() {
                             <button class="btn btn-outline-dark btn-sm" type="button" data-copy-admin-text="${escapeHtml(order.id)}">
                                 <i class="bi bi-clipboard me-1"></i>Copy ID
                             </button>
+                            <button class="btn btn-outline-danger btn-sm" type="button" data-delete-order="${escapeHtml(order.id)}">
+                                <i class="bi bi-trash me-1"></i>Delete order
+                            </button>
                         </div>
                     </div>
                     <div class="status-grid mb-3">
@@ -1176,6 +1287,26 @@ function bindEvents() {
             .catch((error) => showToast(error.message || "Could not import settings.json"));
     });
     document.getElementById("productPhotoFile")?.addEventListener("change", (event) => handlePhotoFile(event.target.files[0]));
+    document.getElementById("productName")?.addEventListener("input", (event) => {
+        const name = event.target.value || "";
+        const idInput = document.getElementById("productId");
+        if (!state.originalId && idInput) idInput.value = slugify(name);
+    });
+    document.getElementById("addCustomerInputButton")?.addEventListener("click", () => addCustomerInput());
+    document.getElementById("productCustomerInputs")?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-remove-customer-input]");
+        if (!button) return;
+        removeCustomerInput(Number(button.dataset.removeCustomerInput));
+    });
+    document.getElementById("productCustomerInputs")?.addEventListener("input", (event) => {
+        const input = event.target.closest("[data-customer-input-field]");
+        if (!input) return;
+        const row = input.closest("[data-customer-input-index]");
+        if (!row) return;
+        const index = Number(row.dataset.customerInputIndex);
+        state.draftCustomerInputs[index] = input.value.slice(0, 80);
+        renderPreview();
+    });
     document.getElementById("saveAdminTokenButton")?.addEventListener("click", () => {
         const token = document.getElementById("adminApiToken")?.value.trim() || "";
         if (!token) {
@@ -1276,6 +1407,22 @@ function bindEvents() {
                 ?.writeText(value)
                 .then(() => showToast("Copied"))
                 .catch(() => showToast(value));
+            return;
+        }
+
+        const deleteButton = event.target.closest("[data-delete-order]");
+        if (deleteButton) {
+            const orderId = deleteButton.dataset.deleteOrder;
+            if (!orderId) return;
+            if (!window.confirm(`Delete ${orderId}? This will permanently remove the order.`)) return;
+            adminRequest({ action: "admin-delete-order", orderId })
+                .then(() => {
+                    state.orders = state.orders.filter((o) => o.id !== orderId);
+                    renderAdminOrders();
+                    showToast("Order deleted");
+                })
+                .catch((error) => showToast(error.message || "Could not delete order"));
+            return;
         }
     });
 }

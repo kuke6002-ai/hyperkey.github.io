@@ -49,6 +49,11 @@
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="categoriesTab" data-bs-toggle="pill" data-bs-target="#categoriesPane" type="button" role="tab" aria-controls="categoriesPane" aria-selected="false">
+                            <i class="bi bi-grid-1x2-fill me-1"></i>Categories
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
                         <button class="nav-link" id="ordersTab" data-bs-toggle="pill" data-bs-target="#ordersPane" type="button" role="tab" aria-controls="ordersPane" aria-selected="false">
                             <i class="bi bi-receipt me-1"></i>Orders
                         </button>
@@ -135,14 +140,7 @@
                                             </div>
                                         </div>
                                         <div class="row g-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label" for="productIcon">Bootstrap icon</label>
-                                                <input class="form-control" id="productIcon" type="text" placeholder="bi-box" />
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label" for="productArt">Art style</label>
-                                                <select class="form-select" id="productArt"></select>
-                                            </div>
+                                            <!-- Bootstrap icon and art style removed from admin editor -->
                                             <div class="col-md-6">
                                                 <label class="form-label" for="productImage">Photo path</label>
                                                 <input class="form-control" id="productImage" type="text" placeholder="assets/product-photo.png" />
@@ -181,8 +179,12 @@
                                                         <input class="form-check-input" id="productCustomerInputEnabled" type="checkbox" />
                                                         <label class="form-check-label" for="productCustomerInputEnabled">Ask customer for delivery info after payment</label>
                                                     </div>
-                                                    <label class="form-label" for="productCustomerInputLabel">Customer input label</label>
-                                                    <input class="form-control" id="productCustomerInputLabel" type="text" placeholder="Player ID" maxlength="80" />
+                                                    <label class="form-label">Customer input labels</label>
+                                                    <div id="productCustomerInputs" class="d-flex flex-column gap-2 mb-2"></div>
+                                                    <div class="d-flex gap-2">
+                                                        <input class="form-control" id="productCustomerNewInput" type="text" placeholder="Player ID" maxlength="80" />
+                                                        <button class="btn btn-outline-dark" type="button" id="addCustomerInputButton">Add</button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -226,21 +228,6 @@
 
                     <section class="tab-pane fade" id="toolsPane" role="tabpanel" aria-labelledby="toolsTab" tabindex="0">
                         <div class="row g-3 align-items-start">
-                            <section class="col-xl-5">
-                                <div class="content-panel admin-panel">
-                                    <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
-                                        <div>
-                                            <p class="eyebrow mb-2">Categories</p>
-                                            <h2 class="h4 fw-black mb-0">Product groups</h2>
-                                        </div>
-                                        <button class="btn btn-outline-dark btn-sm" type="button" id="addCategoryButton">
-                                            <i class="bi bi-plus-lg me-1"></i>Add
-                                        </button>
-                                    </div>
-                                    <div class="admin-category-list" id="categoryEditorList"></div>
-                                </div>
-                            </section>
-
                             <section class="col-xl-7">
                                 <div class="content-panel admin-panel mb-3">
                                     <p class="eyebrow mb-2">Files</p>
@@ -389,6 +376,25 @@
                                         </button>
                                     </div>
                                     <textarea class="form-control admin-json-output" id="jsonOutput" readonly></textarea>
+                                </div>
+                            </section>
+                        </div>
+                    </section>
+
+                    <section class="tab-pane fade" id="categoriesPane" role="tabpanel" aria-labelledby="categoriesTab" tabindex="0">
+                        <div class="row g-3 align-items-start">
+                            <section class="col-xl-5">
+                                <div class="content-panel admin-panel">
+                                    <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
+                                        <div>
+                                            <p class="eyebrow mb-2">Categories</p>
+                                            <h2 class="h4 fw-black mb-0">Product groups</h2>
+                                        </div>
+                                        <button class="btn btn-outline-dark btn-sm" type="button" id="addCategoryButton">
+                                            <i class="bi bi-plus-lg me-1"></i>Add
+                                        </button>
+                                    </div>
+                                    <div class="admin-category-list" id="categoryEditorList"></div>
                                 </div>
                             </section>
                         </div>

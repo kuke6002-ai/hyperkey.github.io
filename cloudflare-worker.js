@@ -908,6 +908,31 @@ async function saveAdminOrderDelivery(env, body) {
     return getAdminOrderPayload(env, record);
 }
 
+async function deleteAdminOrder(env, body) {
+    const orderId = normalizeOrderId(body.orderId);
+    if (!/^HK-\d{6}$/.test(orderId)) throw new Error("Enter a valid order ID");
+
+    const record = await getOrderById(env, orderId);
+    if (!record) throw new Error("Order was not found");
+
+    const db = getOrderDb(env);
+    try {
+        await db.batch([
+            db.prepare("DELETE FROM order_deliveries WHERE order_id = ?").bind(orderId),
+            db.prepare("DELETE FROM payment_proofs WHERE order_id = ?").bind(orderId),
+            db.prepare("DELETE FROM order_items WHERE order_id = ?").bind(orderId),
+            db.prepare("DELETE FROM orders WHERE id = ?").bind(orderId),
+        ]);
+    } catch (error) {
+        if (/no such table/i.test(String(error?.message || ""))) {
+            throw new Error("Order tables are missing. Run schema.sql in Cloudflare D1.");
+        }
+        throw error;
+    }
+
+    return { id: orderId };
+}
+
 function getProofRows(order) {
     if (order.paymentProof.type === "tt-card") {
         return order.paymentProof.cardCodes.map((code, index) => ({
@@ -1327,6 +1352,11 @@ async function handleAdminAction(body, request, env, corsHeaders) {
 
     if (body.action === "admin-save-delivery") {
         return jsonResponse({ ok: true, order: await saveAdminOrderDelivery(env, body) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-delete-order") {
+        const result = await deleteAdminOrder(env, body);
+        return jsonResponse({ ok: true, deleted: result.id }, 200, corsHeaders);
     }
 
     return jsonResponse({ error: "Unknown admin action" }, 400, corsHeaders);

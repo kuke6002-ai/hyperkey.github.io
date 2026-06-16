@@ -386,6 +386,16 @@ a {
     box-shadow: 0 12px 24px rgba(255, 106, 19, 0.14);
 }
 
+.category-photo {
+    align-items: center;
+    background: var(--gv-soft);
+    border-radius: 8px;
+    display: inline-block;
+    height: 46px;
+    object-fit: cover;
+    width: 46px;
+}
+
 #homeCategoryGrid .category-card span {
     font-size: 1.12rem;
 }

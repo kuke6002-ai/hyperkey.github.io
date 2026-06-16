@@ -230,6 +230,7 @@ const CATEGORIES = [
     {
         name: "Game Top-Ups",
         id: "game-top-ups",
+        page: "game-top-ups.html",
         label: "Game Top-Ups",
         icon: "bi-gem",
         teaser: "Diamonds, Robux, coins, V-Bucks",
@@ -239,6 +240,7 @@ const CATEGORIES = [
     {
         name: "Game Keys",
         id: "game-keys",
+        page: "game-keys.html",
         label: "Game Keys",
         icon: "bi-joystick",
         teaser: "Wallet cards, activation keys, accounts",
@@ -248,6 +250,7 @@ const CATEGORIES = [
     {
         name: "AI Subscriptions",
         id: "ai-subscriptions",
+        page: "ai-subscriptions.html",
         label: "AI Subscriptions",
         icon: "bi-cpu",
         teaser: "ChatGPT and AI tools",
@@ -257,6 +260,7 @@ const CATEGORIES = [
     {
         name: "Creative & Productivity Apps",
         id: "creative-productivity-apps",
+        page: "creative-productivity-apps.html",
         label: "Creative & Productivity Apps",
         icon: "bi-brush",
         teaser: "Design and work apps",
@@ -266,6 +270,7 @@ const CATEGORIES = [
     {
         name: "Streaming & Entertainment",
         id: "streaming-entertainment",
+        page: "streaming-entertainment.html",
         label: "Streaming & Entertainment",
         icon: "bi-play-btn",
         teaser: "Netflix and entertainment",
@@ -275,6 +280,7 @@ const CATEGORIES = [
     {
         name: "Software Licenses",
         id: "software-licenses",
+        page: "software-licenses.html",
         label: "Software Licenses",
         icon: "bi-patch-check",
         teaser: "Software keys and licenses",
@@ -284,6 +290,7 @@ const CATEGORIES = [
     {
         name: "Social Media Services",
         id: "social-media-services",
+        page: "social-media-services.html",
         label: "Social Media Services",
         icon: "bi-share",
         teaser: "Followers, likes, coins, sponsorships",
@@ -662,7 +669,7 @@ function getCategories() {
 
 function getCategoryPage(category) {
     const id = category.id || slugify(category.name) || "digital";
-    return category.page || `products.html?category=${encodeURIComponent(id)}`;
+    return category.page || `${encodeURIComponent(id)}.html`;
 }
 
 function getProductDescription(product) {
@@ -790,7 +797,7 @@ function categoryCardTemplate(category, count, extraClass = "catalog-category-ca
     return `
         <div class="col-6 col-lg-3">
             <a class="category-card ${extraClass}" href="${getCategoryPage(category)}">
-                <i class="bi ${category.icon}"></i>
+                ${category.photo ? `<img class="category-photo" src="${escapeHtml(category.photo)}" alt="${escapeHtml(category.label || category.name)}" />` : `<i class="bi ${category.icon}"></i>`}
                 <span>${category.label}</span>
                 ${category.teaser ? `<small>${category.teaser}</small>` : ""}
                 ${extraClass ? `<strong>${formatProductCount(count)}</strong>` : ""}
