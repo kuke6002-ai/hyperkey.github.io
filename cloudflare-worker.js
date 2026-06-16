@@ -386,7 +386,7 @@ function buildOrderLines(items, database) {
         lines.push({
             productId,
             variationId,
-            name: variation?.name || product.name || productId,
+            name: product.name || productId,
             optionLabel: variation?.label || variation?.name || "",
             category: product.category || "Digital",
             quantity,
@@ -1102,7 +1102,10 @@ function formatAdminMessage(order) {
     const products = order.lines
         .map((line) => {
             const quantity = Number(line.quantity) > 1 ? `${line.quantity}\u00D7 ` : "";
-            return `\u2022 ${escapeHtml(quantity)}${escapeHtml(line.name)} \u2014 ${escapeHtml(formatTndAmount(line.lineTotal))}`;
+            const productLabel = line.optionLabel
+                ? `${line.name} (${line.optionLabel})`
+                : line.name;
+            return `\u2022 ${escapeHtml(quantity)}${escapeHtml(productLabel)} \u2014 ${escapeHtml(formatTndAmount(line.lineTotal))}`;
         })
         .join("\n");
 

@@ -962,7 +962,7 @@ function getCartTotal(cart) {
 
 function updateCartCount() {
     const cart = getCart();
-    const count = Object.values(cart).reduce((total, qty) => total + qty, 0);
+    const count = Object.keys(cart).filter((k) => Number(cart[k]) > 0).length;
     document.querySelectorAll(".cart-count").forEach((item) => {
         item.textContent = count;
     });
@@ -1402,17 +1402,22 @@ async function renderPaymentPage() {
 }
 
 async function submitPaymentOrder(session) {
-    const response = await fetch(ORDER_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            checkoutRequestId: session.checkoutRequestId,
-            items: session.items,
-            paymentMethod: session.paymentMethod,
-            paymentProof: readPaymentProof(session.paymentMethod),
-            customerPhone: session.customerPhone,
-        }),
-    });
+    let response;
+    try {
+        response = await fetch(ORDER_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                checkoutRequestId: session.checkoutRequestId,
+                items: session.items,
+                paymentMethod: session.paymentMethod,
+                paymentProof: readPaymentProof(session.paymentMethod),
+                customerPhone: session.customerPhone,
+            }),
+        });
+    } catch (networkError) {
+        throw new Error("Could not reach checkout backend. Check the Worker URL in config.js and your network connection.");
+    }
 
     const responseText = await response.text();
     let result = {};

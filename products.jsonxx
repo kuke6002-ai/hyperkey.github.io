@@ -92,56 +92,56 @@
             "variations": [
                 {
                     "id": "free-fire-weekly",
-                    "label": "Weekly Membership",
-                    "name": "Weekly Membership",
+                    "label": "Garena Free Fire Weekly Membership",
+                    "name": "Garena Free Fire Weekly Membership",
                     "price": 8
                 },
                 {
                     "id": "free-fire-monthly",
-                    "label": "Monthly Membership",
-                    "name": "Monthly Membership",
+                    "label": "Garena Free Fire Monthly Membership",
+                    "name": "Garena Free Fire Monthly Membership",
                     "price": 40
                 },
                 {
                     "id": "free-fire-booyah-pass",
-                    "label": "Booyah Pass",
-                    "name": "Booyah Pass",
+                    "label": "Garena Free Fire Booyah Pass",
+                    "name": "Garena Free Fire Booyah Pass",
                     "price": 12
                 },
                 {
                     "id": "free-fire-110-diamond",
-                    "label": "110 Diamond",
-                    "name": "110 Diamond",
-                    "price": 4
+                    "label": "Garena Free Fire 110 Diamond",
+                    "name": "Garena Free Fire 110 Diamond",
+                    "price": 5
                 },
                 {
                     "id": "free-fire-231-diamond",
-                    "label": "231 Diamond",
-                    "name": "231 Diamond",
-                    "price": 6
+                    "label": "Garena Free Fire 231 Diamond",
+                    "name": "Garena Free Fire 231 Diamond",
+                    "price": 8
                 },
                 {
                     "id": "free-fire-583-diamond",
-                    "label": "583 Diamond",
-                    "name": "583 Diamond",
+                    "label": "Garena Free Fire 583 Diamond",
+                    "name": "Garena Free Fire 583 Diamond",
                     "price": 20
                 },
                 {
                     "id": "free-fire-1188-diamond",
-                    "label": "1188 Diamond",
-                    "name": "1188 Diamond",
+                    "label": "Garena Free Fire 1188 Diamond",
+                    "name": "Garena Free Fire 1188 Diamond",
                     "price": 40
                 },
                 {
                     "id": "free-fire-5600-diamond",
-                    "label": "5600 Diamond",
-                    "name": "5600 Diamond",
+                    "label": "Garena Free Fire 5600 Diamond",
+                    "name": "Garena Free Fire 5600 Diamond",
                     "price": 199
                 },
                 {
                     "id": "free-fire-level-up-passes",
-                    "label": "Level-Up Passes",
-                    "name": "Level-Up Passes",
+                    "label": "Garena Free Fire Level-Up Passes",
+                    "name": "Garena Free Fire Level-Up Passes",
                     "price": 15
                 }
             ],
@@ -156,39 +156,37 @@
             "category": "Game Keys",
             "price": 20,
             "image": "assets/CnP_16062026_175739.png",
+            "icon": "bi-steam",
+            "art": "steam-art",
             "description": "Steam digital gift card codes in USD denominations.",
-            "customerInput": {
-                "enabled": true,
-                "label": "Email Compte Steam"
-            },
             "variations": [
                 {
                     "id": "steam-gift-5usd",
-                    "label": "5$",
+                    "label": "Steam Gift Cards 5$",
                     "name": "5 USD Steam Gift Card",
                     "price": 20
                 },
                 {
                     "id": "steam-gift-10usd",
-                    "label": "10$",
+                    "label": "Steam Gift Cards 10$",
                     "name": "10 USD Steam Gift Card",
                     "price": 40
                 },
                 {
                     "id": "steam-gift-25usd",
-                    "label": "25$",
+                    "label": "Steam Gift Cards 25$",
                     "name": "25 USD Steam Gift Card",
                     "price": 100
                 },
                 {
                     "id": "steam-gift-50usd",
-                    "label": "50$",
+                    "label": "Steam Gift Cards 50$",
                     "name": "50 USD Steam Gift Card",
                     "price": 200
                 },
                 {
                     "id": "steam-gift-100usd",
-                    "label": "100$",
+                    "label": "Steam Gift Cards 100$",
                     "name": "100 USD Steam Gift Card",
                     "price": 400
                 }
@@ -200,35 +198,37 @@
             "category": "Game Keys",
             "price": 20,
             "image": "assets/CnP_16062026_180036.png",
+            "icon": "bi-xbox",
+            "art": "steam-art",
             "description": "Xbox digital gift card codes in USD denominations.",
             "variations": [
                 {
                     "id": "xbox-gift-5usd",
-                    "label": "5$",
+                    "label": "Xbox Gift Cards 5$",
                     "name": "5 USD Xbox Gift Card",
                     "price": 20
                 },
                 {
                     "id": "xbox-gift-10usd",
-                    "label": "10$",
+                    "label": "Xbox Gift Cards 10$",
                     "name": "10 USD Xbox Gift Card",
                     "price": 40
                 },
                 {
                     "id": "xbox-gift-25usd",
-                    "label": "25$",
+                    "label": "Xbox Gift Cards 25$",
                     "name": "25 USD Xbox Gift Card",
                     "price": 100
                 },
                 {
                     "id": "xbox-gift-50usd",
-                    "label": "50$",
+                    "label": "Xbox Gift Cards 50$",
                     "name": "50 USD Xbox Gift Card",
                     "price": 200
                 },
                 {
                     "id": "xbox-gift-100usd",
-                    "label": "100$",
+                    "label": "Xbox Gift Cards 100$",
                     "name": "100 USD Xbox Gift Card",
                     "price": 400
                 }
@@ -262,14 +262,14 @@
             "variations": [
                 {
                     "id": "chatgpt-plus-partage-30j",
-                    "label": "Plus Partage (30j)",
-                    "name": "Plus Partage (30j)",
+                    "label": "ChatGPT Plus Partage (30j)",
+                    "name": "ChatGPT Plus Partage (30j)",
                     "price": 35
                 },
                 {
                     "id": "chatgpt-plus-prive-30j",
-                    "label": "Plus Prive (30j)",
-                    "name": "Plus Prive (30j)",
+                    "label": "ChatGPT Plus Prive (30j)",
+                    "name": "ChatGPT Plus Prive (30j)",
                     "price": 80
                 }
             ],
@@ -288,20 +288,20 @@
             "variations": [
                 {
                     "id": "gemini-pro-prive-30j",
-                    "label": "Pro Prive (30j)",
-                    "name": "Pro Prive (30j)",
+                    "label": "Gemini AI Pro Prive (30j)",
+                    "name": "Gemini AI Pro Prive (30j)",
                     "price": 35
                 },
                 {
                     "id": "gemini-ultra-partage-30j",
-                    "label": "Ultra Partage (30j)",
-                    "name": "Ultra Partage (30j)",
+                    "label": "Gemini AI Ultra Partage (30j)",
+                    "name": "Gemini AI Ultra Partage (30j)",
                     "price": 40
                 },
                 {
                     "id": "gemini-ultra-prive-30j",
-                    "label": "Ultra Prive (30j)",
-                    "name": "Ultra Prive (30j)",
+                    "label": "Gemini AI Ultra Prive (30j)",
+                    "name": "Gemini AI Ultra Prive (30j)",
                     "price": 250
                 }
             ],
@@ -318,14 +318,14 @@
             "variations": [
                 {
                     "id": "perplexity-pro-partage-90j",
-                    "label": "Pro Partage (90j)",
-                    "name": "Pro Partage (90j)",
+                    "label": "Perplexity AI Pro Partage (90j)",
+                    "name": "Perplexity AI Pro Partage (90j)",
                     "price": 100
                 },
                 {
                     "id": "perplexity-pro-privee-90j",
-                    "label": "Pro Privee (90j)",
-                    "name": "Pro Privee (90j)",
+                    "label": "Perplexity AI Pro Privee (90j)",
+                    "name": "Perplexity AI Pro Privee (90j)",
                     "price": 200
                 }
             ],
@@ -346,14 +346,14 @@
             "variations": [
                 {
                     "id": "claude-pro-partage-30j",
-                    "label": "Pro Partage (30j)",
-                    "name": "Pro Partage (30j)",
+                    "label": "Claude Pro Partage (30j)",
+                    "name": "Claude Pro Partage (30j)",
                     "price": 40
                 },
                 {
                     "id": "claude-pro-privee-30j",
-                    "label": "Pro Privee (30j)",
-                    "name": "Pro Privee (30j)",
+                    "label": "Claude Pro Privee (30j)",
+                    "name": "Claude Pro Privee (30j)",
                     "price": 80
                 }
             ],
@@ -402,14 +402,14 @@
             "variations": [
                 {
                     "id": "capcut-pro-teams-30j",
-                    "label": "Pro Teams (30j)",
-                    "name": "Pro Teams (30j)",
+                    "label": "CapCut Pro Teams (30j)",
+                    "name": "CapCut Pro Teams (30j)",
                     "price": 40
                 },
                 {
                     "id": "capcut-pro-privee-30j",
-                    "label": "Pro Privee (30j)",
-                    "name": "Pro Privee (30j)",
+                    "label": "CapCut Pro Privee (30j)",
+                    "name": "CapCut Pro Privee (30j)",
                     "price": 50
                 }
             ],
@@ -426,20 +426,20 @@
             "variations": [
                 {
                     "id": "cursor-pro-prive-30j",
-                    "label": "Pro Prive (30j)",
-                    "name": "Pro Prive (30j)",
+                    "label": "CURSOR Pro Prive (30j)",
+                    "name": "CURSOR Pro Prive (30j)",
                     "price": 80
                 },
                 {
                     "id": "cursor-pro-plus-prive-30j",
-                    "label": "Pro+ Prive (30j)",
-                    "name": "Pro+ Prive (30j)",
+                    "label": "CURSOR Pro+ Prive (30j)",
+                    "name": "CURSOR Pro+ Prive (30j)",
                     "price": 200
                 },
                 {
                     "id": "cursor-ultra-prive-30j",
-                    "label": "Ultra Prive (30j)",
-                    "name": "Ultra Prive (30j)",
+                    "label": "CURSOR Ultra Prive (30j)",
+                    "name": "CURSOR Ultra Prive (30j)",
                     "price": 600
                 }
             ],
@@ -456,8 +456,8 @@
             "variations": [
                 {
                     "id": "figma-pro-partage-30j",
-                    "label": "Pro Partage (30j)",
-                    "name": "Pro Partage (30j)",
+                    "label": "Figma Pro Partage (30j)",
+                    "name": "Figma Pro Partage (30j)",
                     "price": 35
                 }
             ],
@@ -474,14 +474,14 @@
             "variations": [
                 {
                     "id": "quillbot-pro-partage-30j",
-                    "label": "Pro Partage (30j)",
-                    "name": "Pro Partage (30j)",
+                    "label": "QuillBot Pro Partage (30j)",
+                    "name": "QuillBot Pro Partage (30j)",
                     "price": 35
                 },
                 {
                     "id": "quillbot-pro-privee-30j",
-                    "label": "Pro Privee (30j)",
-                    "name": "Pro Privee (30j)",
+                    "label": "QuillBot Pro Privee (30j)",
+                    "name": "QuillBot Pro Privee (30j)",
                     "price": 50
                 }
             ],
@@ -496,14 +496,14 @@
             "variations": [
                 {
                     "id": "netflix-partage-30j",
-                    "label": "Partage (30j)",
-                    "name": "Partage (30j)",
+                    "label": "Netflix Partage (30j)",
+                    "name": "Netflix Partage (30j)",
                     "price": 25
                 },
                 {
                     "id": "netflix-prive-30j",
-                    "label": "Prive (30j)",
-                    "name": "Prive (30j)",
+                    "label": "Netflix Prive (30j)",
+                    "name": "Netflix Prive (30j)",
                     "price": 35
                 }
             ],
@@ -518,14 +518,14 @@
             "variations": [
                 {
                     "id": "crunchyroll-mega-fan-profile-priee-30j-20",
-                    "label": "Mega Fan Profile Priee (30j)",
-                    "name": "Mega Fan Profile Priee (30j)",
+                    "label": "CrunchyRoll Mega Fan Profile Priee (30j)",
+                    "name": "CrunchyRoll Mega Fan Profile Priee (30j)",
                     "price": 20
                 },
                 {
                     "id": "crunchyroll-mega-fan-profile-priee-30j-40",
-                    "label": "Mega Fan Profile Priee (30j)",
-                    "name": "Mega Fan Profile Priee (30j)",
+                    "label": "CrunchyRoll Mega Fan Profile Priee (30j)",
+                    "name": "CrunchyRoll Mega Fan Profile Priee (30j)",
                     "price": 40
                 }
             ],
@@ -594,62 +594,62 @@
             "variations": [
                 {
                     "id": "bloodstrike-50-golds",
-                    "label": "50 Golds",
-                    "name": "50 Golds",
+                    "label": "BloodStrike 50 Golds",
+                    "name": "BloodStrike 50 Golds",
                     "price": 3
                 },
                 {
                     "id": "bloodstrike-100-golds",
-                    "label": "100 Golds",
-                    "name": "100 Golds",
-                    "price": 4
+                    "label": "BloodStrike 100 Golds",
+                    "name": "BloodStrike 100 Golds",
+                    "price": 5
                 },
                 {
                     "id": "bloodstrike-300-golds",
-                    "label": "300 Golds",
-                    "name": "300 Golds",
+                    "label": "BloodStrike 300 Golds",
+                    "name": "BloodStrike 300 Golds",
                     "price": 12
                 },
                 {
                     "id": "bloodstrike-500-golds",
-                    "label": "500 Golds",
-                    "name": "500 Golds",
+                    "label": "BloodStrike 500 Golds",
+                    "name": "BloodStrike 500 Golds",
                     "price": 20
                 },
                 {
                     "id": "bloodstrike-1000-golds",
-                    "label": "1000 Golds",
-                    "name": "1000 Golds",
+                    "label": "BloodStrike 1000 Golds",
+                    "name": "BloodStrike 1000 Golds",
                     "price": 40
                 },
                 {
                     "id": "bloodstrike-2000-golds",
-                    "label": "2000 Golds",
-                    "name": "2000 Golds",
+                    "label": "BloodStrike 2000 Golds",
+                    "name": "BloodStrike 2000 Golds",
                     "price": 79
                 },
                 {
                     "id": "bloodstrike-5000-golds",
-                    "label": "5000 Golds",
-                    "name": "5000 Golds",
+                    "label": "BloodStrike 5000 Golds",
+                    "name": "BloodStrike 5000 Golds",
                     "price": 199
                 },
                 {
                     "id": "bloodstrike-level-up-pass",
-                    "label": "Level-Up Pass",
-                    "name": "Level-Up Pass",
+                    "label": "BloodStrike Level-Up Pass",
+                    "name": "BloodStrike Level-Up Pass",
                     "price": 8
                 },
                 {
                     "id": "bloodstrike-strike-pass-elite",
-                    "label": "Strike Pass Elite",
-                    "name": "Strike Pass Elite",
+                    "label": "BloodStrike Strike Pass Elite",
+                    "name": "BloodStrike Strike Pass Elite",
                     "price": 16
                 },
                 {
                     "id": "bloodstrike-strike-pass-premium",
-                    "label": "Strike Pass Premium",
-                    "name": "Strike Pass Premium",
+                    "label": "BloodStrike Strike Pass Premium",
+                    "name": "BloodStrike Strike Pass Premium",
                     "price": 36
                 }
             ],
@@ -670,26 +670,26 @@
             "variations": [
                 {
                     "id": "roblox-500-robux",
-                    "label": "500 Robux",
-                    "name": "500 Robux",
+                    "label": "Roblox 500 Robux",
+                    "name": "Roblox 500 Robux",
                     "price": 20
                 },
                 {
                     "id": "roblox-1000-robux",
-                    "label": "1000 Robux",
-                    "name": "1000 Robux",
+                    "label": "Roblox 1000 Robux",
+                    "name": "Roblox 1000 Robux",
                     "price": 40
                 },
                 {
                     "id": "roblox-2000-robux",
-                    "label": "2000 Robux",
-                    "name": "2000 Robux",
+                    "label": "Roblox 2000 Robux",
+                    "name": "Roblox 2000 Robux",
                     "price": 80
                 },
                 {
                     "id": "roblox-5250-robux",
-                    "label": "5250 Robux",
-                    "name": "5250 Robux",
+                    "label": "Roblox 5250 Robux",
+                    "name": "Roblox 5250 Robux",
                     "price": 199
                 }
             ],
@@ -778,38 +778,38 @@
             "variations": [
                 {
                     "id": "codm-80-cp",
-                    "label": "80 CP",
-                    "name": "80 CP",
-                    "price": 4
+                    "label": "CALL OF DUTY MOBILE 80 CP",
+                    "name": "CALL OF DUTY MOBILE 80 CP",
+                    "price": 5
                 },
                 {
                     "id": "codm-440-cp",
-                    "label": "440 CP",
-                    "name": "440 CP",
+                    "label": "CALL OF DUTY MOBILE 440 CP",
+                    "name": "CALL OF DUTY MOBILE 440 CP",
                     "price": 20
                 },
                 {
                     "id": "codm-880-cp",
-                    "label": "880 CP",
-                    "name": "880 CP",
+                    "label": "CALL OF DUTY MOBILE 880 CP",
+                    "name": "CALL OF DUTY MOBILE 880 CP",
                     "price": 40
                 },
                 {
                     "id": "codm-2400-cp",
-                    "label": "2400 CP",
-                    "name": "2400 CP",
+                    "label": "CALL OF DUTY MOBILE 2400 CP",
+                    "name": "CALL OF DUTY MOBILE 2400 CP",
                     "price": 100
                 },
                 {
                     "id": "codm-5000-cp",
-                    "label": "5000 CP",
-                    "name": "5000 CP",
+                    "label": "CALL OF DUTY MOBILE 5000 CP",
+                    "name": "CALL OF DUTY MOBILE 5000 CP",
                     "price": 200
                 },
                 {
                     "id": "codm-10800-cp",
-                    "label": "10800 CP",
-                    "name": "10800 CP",
+                    "label": "CALL OF DUTY MOBILE 10800 CP",
+                    "name": "CALL OF DUTY MOBILE 10800 CP",
                     "price": 400
                 }
             ],
@@ -820,40 +820,38 @@
             "category": "Game Top-Ups",
             "price": 5,
             "image": "assets/CnP_16062026_173848.png",
+            "icon": "bi-gem",
+            "art": "topup-art",
             "description": "Mobile Legends BB diamond packages.",
-            "customerInput": {
-                "enabled": true,
-                "label": "Player ID"
-            },
             "variations": [
                 {
                     "id": "mlbb-38-diamonds-4-bonus",
-                    "label": "38 Diamonds + 4 Bonus",
-                    "name": "38 Diamonds + 4 Bonus",
-                    "price": 4
+                    "label": "MOBILE LEGENDS BB 38 Diamonds + 4 Bonus",
+                    "name": "MOBILE LEGENDS BB 38 Diamonds + 4 Bonus",
+                    "price": 5
                 },
                 {
                     "id": "mlbb-127-diamonds-13-bonus",
-                    "label": "127 Diamonds + 13 Bonus",
-                    "name": "127 Diamonds + 13 Bonus",
+                    "label": "MOBILE LEGENDS BB 127 Diamonds + 13 Bonus",
+                    "name": "MOBILE LEGENDS BB 127 Diamonds + 13 Bonus",
                     "price": 12
                 },
                 {
                     "id": "mlbb-317-diamonds-38-bonus",
-                    "label": "317 Diamonds + 38 Bonus",
-                    "name": "317 Diamonds + 38 Bonus",
+                    "label": "MOBILE LEGENDS BB 317 Diamonds + 38 Bonus",
+                    "name": "MOBILE LEGENDS BB 317 Diamonds + 38 Bonus",
                     "price": 30
                 },
                 {
                     "id": "mlbb-633-diamonds-83-bonus",
-                    "label": "633 Diamonds + 83 Bonus",
-                    "name": "633 Diamonds + 83 Bonus",
+                    "label": "MOBILE LEGENDS BB 633 Diamonds + 83 Bonus",
+                    "name": "MOBILE LEGENDS BB 633 Diamonds + 83 Bonus",
                     "price": 55
                 },
                 {
                     "id": "mlbb-1252-diamonds-194-bonus",
-                    "label": "1252 Diamonds + 194 Bonus",
-                    "name": "1252 Diamonds + 194 Bonus",
+                    "label": "MOBILE LEGENDS BB 1252 Diamonds + 194 Bonus",
+                    "name": "MOBILE LEGENDS BB 1252 Diamonds + 194 Bonus",
                     "price": 100
                 }
             ],
@@ -864,46 +862,44 @@
             "category": "Game Top-Ups",
             "price": 4,
             "image": "assets/CnP_16062026_174232.png",
+            "icon": "bi-gem",
+            "art": "topup-art",
             "description": "PUBG Mobile UC packages.",
-            "customerInput": {
-                "enabled": true,
-                "label": "Player ID"
-            },
             "variations": [
                 {
                     "id": "pubg-mobile-60-uc",
-                    "label": "60 UC",
-                    "name": "60 UC",
+                    "label": "PUBG MOBILE 60 UC",
+                    "name": "PUBG MOBILE 60 UC",
                     "price": 4
                 },
                 {
                     "id": "pubg-mobile-300-uc",
-                    "label": "300 UC",
-                    "name": "300 UC",
+                    "label": "PUBG MOBILE 300 UC",
+                    "name": "PUBG MOBILE 300 UC",
                     "price": 20
                 },
                 {
                     "id": "pubg-mobile-600-uc",
-                    "label": "600 UC",
-                    "name": "600 UC",
+                    "label": "PUBG MOBILE 600 UC",
+                    "name": "PUBG MOBILE 600 UC",
                     "price": 40
                 },
                 {
                     "id": "pubg-mobile-1500-uc",
-                    "label": "1500 UC",
-                    "name": "1500 UC",
+                    "label": "PUBG MOBILE 1500 UC",
+                    "name": "PUBG MOBILE 1500 UC",
                     "price": 90
                 },
                 {
                     "id": "pubg-mobile-3000-uc",
-                    "label": "3000 UC",
-                    "name": "3000 UC",
+                    "label": "PUBG MOBILE 3000 UC",
+                    "name": "PUBG MOBILE 3000 UC",
                     "price": 180
                 },
                 {
                     "id": "pubg-mobile-6000-uc",
-                    "label": "6000 UC",
-                    "name": "6000 UC",
+                    "label": "PUBG MOBILE 6000 UC",
+                    "name": "PUBG MOBILE 6000 UC",
                     "price": 370
                 }
             ],
@@ -920,38 +916,38 @@
             "variations": [
                 {
                     "id": "brawl-stars-30-gems",
-                    "label": "30 GEMS",
-                    "name": "30 GEMS",
+                    "label": "BRAWL STARS 30 GEMS",
+                    "name": "BRAWL STARS 30 GEMS",
                     "price": 4
                 },
                 {
                     "id": "brawl-stars-80-gems",
-                    "label": "80 GEMS",
-                    "name": "80 GEMS",
+                    "label": "BRAWL STARS 80 GEMS",
+                    "name": "BRAWL STARS 80 GEMS",
                     "price": 20
                 },
                 {
                     "id": "brawl-stars-170-gems",
-                    "label": "170 GEMS",
-                    "name": "170 GEMS",
+                    "label": "BRAWL STARS 170 GEMS",
+                    "name": "BRAWL STARS 170 GEMS",
                     "price": 40
                 },
                 {
                     "id": "brawl-stars-360-gems",
-                    "label": "360 GEMS",
-                    "name": "360 GEMS",
+                    "label": "BRAWL STARS 360 GEMS",
+                    "name": "BRAWL STARS 360 GEMS",
                     "price": 80
                 },
                 {
                     "id": "brawl-stars-950-gems",
-                    "label": "950 GEMS",
-                    "name": "950 GEMS",
+                    "label": "BRAWL STARS 950 GEMS",
+                    "name": "BRAWL STARS 950 GEMS",
                     "price": 200
                 },
                 {
                     "id": "brawl-stars-2000-gems",
-                    "label": "2000 GEMS",
-                    "name": "2000 GEMS",
+                    "label": "BRAWL STARS 2000 GEMS",
+                    "name": "BRAWL STARS 2000 GEMS",
                     "price": 400
                 },
                 {
@@ -978,38 +974,38 @@
             "variations": [
                 {
                     "id": "clash-royal-80-gems",
-                    "label": "80 GEMS",
-                    "name": "80 GEMS",
+                    "label": "CLASH ROYAL 80 GEMS",
+                    "name": "CLASH ROYAL 80 GEMS",
                     "price": 4
                 },
                 {
                     "id": "clash-royal-500-gems",
-                    "label": "500 GEMS",
-                    "name": "500 GEMS",
+                    "label": "CLASH ROYAL 500 GEMS",
+                    "name": "CLASH ROYAL 500 GEMS",
                     "price": 20
                 },
                 {
                     "id": "clash-royal-1200-gems",
-                    "label": "1200 GEMS",
-                    "name": "1200 GEMS",
+                    "label": "CLASH ROYAL 1200 GEMS",
+                    "name": "CLASH ROYAL 1200 GEMS",
                     "price": 40
                 },
                 {
                     "id": "clash-royal-2500-gems",
-                    "label": "2500 GEMS",
-                    "name": "2500 GEMS",
+                    "label": "CLASH ROYAL 2500 GEMS",
+                    "name": "CLASH ROYAL 2500 GEMS",
                     "price": 80
                 },
                 {
                     "id": "clash-royal-6500-gems",
-                    "label": "6500 GEMS",
-                    "name": "6500 GEMS",
+                    "label": "CLASH ROYAL 6500 GEMS",
+                    "name": "CLASH ROYAL 6500 GEMS",
                     "price": 200
                 },
                 {
                     "id": "clash-royal-diamond-pass",
-                    "label": "Diamond Pass",
-                    "name": "Diamond Pass",
+                    "label": "CLASH ROYAL Diamond Pass",
+                    "name": "CLASH ROYAL Diamond Pass",
                     "price": 40
                 }
             ],
