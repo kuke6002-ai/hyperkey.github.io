@@ -160,6 +160,7 @@ const PRODUCTS = {
 
 const CART_KEY = "hyperkey-cart";
 const CHECKOUT_SESSION_KEY = "hyperkey-checkout-session";
+const ORDER_STATUS_LOOKUP_KEY = "hyperkey-last-order-status-lookup";
 const THEME_KEY = "hyperkey-theme-v2";
 const LANGUAGE_KEY = "hyperkey-language";
 let CURRENCY = "TND";
@@ -352,7 +353,7 @@ function t(value) {
 }
 
 function formatProductCount(count) {
-    if (CURRENT_LANGUAGE === "ar") return `${count} منتج`;
+    if (CURRENT_LANGUAGE === "ar") return `${count} ÃƒÆ’Ã¢â€žÂ¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â€žÂ¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚ÂªÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â¬`;
     if (CURRENT_LANGUAGE === "fr") return `${count} produit${count === 1 ? "" : "s"}`;
     return `${count} product${count === 1 ? "" : "s"}`;
 }
@@ -722,7 +723,12 @@ function isProductInStock(product) {
 }
 
 function getVariationName(product, variation) {
-    return variation?.name || product.name;
+    const productName = String(product?.name || "").trim();
+    const variationName = String(variation?.label || variation?.name || "").trim();
+    if (!variationName) return productName;
+    if (!productName) return variationName;
+    if (variationName.toLowerCase().includes(productName.toLowerCase())) return variationName;
+    return `${productName} - ${variationName}`;
 }
 
 function makeCartKey(productId, variationId = "") {
@@ -960,11 +966,21 @@ function getCartTotal(cart) {
     }, 0);
 }
 
+function getCartItemQuantity(cart) {
+    return Object.values(cart).reduce((total, qty) => total + Math.max(0, Number(qty) || 0), 0);
+}
+
 function updateCartCount() {
     const cart = getCart();
     const count = Object.keys(cart).filter((k) => Number(cart[k]) > 0).length;
     document.querySelectorAll(".cart-count").forEach((item) => {
+        const previousCount = item.textContent;
         item.textContent = count;
+        if (previousCount !== String(count)) {
+            item.classList.remove("cart-count-pop");
+            void item.offsetWidth;
+            item.classList.add("cart-count-pop");
+        }
     });
 }
 
@@ -974,6 +990,83 @@ function showToast(message = "Added to cart.") {
     const toastBody = toastElement.querySelector(".toast-body");
     if (toastBody) toastBody.textContent = t(message);
     bootstrap.Toast.getOrCreateInstance(toastElement, { delay: 1600 }).show();
+}
+
+function ensureCartPopup() {
+    let popup = document.getElementById("cartAddPopup");
+    if (popup) return popup;
+
+    popup = document.createElement("div");
+    popup.id = "cartAddPopup";
+    popup.className = "cart-add-popup";
+    popup.setAttribute("role", "status");
+    popup.setAttribute("aria-live", "polite");
+    popup.innerHTML = `
+        <button class="cart-add-popup-close" type="button" aria-label="Close cart popup">
+            <i class="bi bi-x-lg"></i>
+        </button>
+        <div class="cart-add-popup-icon">
+            <i class="bi bi-bag-check"></i>
+        </div>
+        <div class="cart-add-popup-body">
+            <strong>${t("Item added to cart")}</strong>
+            <span>${t("Your cart was updated.")}</span>
+            <div class="cart-add-popup-stats">
+                <div>
+                    <small>${t("Total items")}</small>
+                    <b data-cart-popup-items>0</b>
+                </div>
+                <div>
+                    <small>${t("Total price")}</small>
+                    <b data-cart-popup-total>0 TND</b>
+                </div>
+            </div>
+            <div class="cart-add-popup-actions">
+                <a class="btn btn-outline-dark btn-sm" href="cart.html">${t("View cart")}</a>
+                <a class="btn btn-primary btn-sm" href="checkout.html">${t("Checkout")}</a>
+            </div>
+        </div>
+    `;
+    document.body.append(popup);
+
+    popup.querySelector(".cart-add-popup-close")?.addEventListener("click", () => {
+        hideCartAddPopup();
+    });
+
+    return popup;
+}
+
+function hideCartAddPopup() {
+    const popup = document.getElementById("cartAddPopup");
+    if (!popup) return;
+
+    popup.classList.add("is-hiding");
+    popup.classList.remove("is-visible");
+    window.setTimeout(() => {
+        popup.classList.remove("is-hiding");
+    }, 280);
+}
+
+function showCartAddPopup() {
+    const cart = getCart();
+    const popup = ensureCartPopup();
+    const itemCount = getCartItemQuantity(cart);
+    const total = getCartTotal(cart);
+
+    const itemsElement = popup.querySelector("[data-cart-popup-items]");
+    const totalElement = popup.querySelector("[data-cart-popup-total]");
+    if (itemsElement) itemsElement.textContent = String(itemCount);
+    if (totalElement) totalElement.textContent = formatMoney(total);
+
+    popup.classList.remove("is-visible");
+    popup.classList.remove("is-hiding");
+    void popup.offsetWidth;
+    popup.classList.add("is-visible");
+
+    clearTimeout(showCartAddPopup.hideTimer);
+    showCartAddPopup.hideTimer = setTimeout(() => {
+        hideCartAddPopup();
+    }, 5200);
 }
 
 function addToCart(id, variationId = "") {
@@ -991,7 +1084,7 @@ function addToCart(id, variationId = "") {
     saveCart(cart);
     renderCartPage();
     renderCheckoutSummary();
-    showToast();
+    showCartAddPopup();
 }
 
 function changeQty(cartKey, amount) {
@@ -1069,6 +1162,7 @@ function renderCartPage() {
     const cartTotal = document.getElementById("cartTotal");
     if (subtotal) subtotal.textContent = formatMoney(total);
     if (cartTotal) cartTotal.textContent = formatMoney(total);
+    updateContinueOrderWhatsAppLinks();
     translatePage();
 }
 
@@ -1381,8 +1475,8 @@ async function renderPaymentPage() {
         const productTotal = getCartTotal(validCart);
         const details = calculatePaymentDetails(productTotal, session.paymentMethod, settings);
 
-        document.getElementById("paymentMethodTitle").textContent = details.label;
-        document.getElementById("paymentInstructions").textContent = details.instructions;
+        document.getElementById("paymentMethodTitle").textContent = t(details.label);
+        document.getElementById("paymentInstructions").textContent = t(details.instructions);
         document.getElementById("paymentOriginalTotal").textContent = formatPlainTndAmount(productTotal);
         document.getElementById("paymentAmountDue").textContent = formatPlainTndAmount(details.amountDue);
         document.getElementById("paymentSummaryAmount").textContent = formatPlainTndAmount(details.amountDue);
@@ -1391,12 +1485,15 @@ async function renderPaymentPage() {
         renderPaymentRecipient(details);
         renderPaymentProofFields(details);
         renderPaymentGuide(details.method);
+        const paymentContext = { session: { ...session, cart: validCart, items: getCheckoutItems(validCart) }, details };
+        updateContinueOrderWhatsAppLinks(paymentContext);
         setAlert("paymentError", "");
-        return { session: { ...session, cart: validCart, items: getCheckoutItems(validCart) }, details };
+        return paymentContext;
     } catch (error) {
         if (button) button.disabled = true;
         setAlert("paymentError", error.message || "Could not prepare payment.");
         renderPaymentOrderSummary(validCart);
+        updateContinueOrderWhatsAppLinks();
         return null;
     }
 }
@@ -1436,25 +1533,7 @@ async function submitPaymentOrder(session) {
 
 function renderPaymentSuccess(result) {
     const orderId = String(result.orderId || "");
-    const statusUrl = `order-status.html?order=${encodeURIComponent(orderId)}`;
-    setHtmlAlert(
-        "paymentSuccess",
-        `
-            <div class="order-success-box">
-                <p class="eyebrow mb-2">Order received</p>
-                <p class="mb-2">Copy and save this Order ID. You will need it later to check your order status.</p>
-                <div class="order-id-display">${escapeHtml(orderId)}</div>
-                <div class="d-flex flex-wrap gap-2 mt-3">
-                    <button class="btn btn-dark btn-sm" type="button" data-copy-order-id="${escapeHtml(orderId)}">
-                        <i class="bi bi-clipboard me-1"></i>Copy Order ID
-                    </button>
-                    <a class="btn btn-outline-dark btn-sm" href="${escapeHtml(statusUrl)}">
-                        <i class="bi bi-search me-1"></i>Check status
-                    </a>
-                </div>
-            </div>
-        `,
-    );
+    window.location.href = `order-received.html?order=${encodeURIComponent(orderId)}`;
 }
 
 function setupPaymentForm() {
@@ -1565,19 +1644,19 @@ function statusBadge(label, status) {
 }
 
 function getDefaultSupportMessage() {
-    if (CURRENT_LANGUAGE === "ar") return "مرحبا HyperKey Store، أحتاج مساعدة في طلبي.";
+    if (CURRENT_LANGUAGE === "ar") return "\u0645\u0631\u062D\u0628\u0627 HyperKey Store\u060C \u0623\u062D\u062A\u0627\u062C \u0645\u0633\u0627\u0639\u062F\u0629 \u0641\u064A \u0637\u0644\u0628\u064A.";
     if (CURRENT_LANGUAGE === "fr") return "Bonjour HyperKey Store, j'ai besoin d'aide pour ma commande.";
     return "Hello HyperKey Store, I need help with my order.";
 }
 
 function getOrderSupportMessage(orderId) {
-    if (CURRENT_LANGUAGE === "ar") return `مرحبا HyperKey Store، أحتاج مساعدة في الطلب ${orderId}.`;
+    if (CURRENT_LANGUAGE === "ar") return `\u0645\u0631\u062D\u0628\u0627 HyperKey Store\u060C \u0623\u062D\u062A\u0627\u062C \u0645\u0633\u0627\u0639\u062F\u0629 \u0641\u064A \u0627\u0644\u0637\u0644\u0628 ${orderId}.`;
     if (CURRENT_LANGUAGE === "fr") return `Bonjour HyperKey Store, j'ai besoin d'aide pour la commande ${orderId}.`;
     return `Hello HyperKey Store, I need help with order ${orderId}.`;
 }
 
 function getProductAvailabilityMessage(productName) {
-    if (CURRENT_LANGUAGE === "ar") return `مرحبا HyperKey Store، هل ${productName} متوفر؟`;
+    if (CURRENT_LANGUAGE === "ar") return `\u0645\u0631\u062D\u0628\u0627 HyperKey Store\u060C \u0647\u0644 ${productName} \u0645\u062A\u0648\u0641\u0631\u061F`;
     if (CURRENT_LANGUAGE === "fr") return `Bonjour HyperKey Store, est-ce que ${productName} est disponible ?`;
     return `Hello HyperKey Store, is ${productName} available?`;
 }
@@ -1585,6 +1664,107 @@ function getProductAvailabilityMessage(productName) {
 function getWhatsAppSupportUrl(message = "") {
     const text = message || getDefaultSupportMessage();
     return `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
+}
+
+function getValidCartEntries(cart) {
+    return Object.entries(cart || {}).filter(([cartKey, qty]) => {
+        const line = getCartLine(cartKey);
+        return line && line.inStock !== false && Number(qty) > 0;
+    });
+}
+
+function getValidCartTotal(cart) {
+    return getValidCartEntries(cart).reduce((total, [cartKey, qty]) => {
+        const line = getCartLine(cartKey);
+        return total + line.price * Number(qty);
+    }, 0);
+}
+
+function getCartSummaryLines(cart) {
+    return getValidCartEntries(cart).map(([cartKey, qty]) => {
+        const line = getCartLine(cartKey);
+        const quantity = Number(qty);
+        const quantityText = quantity > 1 ? `${quantity}x ` : "";
+        return `- ${quantityText}${line.name} - ${formatPlainTndAmount(line.price * quantity)}`;
+    });
+}
+
+function getCartWhatsAppMessage(cart) {
+    const lines = getCartSummaryLines(cart);
+    if (!lines.length) return getDefaultSupportMessage();
+
+    const total = formatPlainTndAmount(getValidCartTotal(cart));
+    if (CURRENT_LANGUAGE === "fr") {
+        return ["Bonjour HyperKey Store, je veux continuer cette commande:", "", ...lines, "", `Total: ${total}`].join("\n");
+    }
+    if (CURRENT_LANGUAGE === "ar") {
+        return ["\u0645\u0631\u062D\u0628\u0627 HyperKey Store\u060C \u0623\u0631\u064A\u062F \u0645\u062A\u0627\u0628\u0639\u0629 \u0647\u0630\u0627 \u0627\u0644\u0637\u0644\u0628:", "", ...lines, "", `\u0627\u0644\u0645\u062C\u0645\u0648\u0639: ${total}`].join("\n");
+    }
+    return ["Hello HyperKey Store, I want to continue this order:", "", ...lines, "", `Total: ${total}`].join("\n");
+}
+
+function getPaymentWhatsAppMessage(session, details) {
+    const cart = session?.cart || {};
+    const lines = getCartSummaryLines(cart);
+    if (!lines.length) return getDefaultSupportMessage();
+
+    const productsTotal = formatPlainTndAmount(getValidCartTotal(cart));
+    const amountDue = details?.amountDue ? formatPlainTndAmount(details.amountDue) : formatPlainTndAmount(getValidCartTotal(cart));
+    const method = details?.label || session?.paymentMethod || "";
+    const cardInfo = details?.method === "tt-card" && details.cardCount && details.cardValue
+        ? `${details.cardCount} x ${formatPlainTndAmount(details.cardValue)}`
+        : "";
+    if (CURRENT_LANGUAGE === "fr") {
+        return [
+            "Bonjour HyperKey Store, je veux continuer mon paiement:",
+            "",
+            ...lines,
+            "",
+            method ? `Methode: ${method}` : "",
+            `Total produits: ${productsTotal}`,
+            `Montant a envoyer: ${amountDue}`,
+            cardInfo ? `Cartes TT requises: ${cardInfo}` : "",
+        ]
+            .filter((line) => line !== "")
+            .join("\n");
+    }
+    if (CURRENT_LANGUAGE === "ar") {
+        return [
+            "\u0645\u0631\u062D\u0628\u0627 HyperKey Store\u060C \u0623\u0631\u064A\u062F \u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u062F\u0641\u0639:",
+            "",
+            ...lines,
+            "",
+            method ? `\u0637\u0631\u064A\u0642\u0629 \u0627\u0644\u062F\u0641\u0639: ${method}` : "",
+            `\u0645\u062C\u0645\u0648\u0639 \u0627\u0644\u0645\u0646\u062A\u062C\u0627\u062A: ${productsTotal}`,
+            `\u0627\u0644\u0645\u0628\u0644\u063A \u0627\u0644\u0645\u0637\u0644\u0648\u0628: ${amountDue}`,
+            cardInfo ? `\u0628\u0637\u0627\u0642\u0627\u062A TT \u0627\u0644\u0645\u0637\u0644\u0648\u0628\u0629: ${cardInfo}` : "",
+        ]
+            .filter((line) => line !== "")
+            .join("\n");
+    }
+    return [
+        "Hello HyperKey Store, I want to continue my payment:",
+        "",
+        ...lines,
+        "",
+        method ? `Payment method: ${method}` : "",
+        `Products total: ${productsTotal}`,
+        `Amount to send: ${amountDue}`,
+        cardInfo ? `TT cards required: ${cardInfo}` : "",
+    ]
+        .filter((line) => line !== "")
+        .join("\n");
+}
+
+function updateContinueOrderWhatsAppLinks(paymentContext = null) {
+    document.querySelectorAll("[data-whatsapp-cart-button]").forEach((link) => {
+        link.href = getWhatsAppSupportUrl(getCartWhatsAppMessage(getCart()));
+    });
+
+    document.querySelectorAll("[data-whatsapp-payment-button]").forEach((link) => {
+        const session = paymentContext?.session || getCheckoutSession();
+        link.href = getWhatsAppSupportUrl(getPaymentWhatsAppMessage(session, paymentContext?.details));
+    });
 }
 
 function getOrderTimelineSteps(order) {
@@ -1636,6 +1816,94 @@ function renderOrderTimeline(order) {
     `;
 }
 
+function getOrderCurrentStatus(order) {
+    const paymentStatus = String(order.paymentStatusCode || "").toLowerCase();
+    const deliveryStatus = String(order.deliveryStatusCode || "").toLowerCase();
+    const hasCustomerInputs = Array.isArray(order.customerInputs) && order.customerInputs.length > 0;
+    const delivered = deliveryStatus === "delivered";
+    const cancelled = deliveryStatus === "cancelled";
+    const paymentVerified = paymentStatus === "verified";
+    const paymentRejected = paymentStatus === "rejected";
+
+    if (paymentRejected) {
+        return {
+            label: "Payment rejected",
+            description: "Payment could not be verified.",
+            nextStep: "Contact support to fix payment or submit a correct reference.",
+            tone: "bad",
+            icon: "bi-x-circle",
+        };
+    }
+
+    if (cancelled) {
+        return {
+            label: "Delivery cancelled",
+            description: "This order delivery was cancelled.",
+            nextStep: "Contact support if you think this is a mistake.",
+            tone: "bad",
+            icon: "bi-x-circle",
+        };
+    }
+
+    if (delivered) {
+        return {
+            label: "Delivered",
+            description: "Your order has been delivered.",
+            nextStep: "Copy your delivered code, key, item, or note below.",
+            tone: "good",
+            icon: "bi-check-circle",
+        };
+    }
+
+    if (paymentVerified && hasCustomerInputs) {
+        return {
+            label: "Delivery information needed",
+            description: "Payment is verified. We need one more detail to finish delivery.",
+            nextStep: "Fill the requested field below and send it for delivery.",
+            tone: "pending",
+            icon: "bi-controller",
+        };
+    }
+
+    if (paymentVerified) {
+        return {
+            label: "Delivery waiting",
+            description: "Payment is verified and your order is being prepared.",
+            nextStep: "Keep this page and refresh status until delivery details appear.",
+            tone: "pending",
+            icon: "bi-box-seam",
+        };
+    }
+
+    return {
+        label: "Payment review",
+        description: "Your payment proof is waiting for manual verification.",
+        nextStep: "Wait for review. You can refresh this status page later.",
+        tone: "pending",
+        icon: "bi-hourglass-split",
+    };
+}
+
+function renderCurrentStatusPanel(order) {
+    const current = getOrderCurrentStatus(order);
+    return `
+        <div class="current-status-panel status-${escapeHtml(current.tone)} mb-4">
+            <div class="current-status-icon">
+                <i class="bi ${escapeHtml(current.icon)}"></i>
+            </div>
+            <div class="current-status-content">
+                <span>${t("Current status")}</span>
+                <strong>${escapeHtml(t(current.label))}</strong>
+                <p>${escapeHtml(t(current.description))}</p>
+                <div class="next-step-box">
+                    <small>${t("Next step")}</small>
+                    <b>${escapeHtml(t(current.nextStep))}</b>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 function getDeliveryLines(order) {
     return (order.deliveries || []).flatMap((delivery) => (Array.isArray(delivery.lines) ? delivery.lines : []));
 }
@@ -1645,10 +1913,13 @@ function renderDeliveryCodes(order) {
     if (!lines.length) return "";
 
     return `
-        <div class="order-delivery-box mt-4">
-            <div class="d-flex align-items-center gap-2 mb-3">
-                <i class="bi bi-key"></i>
-                <h3 class="h5 fw-black mb-0">${t("Delivery details")}</h3>
+        <div class="order-delivery-box order-delivery-box-ready mt-4">
+            <div class="order-delivery-header">
+                <div>
+                    <p class="eyebrow mb-1">${t("Delivered")}</p>
+                    <h3 class="h5 fw-black mb-1"><i class="bi bi-key me-2"></i>${t("Delivery details")}</h3>
+                    <p class="text-secondary mb-0">${t("Copy your code or delivery details and use them on the correct platform.")}</p>
+                </div>
             </div>
             <div class="delivery-code-list">
                 ${lines
@@ -1784,30 +2055,44 @@ function renderOrderStatusResult(order) {
 
     result.innerHTML = `
         <div class="content-panel order-status-card">
-            <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-4">
+            <div class="order-status-header mb-4">
                 <div>
-                    <p class="eyebrow mb-2">Order status</p>
+                    <p class="eyebrow mb-2">${t("Order status")}</p>
                     <h2 class="h3 fw-black mb-0">${escapeHtml(order.id)}</h2>
                 </div>
-                <button class="btn btn-outline-dark align-self-start" type="button" data-copy-order-id="${escapeHtml(order.id)}">
-                    <i class="bi bi-clipboard me-1"></i>Copy
-                </button>
+                <div class="order-status-actions">
+                    <button class="btn btn-outline-dark" type="button" data-copy-order-id="${escapeHtml(order.id)}">
+                        <i class="bi bi-clipboard me-1"></i>Copy
+                    </button>
+                    <button class="btn btn-primary" type="button" data-refresh-order-status>
+                        <i class="bi bi-arrow-clockwise me-1"></i>${t("Refresh status")}
+                    </button>
+                </div>
             </div>
+            ${renderCurrentStatusPanel(order)}
             ${renderOrderTimeline(order)}
             <div class="status-grid mb-4">
                 <div>
-                    <span>WhatsApp</span>
+                    <span>${t("WhatsApp")}</span>
                     <strong>${escapeHtml(order.customerPhone)}</strong>
                 </div>
                 <div>
-                    <span>Created</span>
+                    <span>${t("Created")}</span>
                     <strong>${escapeHtml(createdAt)}</strong>
+                </div>
+                <div>
+                    <span>${t("Payment")}</span>
+                    <strong>${escapeHtml(t(order.paymentStatus || "Payment review"))}</strong>
+                </div>
+                <div>
+                    <span>${t("Delivery")}</span>
+                    <strong>${escapeHtml(t(order.deliveryStatus || "Delivery waiting"))}</strong>
                 </div>
             </div>
             <h3 class="h5 fw-black mb-3">${t("Products")}</h3>
-            ${products || '<p class="text-secondary mb-0">No products found for this order.</p>'}
+            ${products || `<p class="text-secondary mb-0">${t("No products found for this order.")}</p>`}
             <div class="summary-line total mt-3">
-                <span>Amount to verify</span>
+                <span>${t("Amount to verify")}</span>
                 <strong>${formatPlainTndAmount(order.amountDue)}</strong>
             </div>
             ${renderDeliveryCodes(order)}
@@ -1823,9 +2108,63 @@ function renderOrderStatusResult(order) {
     translatePage();
 }
 
+function getSavedOrderStatusLookup() {
+    try {
+        return JSON.parse(localStorage.getItem(ORDER_STATUS_LOOKUP_KEY)) || {};
+    } catch {
+        return {};
+    }
+}
+
+function saveOrderStatusLookup(orderId, customerPhone) {
+    localStorage.setItem(
+        ORDER_STATUS_LOOKUP_KEY,
+        JSON.stringify({
+            orderId,
+            customerPhone,
+        }),
+    );
+}
+
 function setupOrderStatusPage() {
     const form = document.getElementById("orderStatusForm");
     if (!form) return;
+
+    async function checkOrderStatus() {
+        if (!form.checkValidity()) {
+            form.classList.add("was-validated");
+            return;
+        }
+
+        const orderId = document.getElementById("statusOrderId")?.value.trim().toUpperCase() || "";
+        const customerPhone = normalizeTunisianPhoneInput(document.getElementById("statusCustomerPhone")?.value || "");
+        const button = document.getElementById("checkOrderButton");
+        const buttonText = button?.querySelector(".check-order-button-text");
+        const refreshButton = document.querySelector("[data-refresh-order-status]");
+
+        if (!customerPhone) {
+            setAlert("orderStatusError", "Enter the same Tunisian WhatsApp number used at checkout.");
+            return;
+        }
+
+        if (button) button.disabled = true;
+        if (refreshButton) refreshButton.disabled = true;
+        if (buttonText) buttonText.textContent = t("Checking...");
+        setAlert("orderStatusError", "");
+        document.getElementById("orderStatusResult")?.classList.add("d-none");
+
+        try {
+            saveOrderStatusLookup(orderId, customerPhone);
+            const order = await fetchOrderStatus(orderId, customerPhone);
+            renderOrderStatusResult(order);
+        } catch (error) {
+            setAlert("orderStatusError", error.message || "Could not check this order.");
+        } finally {
+            if (button) button.disabled = false;
+            if (refreshButton) refreshButton.disabled = false;
+            if (buttonText) buttonText.textContent = t("Check order");
+        }
+    }
 
     document.getElementById("orderStatusResult")?.addEventListener("submit", async (event) => {
         const inputForm = event.target.closest("[data-customer-input-form]");
@@ -1871,44 +2210,55 @@ function setupOrderStatusPage() {
         }
     });
 
+    document.getElementById("orderStatusResult")?.addEventListener("click", (event) => {
+        const refreshButton = event.target.closest("[data-refresh-order-status]");
+        if (!refreshButton) return;
+        checkOrderStatus();
+    });
+
     const params = new URLSearchParams(window.location.search);
+    const savedLookup = getSavedOrderStatusLookup();
     const orderInput = document.getElementById("statusOrderId");
+    const phoneInput = document.getElementById("statusCustomerPhone");
     if (orderInput && params.get("order")) {
         orderInput.value = params.get("order").toUpperCase();
+    } else if (orderInput && savedLookup.orderId) {
+        orderInput.value = String(savedLookup.orderId).toUpperCase();
+    }
+    if (phoneInput && savedLookup.customerPhone) {
+        phoneInput.value = formatTunisianPhone(savedLookup.customerPhone);
     }
 
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
-        if (!form.checkValidity()) {
-            form.classList.add("was-validated");
-            return;
-        }
-
-        const orderId = document.getElementById("statusOrderId")?.value.trim().toUpperCase() || "";
-        const customerPhone = normalizeTunisianPhoneInput(document.getElementById("statusCustomerPhone")?.value || "");
-        const button = document.getElementById("checkOrderButton");
-        const buttonText = button?.querySelector(".check-order-button-text");
-
-        if (!customerPhone) {
-            setAlert("orderStatusError", "Enter the same Tunisian WhatsApp number used at checkout.");
-            return;
-        }
-
-        if (button) button.disabled = true;
-        if (buttonText) buttonText.textContent = t("Checking...");
-        setAlert("orderStatusError", "");
-        document.getElementById("orderStatusResult")?.classList.add("d-none");
-
-        try {
-            const order = await fetchOrderStatus(orderId, customerPhone);
-            renderOrderStatusResult(order);
-        } catch (error) {
-            setAlert("orderStatusError", error.message || "Could not check this order.");
-        } finally {
-            if (button) button.disabled = false;
-            if (buttonText) buttonText.textContent = t("Check order");
-        }
+        checkOrderStatus();
     });
+}
+
+function setupOrderReceivedPage() {
+    const panel = document.getElementById("orderReceivedPanel");
+    if (!panel) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const orderId = String(params.get("order") || "").trim().toUpperCase();
+    const missing = document.getElementById("orderReceivedMissing");
+
+    if (!orderId) {
+        panel.classList.add("d-none");
+        missing?.classList.remove("d-none");
+        return;
+    }
+
+    const display = document.getElementById("receivedOrderId");
+    const exampleDisplay = document.getElementById("receivedExampleOrderId");
+    const copyButton = document.getElementById("copyReceivedOrderId");
+    const statusLink = document.getElementById("receivedStatusLink");
+    const statusUrl = `order-status.html?order=${encodeURIComponent(orderId)}`;
+
+    if (display) display.textContent = orderId;
+    if (exampleDisplay) exampleDisplay.textContent = orderId;
+    if (copyButton) copyButton.dataset.copyOrderId = orderId;
+    if (statusLink) statusLink.href = statusUrl;
 }
 
 function updateProductDetailSelection(productId, variationId = "") {
@@ -1920,13 +2270,11 @@ function updateProductDetailSelection(productId, variationId = "") {
     const displayName = getVariationName(product, variation);
     const displayPrice = variation?.price ?? product.price ?? 0;
     const priceElement = document.getElementById("selectedProductPrice");
-    const titleElement = document.getElementById("selectedProductName");
     const pageTitleElement = document.getElementById("productPageTitle");
     const breadcrumbElement = document.getElementById("breadcrumbProductName");
     const cartButtons = document.querySelectorAll("[data-selected-product-target]");
 
     if (priceElement) priceElement.textContent = formatMoney(displayPrice);
-    if (titleElement) titleElement.textContent = displayName;
     if (pageTitleElement) pageTitleElement.textContent = displayName;
     if (breadcrumbElement) breadcrumbElement.textContent = displayName;
     document.title = `${displayName} | HyperKey Store`;
@@ -2023,7 +2371,6 @@ function getProductDetail(product) {
 }
 
 function setupProductDetailPage() {
-    const productName = document.getElementById("selectedProductName");
     const productPrice = document.getElementById("selectedProductPrice");
     const productIcon = document.getElementById("selectedProductIcon");
     const productImage = document.getElementById("selectedProductImage");
@@ -2039,7 +2386,7 @@ function setupProductDetailPage() {
     const productVariationOptions = document.getElementById("productVariationOptions");
     const cartButtons = document.querySelectorAll("[data-selected-product-target]");
 
-    if (!productName || !productPrice || !productShowcase) return;
+    if (!productPrice || !productShowcase) return;
 
     const params = new URLSearchParams(window.location.search);
     const requestedProductId = params.get("product") || "steam-wallet";
@@ -2171,7 +2518,7 @@ function setupOrderStatusLinks() {
 function setupFooterUtilityLinks() {
     document.querySelectorAll(".site-footer .d-flex").forEach((footer) => {
         [
-            ["payment-guide.html", "Payment guide"],
+            ["payment-guide.html", "How to order"],
             ["terms.html", "Terms"],
         ].forEach(([href, label]) => {
             if (footer.querySelector(`a[href="${href}"]`)) return;
@@ -2264,6 +2611,7 @@ async function initSite() {
     await renderPaymentPage();
     setupPaymentForm();
     setupOrderStatusPage();
+    setupOrderReceivedPage();
     setupProductDetailPage();
     setupProductOptions();
     translatePage();

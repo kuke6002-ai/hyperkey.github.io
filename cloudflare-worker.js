@@ -186,6 +186,15 @@ function getVariation(product, variationId) {
     return getProductVariations(product).find((variation) => variation.id === variationId) || null;
 }
 
+function getProductOptionName(productName, optionLabel) {
+    const product = String(productName || "").trim();
+    const option = String(optionLabel || "").trim();
+    if (!option) return product;
+    if (!product) return option;
+    if (option.toLowerCase().includes(product.toLowerCase())) return option;
+    return `${product} - ${option}`;
+}
+
 function normalizePhone(value) {
     if (typeof value !== "string") return "";
     const digits = value.replace(/\D/g, "");
@@ -681,7 +690,7 @@ async function getCustomerInputRequirements(env, record, items) {
                 key: getCustomerInputKey(item.product_id, item.variation_id || ""),
                 productId: item.product_id,
                 variationId: item.variation_id || "",
-                productName: item.product_name,
+                productName: getProductOptionName(item.product_name, item.option_label),
                 optionLabel: item.option_label || "",
                 label: customerInput.label,
             };
@@ -752,7 +761,7 @@ async function getOrderStatusPayload(env, record) {
             items: items.map((item) => ({
                 productId: item.product_id,
                 variationId: item.variation_id || "",
-                productName: item.product_name,
+                productName: getProductOptionName(item.product_name, item.option_label),
                 optionLabel: item.option_label || "",
                 quantity: Number(item.quantity),
                 unitPrice: Number(item.unit_price),
@@ -797,7 +806,7 @@ async function getAdminOrderPayload(env, record) {
         items: items.map((item) => ({
             productId: item.product_id,
             variationId: item.variation_id || "",
-            productName: item.product_name,
+            productName: getProductOptionName(item.product_name, item.option_label),
             optionLabel: item.option_label || "",
             quantity: Number(item.quantity),
             unitPrice: Number(item.unit_price),
@@ -1102,9 +1111,7 @@ function formatAdminMessage(order) {
     const products = order.lines
         .map((line) => {
             const quantity = Number(line.quantity) > 1 ? `${line.quantity}\u00D7 ` : "";
-            const productLabel = line.optionLabel
-                ? `${line.name} (${line.optionLabel})`
-                : line.name;
+            const productLabel = getProductOptionName(line.name, line.optionLabel);
             return `\u2022 ${escapeHtml(quantity)}${escapeHtml(productLabel)} \u2014 ${escapeHtml(formatTndAmount(line.lineTotal))}`;
         })
         .join("\n");
