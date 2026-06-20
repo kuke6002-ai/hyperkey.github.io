@@ -1,6 +1,7 @@
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 const MAX_QUANTITY = 99;
 const processedOrders = new Map();
+let customerInputTableReady = false;
 
 const DEFAULT_PAYMENT_SETTINGS = {
     payment: {
@@ -550,6 +551,99 @@ async function getAllResults(statement) {
     return result.results || [];
 }
 
+async function ensureCustomerInputsTable(env) {
+    if (customerInputTableReady) return;
+
+    const db = getOrderDb(env);
+    await db.batch([
+        db.prepare(
+            `CREATE TABLE IF NOT EXISTS order_customer_inputs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT NOT NULL,
+                product_id TEXT NOT NULL,
+                variation_id TEXT,
+                product_name TEXT NOT NULL,
+                input_label TEXT NOT NULL,
+                input_value TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (order_id) REFERENCES orders(id)
+            )`,
+        ),
+        db.prepare("CREATE INDEX IF NOT EXISTS idx_order_customer_inputs_order_id ON order_customer_inputs(order_id)"),
+    ]);
+    customerInputTableReady = true;
+}
+
+async function getOrderCustomerInputs(env, orderId) {
+    await ensureCustomerInputsTable(env);
+    const db = getOrderDb(env);
+    return getAllResults(
+        db
+            .prepare(
+                `SELECT
+                    id,
+                    product_id,
+                    variation_id,
+                    product_name,
+                    input_label,
+                    input_value,
+                    created_at
+                FROM order_customer_inputs
+                WHERE order_id = ?
+                ORDER BY id`,
+            )
+            .bind(orderId),
+    );
+}
+
+function formatCustomerInputPayload(inputs) {
+    return inputs.map((input) => ({
+        id: input.id,
+        key: getCustomerInputKey(input.product_id, input.variation_id || "", input.input_label || ""),
+        productId: input.product_id,
+        variationId: input.variation_id || "",
+        productName: input.product_name || "",
+        label: input.input_label || "Delivery info",
+        value: input.input_value || "",
+        createdAt: input.created_at,
+    }));
+}
+
+async function saveOrderCustomerInputs(env, orderId, inputs) {
+    await ensureCustomerInputsTable(env);
+    const db = getOrderDb(env);
+    const now = new Date().toISOString();
+    const statements = [db.prepare("DELETE FROM order_customer_inputs WHERE order_id = ?").bind(orderId)];
+
+    inputs.forEach((input) => {
+        statements.push(
+            db
+                .prepare(
+                    `INSERT INTO order_customer_inputs (
+                        order_id,
+                        product_id,
+                        variation_id,
+                        product_name,
+                        input_label,
+                        input_value,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                )
+                .bind(
+                    orderId,
+                    input.productId,
+                    input.variationId || "",
+                    input.productName,
+                    input.label,
+                    input.value,
+                    now,
+                ),
+        );
+    });
+
+    await db.batch(statements);
+}
+
 async function getOrderItems(env, orderId) {
     const db = getOrderDb(env);
     return getAllResults(
@@ -653,22 +747,23 @@ function formatDeliveryPayload(deliveries) {
     }));
 }
 
-function getCustomerInputConfig(product) {
+function getCustomerInputConfigs(product) {
     const config = product?.customerInput;
-    if (!config || config.enabled === false) return null;
+    if (!config || config.enabled === false) return [];
 
-    const label = String(config.label || "Player ID").trim().slice(0, 80) || "Player ID";
-    return {
+    const labels = Array.isArray(config.labels) && config.labels.length ? config.labels : [config.label || "Player ID"];
+    const uniqueLabels = [...new Set(labels.map((label) => String(label || "Player ID").trim().slice(0, 80)).filter(Boolean))];
+
+    return (uniqueLabels.length ? uniqueLabels : ["Player ID"]).map((label) => ({
         enabled: true,
         label,
-    };
+    }));
 }
 
-function getCustomerInputKey(productId, variationId) {
-    return `${productId}::${variationId || ""}`;
+function getCustomerInputKey(productId, variationId, label = "") {
+    return `${productId}::${variationId || ""}::${slugify(label || "delivery-info")}`;
 }
-
-async function getCustomerInputRequirements(env, record, items) {
+async function getCustomerInputRequirements(env, record, items, savedInputs = null) {
     if (record.payment_status !== "verified" || record.delivery_status !== "waiting") return [];
 
     let database = null;
@@ -679,25 +774,38 @@ async function getCustomerInputRequirements(env, record, items) {
         return [];
     }
 
+    const existingInputs = Array.isArray(savedInputs) ? savedInputs : await getOrderCustomerInputs(env, record.id);
+    const savedKeys = new Set(
+        existingInputs.map((input) =>
+            getCustomerInputKey(input.product_id || input.productId, input.variation_id || input.variationId || "", input.input_label || input.label || ""),
+        ),
+    );
     const products = database.products || {};
-    return items
-        .map((item) => {
-            const product = products[item.product_id];
-            const customerInput = getCustomerInputConfig(product);
-            if (!customerInput) return null;
 
-            return {
-                key: getCustomerInputKey(item.product_id, item.variation_id || ""),
-                productId: item.product_id,
-                variationId: item.variation_id || "",
-                productName: getProductOptionName(item.product_name, item.option_label),
-                optionLabel: item.option_label || "",
-                label: customerInput.label,
-            };
+    return items
+        .flatMap((item) => {
+            const product = products[item.product_id];
+            const customerInputs = getCustomerInputConfigs(product);
+            if (!customerInputs.length) return [];
+
+            return customerInputs
+                .map((customerInput) => {
+                    const key = getCustomerInputKey(item.product_id, item.variation_id || "", customerInput.label);
+                    if (savedKeys.has(key)) return null;
+
+                    return {
+                        key,
+                        productId: item.product_id,
+                        variationId: item.variation_id || "",
+                        productName: getProductOptionName(item.product_name, item.option_label),
+                        optionLabel: item.option_label || "",
+                        label: customerInput.label,
+                    };
+                })
+                .filter(Boolean);
         })
         .filter(Boolean);
 }
-
 async function getSavedOrderForNotification(env, record) {
     const [items, proofs] = await Promise.all([getOrderItems(env, record.id), getPaymentProofs(env, record.id)]);
     const isTtCard = record.payment_method === "tt-card";
@@ -742,8 +850,12 @@ async function getSavedOrderForNotification(env, record) {
 }
 
 async function getOrderStatusPayload(env, record) {
-    const [items, deliveries] = await Promise.all([getOrderItems(env, record.id), getOrderDeliveries(env, record.id)]);
-    const customerInputs = await getCustomerInputRequirements(env, record, items);
+    const [items, deliveries, savedInputs] = await Promise.all([
+        getOrderItems(env, record.id),
+        getOrderDeliveries(env, record.id),
+        getOrderCustomerInputs(env, record.id),
+    ]);
+    const customerInputs = await getCustomerInputRequirements(env, record, items, savedInputs);
     return {
         ok: true,
         order: {
@@ -782,10 +894,11 @@ function formatAdminProofs(proofs) {
 }
 
 async function getAdminOrderPayload(env, record) {
-    const [items, proofs, deliveries] = await Promise.all([
+    const [items, proofs, deliveries, savedInputs] = await Promise.all([
         getOrderItems(env, record.id),
         getPaymentProofs(env, record.id),
         getOrderDeliveries(env, record.id),
+        getOrderCustomerInputs(env, record.id),
     ]);
     return {
         id: record.id,
@@ -814,6 +927,8 @@ async function getAdminOrderPayload(env, record) {
         })),
         proofs: formatAdminProofs(proofs),
         deliveries: formatDeliveryPayload(deliveries),
+        customerInputs: formatCustomerInputPayload(savedInputs),
+        customerInputRequirements: await getCustomerInputRequirements(env, record, items, savedInputs),
     };
 }
 
@@ -928,6 +1043,7 @@ async function deleteAdminOrder(env, body) {
     try {
         await db.batch([
             db.prepare("DELETE FROM order_deliveries WHERE order_id = ?").bind(orderId),
+            db.prepare("DELETE FROM order_customer_inputs WHERE order_id = ?").bind(orderId),
             db.prepare("DELETE FROM payment_proofs WHERE order_id = ?").bind(orderId),
             db.prepare("DELETE FROM order_items WHERE order_id = ?").bind(orderId),
             db.prepare("DELETE FROM orders WHERE id = ?").bind(orderId),
@@ -1312,7 +1428,14 @@ async function handleCustomerInput(body, env, corsHeaders) {
 
     const inputMap = new Map(
         (Array.isArray(body.inputs) ? body.inputs : []).map((input) => [
-            getCustomerInputKey(String(input?.productId || "").trim(), String(input?.variationId || "").trim()),
+            String(
+                input?.key ||
+                    getCustomerInputKey(
+                        String(input?.productId || "").trim(),
+                        String(input?.variationId || "").trim(),
+                        String(input?.label || "").trim(),
+                    ),
+            ),
             input,
         ]),
     );
@@ -1345,6 +1468,7 @@ async function handleCustomerInput(body, env, corsHeaders) {
           }
         : undefined;
 
+    await saveOrderCustomerInputs(env, record.id, validatedInputs);
     await sendTelegramMessage(env, env.TELEGRAM_ADMIN_CHAT_ID, formatCustomerInputMessage(record, validatedInputs), contactButton);
     return jsonResponse({ ok: true, message: "Information sent for delivery." }, 200, corsHeaders);
 }

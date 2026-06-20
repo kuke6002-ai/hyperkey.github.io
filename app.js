@@ -353,9 +353,10 @@ function t(value) {
 }
 
 function formatProductCount(count) {
-    if (CURRENT_LANGUAGE === "ar") return `${count} ÃƒÆ’Ã¢â€žÂ¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â€žÂ¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚ÂªÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â¬`;
-    if (CURRENT_LANGUAGE === "fr") return `${count} produit${count === 1 ? "" : "s"}`;
-    return `${count} product${count === 1 ? "" : "s"}`;
+    const value = Number(count) || 0;
+    if (CURRENT_LANGUAGE === "ar") return `${value} ${value === 1 ? "\u0645\u0646\u062A\u062C" : "\u0645\u0646\u062A\u062C\u0627\u062A"}`;
+    if (CURRENT_LANGUAGE === "fr") return `${value} produit${value === 1 ? "" : "s"}`;
+    return `${value} product${value === 1 ? "" : "s"}`;
 }
 
 function translateTextNode(node) {
@@ -1655,6 +1656,31 @@ function getOrderSupportMessage(orderId) {
     return `Hello HyperKey Store, I need help with order ${orderId}.`;
 }
 
+function getOrderStatusSupportMessage(order) {
+    const orderId = order?.id || "";
+    const status = t(getOrderCurrentStatus(order).label);
+    if (CURRENT_LANGUAGE === "ar") {
+        return [
+            "\u0645\u0631\u062D\u0628\u0627 HyperKey Store\u060C \u0623\u062D\u062A\u0627\u062C \u0645\u0633\u0627\u0639\u062F\u0629 \u0641\u064A \u0647\u0630\u0627 \u0627\u0644\u0637\u0644\u0628.",
+            `Order ID: ${orderId}`,
+            `Status: ${status}`,
+        ].join("\n");
+    }
+    if (CURRENT_LANGUAGE === "fr") {
+        return [
+            "Bonjour HyperKey Store, j'ai besoin d'aide pour cette commande.",
+            `Order ID: ${orderId}`,
+            `Statut: ${status}`,
+        ].join("\n");
+    }
+    return [
+        "Hello HyperKey Store, I need help with this order.",
+        `Order ID: ${orderId}`,
+        `Status: ${status}`,
+    ].join("\n");
+}
+
+
 function getProductAvailabilityMessage(productName) {
     if (CURRENT_LANGUAGE === "ar") return `\u0645\u0631\u062D\u0628\u0627 HyperKey Store\u060C \u0647\u0644 ${productName} \u0645\u062A\u0648\u0641\u0631\u061F`;
     if (CURRENT_LANGUAGE === "fr") return `Bonjour HyperKey Store, est-ce que ${productName} est disponible ?`;
@@ -1773,23 +1799,19 @@ function getOrderTimelineSteps(order) {
     const paymentVerified = paymentStatus === "verified";
     const paymentRejected = paymentStatus === "rejected";
     const delivered = deliveryStatus === "delivered";
-    const cancelled = deliveryStatus === "cancelled";
+    const cancelled = ["cancelled", "canceled"].includes(deliveryStatus);
 
     return [
         {
-            label: "Order received",
+            label: "Order sent",
             status: "complete",
         },
         {
-            label: paymentRejected ? "Payment rejected" : "Payment review",
-            status: paymentRejected ? "bad" : paymentVerified ? "complete" : "current",
+            label: "Payment check",
+            status: paymentRejected ? "bad" : paymentVerified || delivered ? "complete" : "current",
         },
         {
-            label: "Payment verified",
-            status: paymentVerified ? "complete" : "waiting",
-        },
-        {
-            label: cancelled ? "Delivery cancelled" : "Delivery waiting",
+            label: "Delivery info",
             status: cancelled ? "bad" : delivered ? "complete" : paymentVerified ? "current" : "waiting",
         },
         {
@@ -1816,6 +1838,55 @@ function renderOrderTimeline(order) {
     `;
 }
 
+function renderOrderProgressBar(order) {
+    const steps = getOrderTimelineSteps(order);
+    const activeIndex = Math.max(
+        0,
+        steps.findIndex((step) => ["current", "bad"].includes(step.status)) === -1
+            ? steps.reduce((last, step, index) => (step.status === "complete" ? index : last), 0)
+            : steps.findIndex((step) => ["current", "bad"].includes(step.status)),
+    );
+    const progressPercent = steps.length > 1 ? Math.round((activeIndex / (steps.length - 1)) * 100) : 0;
+
+    return `
+        <div class="order-progress-bar mb-4" aria-label="${escapeHtml(t("Order status"))}">
+            <div class="order-progress-scroll">
+                <div class="order-progress-inner">
+                    <div class="order-progress-track" aria-hidden="true">
+                        <span style="width: ${progressPercent}%"></span>
+                    </div>
+                    <div class="order-progress-steps">
+                        ${steps
+                            .map(
+                                (step, index) => `
+                                    <div class="order-progress-step progress-${escapeHtml(step.status)}">
+                                        <span>${index + 1}</span>
+                                        <strong>${escapeHtml(t(step.label))}</strong>
+                                    </div>
+                                `,
+                            )
+                            .join("")}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function isOrderDelivered(order) {
+    return String(order?.deliveryStatusCode || "").toLowerCase() === "delivered";
+}
+
+function isOrderWaitingForRefresh(order) {
+    const paymentStatus = String(order?.paymentStatusCode || "").toLowerCase();
+    const deliveryStatus = String(order?.deliveryStatusCode || "").toLowerCase();
+    const needsCustomerInput = Array.isArray(order?.customerInputs) && order.customerInputs.length > 0;
+    if (["rejected"].includes(paymentStatus)) return false;
+    if (["delivered", "cancelled", "canceled"].includes(deliveryStatus)) return false;
+    if (paymentStatus === "verified" && needsCustomerInput) return false;
+    return true;
+}
+
 function getOrderCurrentStatus(order) {
     const paymentStatus = String(order.paymentStatusCode || "").toLowerCase();
     const deliveryStatus = String(order.deliveryStatusCode || "").toLowerCase();
@@ -1828,8 +1899,7 @@ function getOrderCurrentStatus(order) {
     if (paymentRejected) {
         return {
             label: "Payment rejected",
-            description: "Payment could not be verified.",
-            nextStep: "Contact support to fix payment or submit a correct reference.",
+            action: "Contact support to fix this order.",
             tone: "bad",
             icon: "bi-x-circle",
         };
@@ -1838,8 +1908,7 @@ function getOrderCurrentStatus(order) {
     if (cancelled) {
         return {
             label: "Delivery cancelled",
-            description: "This order delivery was cancelled.",
-            nextStep: "Contact support if you think this is a mistake.",
+            action: "Contact support to fix this order.",
             tone: "bad",
             icon: "bi-x-circle",
         };
@@ -1848,8 +1917,7 @@ function getOrderCurrentStatus(order) {
     if (delivered) {
         return {
             label: "Delivered",
-            description: "Your order has been delivered.",
-            nextStep: "Copy your delivered code, key, item, or note below.",
+            action: "Copy your delivered item below.",
             tone: "good",
             icon: "bi-check-circle",
         };
@@ -1858,8 +1926,7 @@ function getOrderCurrentStatus(order) {
     if (paymentVerified && hasCustomerInputs) {
         return {
             label: "Delivery information needed",
-            description: "Payment is verified. We need one more detail to finish delivery.",
-            nextStep: "Fill the requested field below and send it for delivery.",
+            action: "Send the requested delivery information below.",
             tone: "pending",
             icon: "bi-controller",
         };
@@ -1868,8 +1935,7 @@ function getOrderCurrentStatus(order) {
     if (paymentVerified) {
         return {
             label: "Delivery waiting",
-            description: "Payment is verified and your order is being prepared.",
-            nextStep: "Keep this page and refresh status until delivery details appear.",
+            action: "Your order is being prepared.",
             tone: "pending",
             icon: "bi-box-seam",
         };
@@ -1877,8 +1943,7 @@ function getOrderCurrentStatus(order) {
 
     return {
         label: "Payment review",
-        description: "Your payment proof is waiting for manual verification.",
-        nextStep: "Wait for review. You can refresh this status page later.",
+        action: "We are checking your payment. Refresh later.",
         tone: "pending",
         icon: "bi-hourglass-split",
     };
@@ -1894,11 +1959,7 @@ function renderCurrentStatusPanel(order) {
             <div class="current-status-content">
                 <span>${t("Current status")}</span>
                 <strong>${escapeHtml(t(current.label))}</strong>
-                <p>${escapeHtml(t(current.description))}</p>
-                <div class="next-step-box">
-                    <small>${t("Next step")}</small>
-                    <b>${escapeHtml(t(current.nextStep))}</b>
-                </div>
+                <p class="current-status-action">${escapeHtml(t(current.action))}</p>
             </div>
         </div>
     `;
@@ -1948,6 +2009,37 @@ function renderDeliveryCodes(order) {
     `;
 }
 
+function renderOrderProducts(order, products) {
+    if (!products) return `<p class="text-secondary mb-0">${t("No products found for this order.")}</p>`;
+
+    const items = Array.isArray(order.items) ? order.items : [];
+    const delivered = isOrderDelivered(order);
+    const itemCount = items.reduce((sum, item) => sum + Math.max(1, Number(item.quantity) || 1), 0);
+    const total = items.reduce((sum, item) => sum + (Number(item.lineTotal) || 0), 0);
+
+    if (!delivered) {
+        return `
+            <h3 class="h5 fw-black mb-3">${t("Products")}</h3>
+            ${products}
+        `;
+    }
+
+    return `
+        <details class="order-products-details mb-4">
+            <summary aria-label="${escapeHtml(t("Products in this order"))}">
+                <span class="order-products-summary-copy">
+                    <small>${t("Products in this order")}</small>
+                    <strong>${escapeHtml(formatProductCount(itemCount))} &bull; ${escapeHtml(formatPlainTndAmount(total))}</strong>
+                </span>
+                <i class="bi bi-chevron-down"></i>
+            </summary>
+            <div class="order-products-details-body">
+                ${products}
+            </div>
+        </details>
+    `;
+}
+
 function renderCustomerInputForm(order) {
     const inputs = Array.isArray(order.customerInputs) ? order.customerInputs : [];
     if (!inputs.length) return "";
@@ -1974,6 +2066,7 @@ function renderCustomerInputForm(order) {
                                     maxlength="120"
                                     autocomplete="off"
                                     data-customer-input
+                                    data-key="${escapeHtml(input.key || "")}"
                                     data-product-id="${escapeHtml(input.productId)}"
                                     data-variation-id="${escapeHtml(input.variationId || "")}"
                                     data-product-name="${escapeHtml(input.productName)}"
@@ -2001,6 +2094,7 @@ async function submitCustomerInput(form) {
     if (!customerPhone) throw new Error("Enter the same Tunisian WhatsApp number used at checkout.");
 
     const inputs = [...form.querySelectorAll("[data-customer-input]")].map((input) => ({
+        key: input.dataset.key || "",
         productId: input.dataset.productId || "",
         variationId: input.dataset.variationId || "",
         productName: input.dataset.productName || "",
@@ -2050,8 +2144,8 @@ function renderOrderStatusResult(order) {
             `,
         )
         .join("");
-    const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleString("en-TN") : "Not available";
-    const supportUrl = getWhatsAppSupportUrl(getOrderSupportMessage(order.id));
+    const deliveryDetails = renderDeliveryCodes(order);
+    const supportUrl = getWhatsAppSupportUrl(getOrderStatusSupportMessage(order));
 
     result.innerHTML = `
         <div class="content-panel order-status-card">
@@ -2061,45 +2155,17 @@ function renderOrderStatusResult(order) {
                     <h2 class="h3 fw-black mb-0">${escapeHtml(order.id)}</h2>
                 </div>
                 <div class="order-status-actions">
-                    <button class="btn btn-outline-dark" type="button" data-copy-order-id="${escapeHtml(order.id)}">
-                        <i class="bi bi-clipboard me-1"></i>Copy
-                    </button>
                     <button class="btn btn-primary" type="button" data-refresh-order-status>
-                        <i class="bi bi-arrow-clockwise me-1"></i>${t("Refresh status")}
-                    </button>
+                        <i class="bi bi-arrow-clockwise me-1"></i>${t("Refresh status")}</button>
                 </div>
             </div>
             ${renderCurrentStatusPanel(order)}
-            ${renderOrderTimeline(order)}
-            <div class="status-grid mb-4">
-                <div>
-                    <span>${t("WhatsApp")}</span>
-                    <strong>${escapeHtml(order.customerPhone)}</strong>
-                </div>
-                <div>
-                    <span>${t("Created")}</span>
-                    <strong>${escapeHtml(createdAt)}</strong>
-                </div>
-                <div>
-                    <span>${t("Payment")}</span>
-                    <strong>${escapeHtml(t(order.paymentStatus || "Payment review"))}</strong>
-                </div>
-                <div>
-                    <span>${t("Delivery")}</span>
-                    <strong>${escapeHtml(t(order.deliveryStatus || "Delivery waiting"))}</strong>
-                </div>
-            </div>
-            <h3 class="h5 fw-black mb-3">${t("Products")}</h3>
-            ${products || `<p class="text-secondary mb-0">${t("No products found for this order.")}</p>`}
-            <div class="summary-line total mt-3">
-                <span>${t("Amount to verify")}</span>
-                <strong>${formatPlainTndAmount(order.amountDue)}</strong>
-            </div>
-            ${renderDeliveryCodes(order)}
+            ${renderOrderProgressBar(order)}
+            ${renderOrderProducts(order, products)}
+            ${deliveryDetails}
             ${renderCustomerInputForm(order)}
             <a class="btn btn-outline-dark w-100 mt-4" href="${escapeHtml(supportUrl)}" target="_blank" rel="noopener">
-                <i class="bi bi-whatsapp me-2"></i>${t("Contact support about this order")}
-            </a>
+                <i class="bi bi-whatsapp me-2"></i>${t("Contact support about this order")}</a>
             <p class="small text-secondary mt-3 mb-0">${t("Payment proofs and recharge card codes are hidden after submission.")}</p>
         </div>
     `;
@@ -2130,7 +2196,24 @@ function setupOrderStatusPage() {
     const form = document.getElementById("orderStatusForm");
     if (!form) return;
 
-    async function checkOrderStatus() {
+    let autoRefreshTimer = null;
+
+    function clearAutoRefresh() {
+        if (!autoRefreshTimer) return;
+        window.clearTimeout(autoRefreshTimer);
+        autoRefreshTimer = null;
+    }
+
+    function scheduleAutoRefresh(order) {
+        clearAutoRefresh();
+        if (!isOrderWaitingForRefresh(order)) return;
+        autoRefreshTimer = window.setTimeout(() => {
+            checkOrderStatus({ silent: true });
+        }, 45000);
+    }
+
+    async function checkOrderStatus(options = {}) {
+        const silent = Boolean(options.silent);
         if (!form.checkValidity()) {
             form.classList.add("was-validated");
             return;
@@ -2147,16 +2230,18 @@ function setupOrderStatusPage() {
             return;
         }
 
-        if (button) button.disabled = true;
+        clearAutoRefresh();
+        if (!silent && button) button.disabled = true;
         if (refreshButton) refreshButton.disabled = true;
-        if (buttonText) buttonText.textContent = t("Checking...");
+        if (!silent && buttonText) buttonText.textContent = t("Checking...");
         setAlert("orderStatusError", "");
-        document.getElementById("orderStatusResult")?.classList.add("d-none");
+        if (!silent) document.getElementById("orderStatusResult")?.classList.add("d-none");
 
         try {
             saveOrderStatusLookup(orderId, customerPhone);
             const order = await fetchOrderStatus(orderId, customerPhone);
             renderOrderStatusResult(order);
+            scheduleAutoRefresh(order);
         } catch (error) {
             setAlert("orderStatusError", error.message || "Could not check this order.");
         } finally {
@@ -2182,6 +2267,7 @@ function setupOrderStatusPage() {
         const alert = inputForm.querySelector("[data-customer-input-alert]");
 
         customerInputSubmitting = true;
+        clearAutoRefresh();
         if (button) button.disabled = true;
         if (buttonText) buttonText.textContent = "Sending...";
         if (alert) {
@@ -2234,6 +2320,7 @@ function setupOrderStatusPage() {
         checkOrderStatus();
     });
 }
+
 
 function setupOrderReceivedPage() {
     const panel = document.getElementById("orderReceivedPanel");

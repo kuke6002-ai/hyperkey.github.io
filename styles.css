@@ -1,3 +1,8 @@
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 92px;
+}
+
 :root {
     --gv-ink: #181715;
     --gv-muted: #6f737a;
@@ -59,6 +64,7 @@ a {
     align-items: center;
     background: #050505;
     border-radius: 8px;
+    animation: brandGlow 5.4s ease-in-out infinite;
     box-shadow: 0 0 0 1px rgba(255, 122, 26, 0.35), 0 10px 24px var(--gv-glow);
     display: inline-flex;
     height: 42px;
@@ -1440,6 +1446,7 @@ a {
         var(--gv-soft);
     border: 1px solid var(--status-border, var(--gv-border));
     border-radius: 8px;
+    animation: statusPanelGlow 4.8s ease-in-out infinite;
     box-shadow: 0 24px 58px var(--status-glow, rgba(255, 190, 70, 0.16));
     display: grid;
     gap: 16px;
@@ -1453,6 +1460,7 @@ a {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid var(--status-border, var(--gv-border));
     border-radius: 8px;
+    animation: iconGlow 3.2s ease-in-out infinite;
     box-shadow: 0 0 0 5px var(--status-halo, rgba(255, 190, 70, 0.14)), 0 0 24px var(--status-color, #ffbe46);
     color: var(--status-color, #ffbe46);
     display: inline-flex;
@@ -1498,6 +1506,185 @@ a {
     display: block;
     font-weight: 900;
     margin-top: 4px;
+}
+
+
+.current-status-action {
+    color: var(--gv-ink) !important;
+    font-size: 1rem;
+    font-weight: 850;
+    line-height: 1.45;
+    margin-top: 10px !important;
+}
+
+.order-progress-bar {
+    background: var(--gv-soft);
+    border: 1px solid var(--gv-border);
+    border-radius: 8px;
+    overflow: hidden;
+    padding: 16px 14px 14px;
+}
+
+.order-progress-scroll {
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.order-progress-inner {
+    direction: ltr;
+    min-width: 440px;
+    padding-top: 4px;
+    position: relative;
+}
+
+.order-progress-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    height: 8px;
+    left: 12.5%;
+    overflow: hidden;
+    position: absolute;
+    right: 12.5%;
+    top: 17px;
+}
+
+.order-progress-track span {
+    background: linear-gradient(90deg, var(--gv-primary), #2cec84);
+    border-radius: inherit;
+    animation: progressGlow 3.6s ease-in-out infinite;
+    box-shadow: 0 0 22px rgba(44, 236, 132, 0.2);
+    display: block;
+    height: 100%;
+    transition: width 260ms ease;
+}
+
+.order-progress-steps {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    position: relative;
+    z-index: 1;
+}
+
+.order-progress-step {
+    align-items: center;
+    color: var(--gv-muted);
+    display: grid;
+    gap: 9px;
+    justify-items: center;
+    min-width: 0;
+    text-align: center;
+}
+
+.order-progress-step span {
+    align-items: center;
+    background: #55565a;
+    border: 2px solid rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
+    box-shadow: 0 0 0 4px rgba(85, 86, 90, 0.16);
+    color: #ffffff;
+    display: inline-flex;
+    font-size: 0.78rem;
+    font-weight: 950;
+    height: 34px;
+    justify-content: center;
+    width: 34px;
+}
+
+.order-progress-step strong {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 850;
+    line-height: 1.25;
+    max-width: 104px;
+}
+
+.order-progress-step.progress-complete {
+    color: #bfffd8;
+}
+
+.order-progress-step.progress-complete span {
+    animation: dotGlow 3.4s ease-in-out infinite;
+    background: #2cec84;
+    border-color: rgba(191, 255, 216, 0.4);
+    box-shadow: 0 0 0 4px rgba(44, 236, 132, 0.14), 0 0 20px rgba(44, 236, 132, 0.38);
+    color: #062313;
+}
+
+.order-progress-step.progress-current {
+    color: var(--gv-primary);
+}
+
+.order-progress-step.progress-current span {
+    animation: statusPulse 1.8s ease-in-out infinite, dotGlow 3.4s ease-in-out infinite;
+    background: var(--gv-primary);
+    border-color: rgba(255, 255, 255, 0.45);
+    box-shadow: 0 0 0 4px rgba(255, 122, 26, 0.16), 0 0 22px rgba(255, 122, 26, 0.42);
+    color: #17110b;
+}
+
+.order-progress-step.progress-bad {
+    color: #ffc2c8;
+}
+
+.order-progress-step.progress-bad span {
+    background: #ff5361;
+    box-shadow: 0 0 0 4px rgba(255, 83, 97, 0.16), 0 0 20px rgba(255, 83, 97, 0.38);
+}
+
+.order-products-details {
+    background: var(--gv-soft);
+    border: 1px solid var(--gv-border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.order-products-details summary {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    font-weight: 900;
+    gap: 14px;
+    justify-content: space-between;
+    list-style: none;
+    padding: 14px;
+}
+
+.order-products-details summary::-webkit-details-marker {
+    display: none;
+}
+
+.order-products-summary-copy {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.order-products-summary-copy small {
+    color: var(--gv-muted);
+    font-size: 0.76rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.order-products-summary-copy strong {
+    color: var(--gv-ink);
+    display: block;
+    font-weight: 950;
+}
+
+.order-products-details summary i {
+    color: var(--gv-primary);
+    transition: transform 180ms ease;
+}
+
+.order-products-details[open] summary i {
+    transform: rotate(180deg);
+}
+
+.order-products-details-body {
+    border-top: 1px solid var(--gv-border);
+    padding: 14px;
 }
 
 .order-timeline {
@@ -1560,6 +1747,7 @@ a {
 }
 
 .order-delivery-box-ready {
+    animation: deliveryGlow 4.4s ease-in-out infinite;
     border-color: rgba(44, 236, 132, 0.34);
     box-shadow: 0 20px 46px rgba(44, 236, 132, 0.12);
 }
@@ -1865,6 +2053,7 @@ a {
     align-items: center;
     border: 1px solid var(--status-border, var(--gv-border));
     border-radius: 8px;
+    animation: statusBadgeGlow 4s ease-in-out infinite;
     box-shadow: 0 0 22px var(--status-glow, rgba(255, 255, 255, 0.08));
     color: var(--status-text, var(--gv-ink));
     display: inline-flex;
@@ -2426,6 +2615,425 @@ a {
     max-width: 220px;
 }
 
+
+.admin-shell > .container-fluid,
+.admin-navbar .container-fluid {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 1320px;
+}
+
+#ordersAdminPanel {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 1120px;
+    padding: 24px;
+}
+
+#ordersAdminPanel::before,
+.admin-order-card::before {
+    display: none;
+}
+
+#ordersAdminPanel:hover,
+.admin-order-card:hover {
+    transform: none;
+}
+
+.admin-order-toolbar {
+    grid-template-columns: minmax(180px, 280px) auto auto;
+}
+
+.admin-order-filters {
+    grid-template-columns: minmax(220px, 1fr) minmax(150px, 180px) minmax(150px, 180px);
+}
+
+.admin-order-card {
+    background: rgba(255, 255, 255, 0.035);
+    border-color: rgba(255, 122, 26, 0.2);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.18);
+    padding: 16px;
+}
+
+.admin-order-card:hover {
+    border-color: rgba(255, 122, 26, 0.34);
+    box-shadow: 0 22px 52px rgba(0, 0, 0, 0.24);
+}
+
+.admin-order-card-header {
+    align-items: flex-start;
+    display: grid;
+    gap: 14px;
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.admin-order-title-block h3 {
+    line-height: 1;
+}
+
+.admin-order-meta-row {
+    align-items: center;
+    color: var(--gv-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.admin-order-meta-row span,
+.admin-order-meta-row strong {
+    align-items: center;
+    background: var(--gv-panel);
+    border: 1px solid var(--gv-border);
+    border-radius: 8px;
+    display: inline-flex;
+    font-size: 0.88rem;
+    gap: 7px;
+    min-height: 34px;
+    padding: 7px 10px;
+}
+
+.admin-order-meta-row strong {
+    color: var(--gv-ink);
+    font-weight: 900;
+}
+
+.admin-order-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.admin-order-actions .btn {
+    min-height: 38px;
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+}
+
+.admin-order-body {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: 260px minmax(0, 1fr);
+    margin-top: 14px;
+}
+
+.admin-order-status-panel,
+.admin-order-detail-stack {
+    display: grid;
+    gap: 12px;
+}
+
+.admin-status-card {
+    background: var(--gv-panel);
+    border: 1px solid var(--gv-border);
+    border-radius: 8px;
+    padding: 13px;
+}
+
+.admin-status-card > span {
+    color: var(--gv-muted);
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 900;
+    margin-bottom: 8px;
+}
+
+.admin-status-card .status-badge {
+    align-items: center;
+    animation: statusBadgeGlow 4s ease-in-out infinite;
+    border: 1px solid var(--status-border, var(--gv-border));
+    border-radius: 8px;
+    box-shadow: 0 0 22px var(--status-glow, rgba(255, 255, 255, 0.08));
+    color: var(--status-text, var(--gv-ink));
+    display: inline-flex;
+    gap: 9px;
+    justify-content: flex-start;
+    line-height: 1.2;
+    min-height: 38px;
+    padding: 9px 11px;
+    vertical-align: middle;
+    width: fit-content;
+}
+
+.admin-status-controls {
+    display: grid;
+    gap: 8px;
+}
+
+.admin-status-controls .form-select,
+.admin-status-controls .btn {
+    max-width: none;
+    width: 100%;
+}
+
+.admin-order-details,
+.admin-delivery-box {
+    background: var(--gv-panel);
+    border: 1px solid var(--gv-border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.admin-order-details summary {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    font-weight: 900;
+    justify-content: space-between;
+    list-style: none;
+    padding: 13px 14px;
+}
+
+.admin-order-details summary::-webkit-details-marker {
+    display: none;
+}
+
+.admin-order-details summary .bi-chevron-down {
+    color: var(--gv-primary);
+    transition: transform 180ms ease;
+}
+
+.admin-order-details[open] summary {
+    border-bottom: 1px solid var(--gv-border);
+}
+
+.admin-order-details[open] summary .bi-chevron-down {
+    transform: rotate(180deg);
+}
+
+.admin-order-detail-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: 14px;
+}
+
+.admin-order-line,
+.admin-proof-line {
+    padding: 8px 0;
+}
+
+
+.admin-customer-inputs-block {
+    grid-column: 1 / -1;
+}
+
+.admin-customer-input-list {
+    display: grid;
+    gap: 10px;
+}
+
+.admin-customer-input-row {
+    align-items: center;
+    background: #111111;
+    border: 1px solid var(--gv-border);
+    border-radius: 8px;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 12px;
+}
+
+.admin-customer-input-row span,
+.admin-customer-input-row em {
+    color: var(--gv-muted);
+    display: block;
+    font-size: 0.82rem;
+    font-style: normal;
+    font-weight: 800;
+    margin-bottom: 5px;
+}
+
+.admin-customer-input-row code {
+    color: var(--gv-ink);
+    display: block;
+    font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+    font-size: 0.95rem;
+    font-weight: 850;
+    max-width: 100%;
+    word-break: break-all;
+}
+
+.admin-customer-input-row .btn {
+    flex: 0 0 auto;
+}
+
+.admin-customer-input-row-pending {
+    background: rgba(255, 190, 70, 0.08);
+    border-color: rgba(255, 190, 70, 0.2);
+}
+
+.admin-customer-input-row-pending em {
+    color: #ffcf66;
+    margin-bottom: 0;
+}
+
+.admin-delivery-box {
+    margin-top: 0 !important;
+}
+
+.admin-delivery-box .btn {
+    min-height: 36px;
+}
+
+.admin-delivery-text {
+    min-height: 96px;
+}
+
+@media (max-width: 1199.98px) {
+    .admin-shell > .container-fluid,
+    .admin-navbar .container-fluid {
+        max-width: 100%;
+    }
+
+    #ordersAdminPanel {
+        max-width: none;
+    }
+}
+
+@media (max-width: 991.98px) {
+    #ordersAdminPanel {
+        padding: 16px;
+    }
+
+    .admin-order-card-header,
+    .admin-order-body,
+    .admin-order-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-order-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        justify-content: stretch;
+    }
+
+    .admin-order-actions .btn {
+        width: 100%;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .admin-order-toolbar,
+    .admin-order-filters {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-order-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-order-meta-row span,
+    .admin-order-meta-row strong {
+        width: 100%;
+    }
+}
+
+@keyframes actionGlow {
+    0%,
+    100% {
+        filter: drop-shadow(0 0 0 var(--action-glow, rgba(255, 122, 26, 0)));
+    }
+
+    50% {
+        filter: drop-shadow(0 0 16px var(--action-glow, rgba(255, 122, 26, 0.42)));
+    }
+}
+
+@keyframes surfaceGlowSweep {
+    0%,
+    100% {
+        filter: saturate(1);
+        transform: translate3d(-10%, -6%, 0) rotate(0deg) scale(0.96);
+    }
+
+    50% {
+        filter: saturate(1.24);
+        transform: translate3d(8%, 5%, 0) rotate(8deg) scale(1.05);
+    }
+}
+
+@keyframes brandGlow {
+    0%,
+    100% {
+        box-shadow: 0 0 0 1px rgba(255, 122, 26, 0.28), 0 10px 24px rgba(255, 106, 19, 0.22);
+    }
+
+    50% {
+        box-shadow: 0 0 0 1px rgba(255, 122, 26, 0.58), 0 14px 34px rgba(255, 106, 19, 0.42);
+    }
+}
+
+@keyframes statusPanelGlow {
+    0%,
+    100% {
+        box-shadow: 0 20px 46px var(--status-glow, rgba(255, 190, 70, 0.14));
+    }
+
+    50% {
+        box-shadow: 0 28px 66px var(--status-glow, rgba(255, 190, 70, 0.26));
+    }
+}
+
+@keyframes iconGlow {
+    0%,
+    100% {
+        box-shadow: 0 0 0 4px var(--status-halo, rgba(255, 190, 70, 0.12)), 0 0 18px var(--status-color, #ffbe46);
+        transform: scale(1);
+    }
+
+    50% {
+        box-shadow: 0 0 0 7px var(--status-halo, rgba(255, 190, 70, 0.2)), 0 0 32px var(--status-color, #ffbe46);
+        transform: scale(1.03);
+    }
+}
+
+@keyframes progressGlow {
+    0%,
+    100% {
+        box-shadow: 0 0 16px rgba(44, 236, 132, 0.18);
+        filter: saturate(1);
+    }
+
+    50% {
+        box-shadow: 0 0 30px rgba(44, 236, 132, 0.36);
+        filter: saturate(1.12);
+    }
+}
+
+@keyframes dotGlow {
+    0%,
+    100% {
+        filter: brightness(1);
+    }
+
+    50% {
+        filter: brightness(1.16);
+    }
+}
+
+@keyframes deliveryGlow {
+    0%,
+    100% {
+        box-shadow: 0 18px 40px rgba(44, 236, 132, 0.1);
+    }
+
+    50% {
+        box-shadow: 0 24px 58px rgba(44, 236, 132, 0.18);
+    }
+}
+
+@keyframes statusBadgeGlow {
+    0%,
+    100% {
+        box-shadow: 0 0 18px var(--status-glow, rgba(255, 255, 255, 0.08));
+    }
+
+    50% {
+        box-shadow: 0 0 30px var(--status-glow, rgba(255, 255, 255, 0.16));
+    }
+}
+
 @keyframes logoBreath {
     0%,
     100% {
@@ -2635,6 +3243,135 @@ main > section:nth-of-type(4) {
     border-color: rgba(255, 122, 26, 0.48);
     box-shadow: 0 26px 62px rgba(255, 106, 19, 0.2);
     transform: translateY(-6px);
+}
+
+
+.btn-primary {
+    --action-glow: rgba(255, 122, 26, 0.48);
+}
+
+.whatsapp-order-button,
+.support-whatsapp {
+    --action-glow: rgba(37, 211, 102, 0.42);
+}
+
+.btn-primary,
+.whatsapp-order-button,
+.support-whatsapp {
+    animation: actionGlow 4.2s ease-in-out infinite;
+    will-change: filter;
+}
+
+.product-card,
+.category-card,
+.service-card,
+.content-panel,
+.summary-card,
+.payment-recipient-card,
+.customer-trust-card,
+.checkout-form,
+.process-steps div,
+.guide-action-step,
+.guide-mini-screen,
+.guide-status-preview,
+.guide-delivery-mock,
+.guide-player-mock,
+.order-status-card,
+.delivery-code-row,
+.admin-order-card {
+    isolation: isolate;
+    overflow: hidden;
+    position: relative;
+}
+
+.product-card > *,
+.category-card > *,
+.service-card > *,
+.content-panel > *,
+.summary-card > *,
+.payment-recipient-card > *,
+.customer-trust-card > *,
+.checkout-form > *,
+.process-steps div > *,
+.guide-action-step > *,
+.guide-mini-screen > *,
+.guide-status-preview > *,
+.guide-delivery-mock > *,
+.guide-player-mock > *,
+.order-status-card > *,
+.delivery-code-row > *,
+.admin-order-card > * {
+    position: relative;
+    z-index: 1;
+}
+
+.product-card::before,
+.category-card::before,
+.service-card::before,
+.content-panel::before,
+.summary-card::before,
+.payment-recipient-card::before,
+.customer-trust-card::before,
+.checkout-form::before,
+.process-steps div::before,
+.guide-action-step::before,
+.guide-mini-screen::before,
+.guide-status-preview::before,
+.guide-delivery-mock::before,
+.guide-player-mock::before,
+.order-status-card::before,
+.delivery-code-row::before,
+.admin-order-card::before {
+    animation: surfaceGlowSweep 5.6s ease-in-out infinite;
+    background:
+        radial-gradient(circle at 18% 12%, rgba(255, 122, 26, 0.28), transparent 28%),
+        radial-gradient(circle at 82% 76%, rgba(44, 236, 132, 0.12), transparent 24%),
+        linear-gradient(115deg, transparent 20%, rgba(255, 255, 255, 0.08) 46%, transparent 68%);
+    content: "";
+    inset: -42%;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    transform: translate3d(-8%, -5%, 0) rotate(0deg) scale(0.96);
+    transition: opacity 220ms ease;
+    z-index: 0;
+}
+
+.product-card:hover::before,
+.product-card:focus-within::before,
+.category-card:hover::before,
+.category-card:focus-within::before,
+.service-card:hover::before,
+.service-card:focus-within::before,
+.content-panel:hover::before,
+.content-panel:focus-within::before,
+.summary-card:hover::before,
+.summary-card:focus-within::before,
+.customer-trust-card:hover::before,
+.customer-trust-card:focus-within::before,
+.process-steps div:hover::before,
+.guide-action-step:hover::before,
+.guide-action-step:focus-within::before,
+.guide-mini-screen:hover::before,
+.guide-status-preview:hover::before,
+.guide-delivery-mock:hover::before,
+.guide-player-mock:hover::before,
+.order-status-card:hover::before,
+.delivery-code-row:hover::before,
+.admin-order-card:hover::before {
+    opacity: 0.95;
+}
+
+.payment-recipient-card::before,
+.checkout-form::before {
+    opacity: 0.24;
+}
+
+.payment-recipient-card:hover::before,
+.payment-recipient-card:focus-within::before,
+.checkout-form:hover::before,
+.checkout-form:focus-within::before {
+    opacity: 0.85;
 }
 
 .btn:active {

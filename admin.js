@@ -131,6 +131,23 @@ function formatPlainTndAmount(amount) {
     return `${formatted} TND`;
 }
 
+function formatAdminDateTime(value) {
+    if (!value) return "Not available";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Not available";
+    return new Intl.DateTimeFormat("en-GB", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+    })
+        .format(date)
+        .replace(",", "");
+}
+
 function escapeHtml(value) {
     return String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -1068,6 +1085,85 @@ function renderOrderItems(items) {
         .join("");
 }
 
+function getAdminCustomerInputLabels(product) {
+    const config = product?.customerInput;
+    if (!config || config.enabled === false) return [];
+    const labels = Array.isArray(config.labels) && config.labels.length ? config.labels : [config.label || "Player ID"];
+    return [...new Set(labels.map((label) => String(label || "Player ID").trim().slice(0, 80)).filter(Boolean))];
+}
+
+function getAdminCustomerInputKey(productId, variationId, label) {
+    return `${productId}::${variationId || ""}::${slugify(label || "delivery-info")}`;
+}
+
+function getAdminCustomerInputRequirements(order) {
+    const fromWorker = Array.isArray(order.customerInputRequirements) ? order.customerInputRequirements : [];
+    if (fromWorker.length) return fromWorker;
+
+    if (order.paymentStatus !== "verified" || order.deliveryStatus !== "waiting") return [];
+
+    const savedKeys = new Set(
+        (Array.isArray(order.customerInputs) ? order.customerInputs : []).map((input) =>
+            input.key || getAdminCustomerInputKey(input.productId, input.variationId || "", input.label || ""),
+        ),
+    );
+
+    return (Array.isArray(order.items) ? order.items : [])
+        .flatMap((item) => {
+            const product = state.database.products?.[item.productId];
+            return getAdminCustomerInputLabels(product)
+                .map((label) => {
+                    const key = getAdminCustomerInputKey(item.productId, item.variationId || "", label);
+                    if (savedKeys.has(key)) return null;
+                    return {
+                        key,
+                        productId: item.productId,
+                        variationId: item.variationId || "",
+                        productName: item.productName,
+                        label,
+                    };
+                })
+                .filter(Boolean);
+        })
+        .filter(Boolean);
+}
+
+function renderOrderCustomerInputs(inputs, requirements = []) {
+    const savedInputs = Array.isArray(inputs) ? inputs : [];
+    const pendingRequirements = Array.isArray(requirements) ? requirements : [];
+
+    if (!savedInputs.length && !pendingRequirements.length) return "";
+
+    return `
+        <div class="admin-customer-input-list">
+            ${[
+                ...savedInputs.map(
+                    (input) => `
+                        <div class="admin-customer-input-row">
+                            <div>
+                                <span>${escapeHtml(input.label || "Delivery info")} for ${escapeHtml(input.productName || "Product")}</span>
+                                <code>${escapeHtml(input.value || "")}</code>
+                            </div>
+                            <button class="btn btn-outline-dark btn-sm" type="button" data-copy-admin-text="${escapeHtml(input.value || "")}">
+                                <i class="bi bi-clipboard me-1"></i>Copy
+                            </button>
+                        </div>
+                    `,
+                ),
+                ...pendingRequirements.map(
+                    (input) => `
+                        <div class="admin-customer-input-row admin-customer-input-row-pending">
+                            <div>
+                                <span>${escapeHtml(input.label || "Delivery info")} for ${escapeHtml(input.productName || "Product")}</span>
+                                <em>Waiting for customer</em>
+                            </div>
+                        </div>
+                    `,
+                ),
+            ].join("")}
+        </div>
+    `;
+}
 function getDeliveryText(order) {
     return (order.deliveries || []).map((delivery) => delivery.text || "").filter(Boolean).join("\n\n");
 }
@@ -1123,6 +1219,8 @@ function getFilteredOrders() {
             order.deliveryStatusLabel,
             ...(order.items || []).map((item) => item.productName),
             ...(order.proofs || []).map((proof) => `${proof.label} ${proof.value}`),
+            ...(order.customerInputs || []).map((input) => `${input.label} ${input.productName} ${input.value}`),
+            ...getAdminCustomerInputRequirements(order).map((input) => `${input.label} ${input.productName}`),
         ]
             .join(" ")
             .toLowerCase();
@@ -1147,69 +1245,84 @@ function renderAdminOrders() {
 
     list.innerHTML = orders
         .map((order) => {
-            const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleString("en-TN") : "Not available";
+            const createdAt = formatAdminDateTime(order.createdAt);
+            const customerInputRequirements = getAdminCustomerInputRequirements(order);
+            const customerInputHtml = renderOrderCustomerInputs(order.customerInputs, customerInputRequirements);
             return `
                 <article class="admin-order-card" data-admin-order-id="${escapeHtml(order.id)}">
-                    <div class="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-3">
-                        <div>
-                            <p class="eyebrow mb-2">${escapeHtml(createdAt)}</p>
-                            <h3 class="h4 fw-black mb-1">${escapeHtml(order.id)}</h3>
-                            <p class="text-secondary mb-0">WhatsApp: ${escapeHtml(order.customerPhoneDisplay)}</p>
+                    <div class="admin-order-card-header">
+                        <div class="admin-order-title-block">
+                            <p class="eyebrow mb-1">${escapeHtml(createdAt)}</p>
+                            <h3 class="h4 fw-black mb-2">${escapeHtml(order.id)}</h3>
+                            <div class="admin-order-meta-row">
+                                <span><i class="bi bi-whatsapp"></i>${escapeHtml(order.customerPhoneDisplay)}</span>
+                                <span><i class="bi bi-credit-card"></i>${escapeHtml(order.paymentMethodLabel)}</span>
+                                <strong>${formatPlainTndAmount(order.amountDue)}</strong>
+                            </div>
                         </div>
                         <div class="admin-order-actions">
                             <button class="btn btn-outline-dark btn-sm" type="button" data-copy-admin-text="${escapeHtml(order.customerPhone)}">
-                                <i class="bi bi-clipboard me-1"></i>Copy phone
-                            </button>
-                            <button class="btn btn-outline-dark btn-sm" type="button" data-copy-admin-text="${escapeHtml(order.id)}">
-                                <i class="bi bi-clipboard me-1"></i>Copy ID
+                                <i class="bi bi-clipboard me-1"></i>Phone
                             </button>
                             <button class="btn btn-outline-danger btn-sm" type="button" data-delete-order="${escapeHtml(order.id)}">
-                                <i class="bi bi-trash me-1"></i>Delete order
+                                <i class="bi bi-trash me-1"></i>Delete
                             </button>
                         </div>
                     </div>
-                    <div class="status-grid mb-3">
-                        <div>
-                            <span>Payment</span>
-                            ${statusBadge(order.paymentStatusLabel, order.paymentStatus)}
-                        </div>
-                        <div>
-                            <span>Delivery</span>
-                            ${statusBadge(order.deliveryStatusLabel, order.deliveryStatus)}
-                        </div>
-                        <div>
-                            <span>Method</span>
-                            <strong>${escapeHtml(order.paymentMethodLabel)}</strong>
-                        </div>
-                        <div>
-                            <span>To verify</span>
-                            <strong>${formatPlainTndAmount(order.amountDue)}</strong>
+
+                    <div class="admin-order-body">
+                        <aside class="admin-order-status-panel">
+                            <div class="admin-status-card">
+                                <span>Payment</span>
+                                ${statusBadge(order.paymentStatusLabel, order.paymentStatus)}
+                            </div>
+                            <div class="admin-status-card">
+                                <span>Delivery</span>
+                                ${statusBadge(order.deliveryStatusLabel, order.deliveryStatus)}
+                            </div>
+                            <div class="admin-status-controls">
+                                <select class="form-select form-select-sm" data-order-payment-status aria-label="Payment status">
+                                    <option value="pending" ${order.paymentStatus === "pending" ? "selected" : ""}>Payment pending</option>
+                                    <option value="verified" ${order.paymentStatus === "verified" ? "selected" : ""}>Payment verified</option>
+                                    <option value="rejected" ${order.paymentStatus === "rejected" ? "selected" : ""}>Payment rejected</option>
+                                </select>
+                                <select class="form-select form-select-sm" data-order-delivery-status aria-label="Delivery status">
+                                    <option value="waiting" ${order.deliveryStatus === "waiting" ? "selected" : ""}>Waiting delivery</option>
+                                    <option value="delivered" ${order.deliveryStatus === "delivered" ? "selected" : ""}>Delivered</option>
+                                    <option value="cancelled" ${order.deliveryStatus === "cancelled" ? "selected" : ""}>Cancelled</option>
+                                </select>
+                                <button class="btn btn-primary btn-sm" type="button" data-update-order-status="${escapeHtml(order.id)}">Save status</button>
+                            </div>
+                        </aside>
+
+                        <div class="admin-order-detail-stack">
+                            <details class="admin-order-details" open>
+                                <summary>
+                                    <span><i class="bi bi-bag-check me-1"></i>Order details</span>
+                                    <i class="bi bi-chevron-down"></i>
+                                </summary>
+                                <div class="admin-order-detail-grid">
+                                    <div>
+                                        <p class="form-label mb-2">Products</p>
+                                        ${renderOrderItems(order.items)}
+                                    </div>
+                                    <div>
+                                        <p class="form-label mb-2">Payment proof</p>
+                                        ${renderProofs(order.proofs)}
+                                    </div>
+                                    ${
+                                        customerInputHtml
+                                            ? `<div class="admin-customer-inputs-block">
+                                                <p class="form-label mb-2">Customer delivery info</p>
+                                                ${customerInputHtml}
+                                            </div>`
+                                            : ""
+                                    }
+                                </div>
+                            </details>
+                            ${renderDeliveryControls(order)}
                         </div>
                     </div>
-                    <div class="admin-order-grid">
-                        <div>
-                            <p class="form-label mb-2">Products</p>
-                            ${renderOrderItems(order.items)}
-                        </div>
-                        <div>
-                            <p class="form-label mb-2">Payment proof</p>
-                            ${renderProofs(order.proofs)}
-                        </div>
-                    </div>
-                    <div class="admin-status-controls mt-3">
-                        <select class="form-select form-select-sm" data-order-payment-status>
-                            <option value="pending" ${order.paymentStatus === "pending" ? "selected" : ""}>Payment pending</option>
-                            <option value="verified" ${order.paymentStatus === "verified" ? "selected" : ""}>Payment verified</option>
-                            <option value="rejected" ${order.paymentStatus === "rejected" ? "selected" : ""}>Payment rejected</option>
-                        </select>
-                        <select class="form-select form-select-sm" data-order-delivery-status>
-                            <option value="waiting" ${order.deliveryStatus === "waiting" ? "selected" : ""}>Waiting delivery</option>
-                            <option value="delivered" ${order.deliveryStatus === "delivered" ? "selected" : ""}>Delivered</option>
-                            <option value="cancelled" ${order.deliveryStatus === "cancelled" ? "selected" : ""}>Cancelled</option>
-                        </select>
-                        <button class="btn btn-primary btn-sm" type="button" data-update-order-status="${escapeHtml(order.id)}">Save status</button>
-                    </div>
-                    ${renderDeliveryControls(order)}
                 </article>
             `;
         })
