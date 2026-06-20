@@ -387,5 +387,16 @@
     "Your cart was updated.": "Votre panier a ete mis a jour.",
     "Total items": "Articles au total",
     "Total price": "Prix total",
-    "View cart": "Voir le panier"
+    "View cart": "Voir le panier",
+    "Contact support to fix this order.": "Contactez le support pour corriger cette commande.",
+    "Copy your delivered item below.": "Copiez votre article livre ci-dessous.",
+    "Send the requested delivery information below.": "Envoyez les informations de livraison demandees ci-dessous.",
+    "Your order is being prepared.": "Votre commande est en preparation.",
+    "We are checking your payment. Refresh later.": "Nous verifions votre paiement. Actualisez plus tard.",
+    "Order delivered": "Commande livree",
+    "Your order is ready. Copy your delivery details below.": "Votre commande est prete. Copiez les details de livraison ci-dessous.",
+    "Products in this order": "Produits dans cette commande",
+    "Order sent": "Commande envoyee",
+    "Payment check": "Verification paiement",
+    "Delivery info": "Infos livraison"
 }

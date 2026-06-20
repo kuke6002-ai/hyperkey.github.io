@@ -393,5 +393,16 @@
     "Your cart was updated.": "تم تحديث السلة.",
     "Total items": "إجمالي المنتجات",
     "Total price": "السعر الإجمالي",
-    "View cart": "عرض السلة"
+    "View cart": "عرض السلة",
+    "Contact support to fix this order.": "اتصل بالدعم.",
+    "Copy your delivered item below.": "انسخ العنصر أدناه.",
+    "Send the requested delivery information below.": "أرسل المعلومات أدناه.",
+    "Your order is being prepared.": "طلبك قيد التجهيز.",
+    "We are checking your payment. Refresh later.": "نراجع الدفع. حدث لاحقا.",
+    "Order delivered": "تم التسليم",
+    "Your order is ready. Copy your delivery details below.": "طلبك جاهز. انسخ التفاصيل أدناه.",
+    "Products in this order": "منتجات هذا الطلب",
+    "Order sent": "تم إرسال الطلب",
+    "Payment check": "مراجعة الدفع",
+    "Delivery info": "معلومات التسليم"
 }
