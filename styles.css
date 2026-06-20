@@ -1,4 +1,4 @@
-html {
+﻿html {
     scroll-behavior: smooth;
     scroll-padding-top: 92px;
 }
@@ -1549,10 +1549,9 @@ a {
 }
 
 .order-progress-track span {
-    background: linear-gradient(90deg, var(--gv-primary), #2cec84);
+    background: #2cec84;
     border-radius: inherit;
-    animation: progressGlow 3.6s ease-in-out infinite;
-    box-shadow: 0 0 22px rgba(44, 236, 132, 0.2);
+    box-shadow: none;
     display: block;
     height: 100%;
     transition: width 260ms ease;
@@ -3939,3 +3938,5 @@ iframe {
         width: 38px;
     }
 }
+
+

@@ -1,4 +1,4 @@
-// Add, edit, hide, or remove products here. Products appear on the homepage,
+﻿// Add, edit, hide, or remove products here. Products appear on the homepage,
 // Products page, detail page, cart, and checkout by default.
 // Set visible: false only when you want to hide a product from listings.
 // Add variations with: variations: [{ id: "small", label: "Small", price: 10 }]
@@ -2013,16 +2013,8 @@ function renderOrderProducts(order, products) {
     if (!products) return `<p class="text-secondary mb-0">${t("No products found for this order.")}</p>`;
 
     const items = Array.isArray(order.items) ? order.items : [];
-    const delivered = isOrderDelivered(order);
     const itemCount = items.reduce((sum, item) => sum + Math.max(1, Number(item.quantity) || 1), 0);
     const total = items.reduce((sum, item) => sum + (Number(item.lineTotal) || 0), 0);
-
-    if (!delivered) {
-        return `
-            <h3 class="h5 fw-black mb-3">${t("Products")}</h3>
-            ${products}
-        `;
-    }
 
     return `
         <details class="order-products-details mb-4">
@@ -2705,3 +2697,4 @@ async function initSite() {
 }
 
 initSite();
+
