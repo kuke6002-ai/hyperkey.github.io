@@ -1,4 +1,4 @@
-const ART_STYLES = [
+﻿const ART_STYLES = [
     "steam-art",
     "xbox-art",
     "playstation-art",
@@ -11,6 +11,12 @@ const ART_STYLES = [
 ];
 
 const DEFAULT_PAYMENT_SETTINGS = {
+    store: {
+        name: "HyperKey Store",
+        logo: "assets/hyperlogo.png",
+        supportWhatsApp: "97671058",
+        deliveryMessage: "Delivery is handled through WhatsApp after manual payment review.",
+    },
     payment: {
         d17: {
             enabled: true,
@@ -61,11 +67,18 @@ const state = {
     draftVariations: [],
     draftCustomerInputs: [],
     previewImages: {},
+    productFilters: {
+        search: "",
+        category: "",
+        status: "",
+    },
+    hasUnsavedChanges: false,
     orders: [],
     orderFilters: {
         search: "",
         payment: "",
         delivery: "",
+        workflow: "",
     },
 };
 
@@ -100,12 +113,14 @@ function addCustomerInput(label) {
     if (inputEl) inputEl.value = "";
     renderCustomerInputs();
     renderPreview();
+    markProductDirty();
 }
 
 function removeCustomerInput(index) {
     state.draftCustomerInputs.splice(index, 1);
     renderCustomerInputs();
     renderPreview();
+    markProductDirty();
 }
 
 function safeAssetFileName(fileName) {
@@ -162,6 +177,13 @@ function clone(value) {
 
 function mergePaymentSettings(settings = {}) {
     const merged = clone(DEFAULT_PAYMENT_SETTINGS);
+    if (settings.store && typeof settings.store === "object") {
+        merged.store = {
+            ...merged.store,
+            ...settings.store,
+        };
+    }
+
     const incomingPayment = settings.payment && typeof settings.payment === "object" ? settings.payment : {};
 
     Object.entries(incomingPayment).forEach(([method, config]) => {
@@ -208,6 +230,85 @@ function showToast(message) {
     const messageElement = document.getElementById("adminToastMessage");
     if (messageElement) messageElement.textContent = message;
     if (toastElement && window.bootstrap) bootstrap.Toast.getOrCreateInstance(toastElement).show();
+}
+
+function setUnsavedChanges(isDirty) {
+    state.hasUnsavedChanges = Boolean(isDirty);
+    const indicator = document.getElementById("adminUnsavedIndicator");
+    if (!indicator) return;
+    indicator.classList.toggle("is-dirty", state.hasUnsavedChanges);
+    indicator.innerHTML = `<span></span>${state.hasUnsavedChanges ? "Unsaved changes" : "Saved"}`;
+}
+
+function setSectionState(id, tone, label) {
+    const element = document.getElementById(id);
+    if (!element) return;
+    element.className = `admin-section-state admin-section-state-${tone}`;
+    element.textContent = label;
+}
+
+function updateEditorSectionBadges() {
+    const productId = document.getElementById("productId")?.value.trim() || "";
+    const productName = document.getElementById("productName")?.value.trim() || "";
+    const productCategory = document.getElementById("productCategory")?.value || "";
+    const price = Number(document.getElementById("productPrice")?.value || 0);
+    const image = document.getElementById("productImage")?.value.trim() || "";
+    const customerInputEnabled = document.getElementById("productCustomerInputEnabled")?.checked || false;
+    const customerInputs = (state.draftCustomerInputs || []).map((label) => String(label || "").trim()).filter(Boolean);
+    const variationCount = state.draftVariations.length;
+    const invalidVariation = state.draftVariations.some((variation) => {
+        const hasText = String(variation.id || variation.label || variation.name || "").trim();
+        const variationPrice = Number(variation.price ?? 0);
+        return !hasText || !Number.isFinite(variationPrice) || variationPrice < 0;
+    });
+
+    setSectionState("basicInfoState", productId && productName && productCategory ? "complete" : "missing", productId && productName && productCategory ? "Complete" : "Missing information");
+    setSectionState("pricingState", Number.isFinite(price) && price >= 0 ? "complete" : "missing", Number.isFinite(price) && price >= 0 ? "Complete" : "Missing information");
+    setSectionState("displayState", image ? "complete" : "optional", image ? "Complete" : "Optional");
+    setSectionState("availabilityState", !customerInputEnabled || customerInputs.length ? "complete" : "missing", !customerInputEnabled || customerInputs.length ? "Complete" : "Missing information");
+    setSectionState("variationsState", invalidVariation ? "missing" : variationCount ? "complete" : "optional", invalidVariation ? "Missing information" : variationCount ? "Complete" : "Optional");
+}
+
+function markProductDirty() {
+    setUnsavedChanges(true);
+    updateEditorSectionBadges();
+}
+
+function isAdminMobileViewport() {
+    return window.matchMedia("(max-width: 767.98px)").matches;
+}
+
+function syncMobileEditorSections() {
+    if (!isAdminMobileViewport()) return;
+    const sections = [...document.querySelectorAll(".admin-editor-details")];
+    sections.forEach((section) => {
+        section.open = false;
+    });
+
+    const firstIncomplete = sections.find((section) => section.querySelector(".admin-section-state-missing"));
+    if (firstIncomplete) firstIncomplete.open = true;
+}
+
+function syncResponsiveAdminLayout() {
+    const previewDetails = document.getElementById("adminPreviewDetails");
+    if (!previewDetails) return;
+
+    if (isAdminMobileViewport()) {
+        if (previewDetails.dataset.mobileInitialized !== "true") {
+            previewDetails.open = false;
+            previewDetails.dataset.mobileInitialized = "true";
+        }
+        return;
+    }
+
+    previewDetails.open = true;
+    delete previewDetails.dataset.mobileInitialized;
+}
+
+function closeMobileProductCatalog() {
+    const catalog = document.getElementById("mobileProductCatalogSheet");
+    if (!catalog || !window.bootstrap) return;
+    bootstrap.Offcanvas.getInstance(catalog)?.hide();
 }
 
 function setDatabase(database) {
@@ -288,6 +389,7 @@ async function loadSettings() {
 function renderAll() {
     renderCategoryEditor();
     renderCategoryOptions();
+    renderProductPicker();
     renderProductList();
     fillForm();
     updateJsonOutput();
@@ -301,15 +403,31 @@ function renderCategoryEditor() {
     list.innerHTML = categories.length
         ? categories
               .map(
-                  (category, index) => `
-                    <div class="admin-category-row" data-category-index="${index}">
-                        <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
-                            <strong>${escapeHtml(category.label || category.name || `Category ${index + 1}`)}</strong>
-                            <button class="btn btn-outline-danger btn-sm" type="button" data-remove-category="${index}" aria-label="Remove category">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                        </div>
-                        <div class="row g-2">
+                  (category, index) => {
+                      const productCount = Object.values(getProducts()).filter((product) => product.category === category.name).length;
+                      const visible = category.visible !== false;
+                      return `
+                    <details class="admin-category-row" data-category-index="${index}">
+                        <summary>
+                            <span>
+                                <strong>${escapeHtml(category.label || category.name || `Category ${index + 1}`)}</strong>
+                                <small>${escapeHtml(adminCountLabel(productCount, "product"))} &middot; ${visible ? "Visible" : "Hidden"} &middot; ${escapeHtml(category.page || "No page")}</small>
+                            </span>
+                            <i class="bi bi-chevron-down"></i>
+                        </summary>
+                        <div class="admin-category-body">
+                            <div class="admin-category-actions mb-3">
+                                <button class="btn btn-outline-dark btn-sm" type="button" data-move-category="${index}" data-category-direction="-1" ${index === 0 ? "disabled" : ""}>
+                                    <i class="bi bi-arrow-up me-1"></i>Up
+                                </button>
+                                <button class="btn btn-outline-dark btn-sm" type="button" data-move-category="${index}" data-category-direction="1" ${index === categories.length - 1 ? "disabled" : ""}>
+                                    <i class="bi bi-arrow-down me-1"></i>Down
+                                </button>
+                                <button class="btn btn-outline-danger btn-sm" type="button" data-remove-category="${index}" aria-label="Remove category">
+                                    <i class="bi bi-trash me-1"></i>Remove
+                                </button>
+                            </div>
+                            <div class="row g-2">
                             <div class="col-6">
                                 <label class="form-label">Name</label>
                                 <input class="form-control form-control-sm" data-category-field="name" value="${escapeHtml(category.name || "")}" />
@@ -327,6 +445,12 @@ function renderCategoryEditor() {
                                 <input class="form-control form-control-sm" data-category-field="photo" value="${escapeHtml(category.photo || "assets/hyperlogo.png")}" />
                             </div>
                             <div class="col-12">
+                                <div class="form-check form-switch admin-switch">
+                                    <input class="form-check-input" type="checkbox" data-category-field="visible" ${visible ? "checked" : ""} />
+                                    <label class="form-check-label">Visible in store navigation</label>
+                                </div>
+                            </div>
+                            <div class="col-12">
                                 <label class="form-label">Teaser</label>
                                 <input class="form-control form-control-sm" data-category-field="teaser" value="${escapeHtml(category.teaser || "")}" />
                             </div>
@@ -339,8 +463,10 @@ function renderCategoryEditor() {
                                 <textarea class="form-control form-control-sm" rows="2" data-category-field="description">${escapeHtml(category.description || "")}</textarea>
                             </div>
                         </div>
-                    </div>
-                `,
+                        </div>
+                    </details>
+                `;
+                  },
               )
               .join("")
         : `<div class="empty-state py-3"><p class="text-secondary mb-0">No categories yet.</p></div>`;
@@ -348,29 +474,187 @@ function renderCategoryEditor() {
 
 function renderCategoryOptions() {
     const categorySelect = document.getElementById("productCategory");
-    if (!categorySelect) return;
-
-    const currentValue = categorySelect.value;
+    const categoryFilter = document.getElementById("productCategoryFilter");
+    const mobileCategoryFilter = document.getElementById("mobileCatalogCategoryFilter");
     const categories = getCategories();
-    categorySelect.innerHTML = categories.length
-        ? categories
-              .map((category) => `<option value="${escapeHtml(category.name)}">${escapeHtml(category.label || category.name)}</option>`)
-              .join("")
-        : `<option value="">Add a category first</option>`;
-    categorySelect.value = currentValue || categorySelect.options[0]?.value || "";
+    const categoryOptions = categories
+        .map((category) => `<option value="${escapeHtml(category.name)}">${escapeHtml(category.label || category.name)}</option>`)
+        .join("");
+
+    if (categorySelect) {
+        const currentValue = categorySelect.value;
+        categorySelect.innerHTML = categories.length ? categoryOptions : `<option value="">Add a category first</option>`;
+        categorySelect.value = currentValue || categorySelect.options[0]?.value || "";
+    }
+
+    if (categoryFilter) {
+        const currentFilter = state.productFilters.category || categoryFilter.value;
+        categoryFilter.innerHTML = `<option value="">All categories</option>${categoryOptions}`;
+        categoryFilter.value = categories.some((category) => category.name === currentFilter) ? currentFilter : "";
+        state.productFilters.category = categoryFilter.value;
+    }
+
+    if (mobileCategoryFilter) {
+        mobileCategoryFilter.innerHTML = `<option value="">All categories</option>${categoryOptions}`;
+        mobileCategoryFilter.value = state.productFilters.category || "";
+    }
 }
 
 // art options removed from admin editor
 
-function renderProductList() {
-    const list = document.getElementById("productList");
-    const search = document.getElementById("productSearch")?.value.trim().toLowerCase() || "";
+function renderProductPicker() {
+    const picker = document.getElementById("mobileProductSelect");
+    if (!picker) return;
+
+    const entries = getProductEntries();
+    picker.innerHTML = entries.length
+        ? entries
+              .map(([id, product]) => `<option value="${escapeHtml(id)}">${escapeHtml(product.name || id)}</option>`)
+              .join("")
+        : `<option value="">No products yet</option>`;
+    picker.value = state.selectedId || entries[0]?.[0] || "";
+}
+
+function getProductFiltersFromControls(scope = "desktop") {
+    const ids =
+        scope === "mobile"
+            ? {
+                  search: "mobileCatalogSearch",
+                  category: "mobileCatalogCategoryFilter",
+                  status: "mobileCatalogStatusFilter",
+              }
+            : {
+                  search: "productSearch",
+                  category: "productCategoryFilter",
+                  status: "productStatusFilter",
+              };
+
+    return {
+        search: document.getElementById(ids.search)?.value.trim().toLowerCase() || "",
+        category: document.getElementById(ids.category)?.value || "",
+        status: document.getElementById(ids.status)?.value || "",
+    };
+}
+
+function syncProductFilterControls(exceptScope = "") {
+    const controls = {
+        desktop: {
+            search: document.getElementById("productSearch"),
+            category: document.getElementById("productCategoryFilter"),
+            status: document.getElementById("productStatusFilter"),
+        },
+        mobile: {
+            search: document.getElementById("mobileCatalogSearch"),
+            category: document.getElementById("mobileCatalogCategoryFilter"),
+            status: document.getElementById("mobileCatalogStatusFilter"),
+        },
+    };
+
+    Object.entries(controls).forEach(([scope, inputs]) => {
+        if (scope === exceptScope) return;
+        if (inputs.search) inputs.search.value = state.productFilters.search || "";
+        if (inputs.category) inputs.category.value = state.productFilters.category || "";
+        if (inputs.status) inputs.status.value = state.productFilters.status || "";
+    });
+}
+
+function updateProductFiltersFromControls(scope) {
+    state.productFilters = getProductFiltersFromControls(scope);
+    syncProductFilterControls(scope);
+    renderProductList();
+}
+
+function getFilteredProductEntries() {
+    return getProductEntries().filter(([id, product]) => {
+        const haystack = `${id} ${product.name || ""} ${product.category || ""}`.toLowerCase();
+        if (!haystack.includes(state.productFilters.search)) return false;
+        if (state.productFilters.category && product.category !== state.productFilters.category) return false;
+
+        if (state.productFilters.status === "visible" && product.visible === false) return false;
+        if (state.productFilters.status === "hidden" && product.visible !== false) return false;
+        if (state.productFilters.status === "in-stock" && product.inStock === false) return false;
+        if (state.productFilters.status === "out-of-stock" && product.inStock !== false) return false;
+        if (state.productFilters.status === "needs-input" && product.customerInput?.enabled !== true) return false;
+
+        return true;
+    });
+}
+
+function getProductAdminStatus(product) {
+    if (product.visible === false) {
+        return {
+            label: "Hidden",
+            tone: "hidden",
+        };
+    }
+    if (product.inStock === false) {
+        return {
+            label: "Draft",
+            tone: "draft",
+        };
+    }
+    return {
+        label: "Published",
+        tone: "published",
+    };
+}
+
+function renderMobileProductList(entries) {
+    const list = document.getElementById("mobileProductList");
+    const resultCount = document.getElementById("mobileCatalogResultCount");
     if (!list) return;
 
-    const entries = getProductEntries().filter(([id, product]) => {
-        const haystack = `${id} ${product.name || ""} ${product.category || ""}`.toLowerCase();
-        return haystack.includes(search);
-    });
+    if (resultCount) resultCount.textContent = `${entries.length} product${entries.length === 1 ? "" : "s"} shown`;
+
+    list.innerHTML = entries.length
+        ? entries
+              .map(([id, product]) => {
+                  const variationCount = Array.isArray(product.variations) ? product.variations.length : 0;
+                  const status = getProductAdminStatus(product);
+                  return `
+                    <div class="admin-mobile-product-row ${id === state.selectedId ? "active" : ""}">
+                        <button class="admin-mobile-product-main" type="button" data-select-mobile-product="${escapeHtml(id)}">
+                            <span>
+                                <strong>${escapeHtml(product.name || id)}</strong>
+                                <small>${escapeHtml(product.category || "Digital")}</small>
+                            </span>
+                            <span class="admin-mobile-product-meta">
+                                <em>${variationCount ? `${variationCount} option${variationCount === 1 ? "" : "s"}` : "No options"}</em>
+                                <b class="admin-mobile-product-status status-${status.tone}">${status.label}</b>
+                            </span>
+                        </button>
+                        <div class="dropdown">
+                            <button class="btn btn-outline-dark btn-sm admin-row-menu" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Product actions for ${escapeHtml(product.name || id)}">
+                                <i class="bi bi-three-dots-vertical"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+                                <li><button class="dropdown-item" type="button" data-mobile-product-action="duplicate" data-product-action-id="${escapeHtml(id)}"><i class="bi bi-copy me-2"></i>Duplicate</button></li>
+                                <li><button class="dropdown-item" type="button" data-mobile-product-action="toggle-visibility" data-product-action-id="${escapeHtml(id)}"><i class="bi ${product.visible === false ? "bi-eye" : "bi-eye-slash"} me-2"></i>${product.visible === false ? "Publish" : "Hide"}</button></li>
+                                <li><hr class="dropdown-divider" /></li>
+                                <li><button class="dropdown-item text-danger" type="button" data-mobile-product-action="delete" data-product-action-id="${escapeHtml(id)}"><i class="bi bi-trash me-2"></i>Delete</button></li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+              })
+              .join("")
+        : `<div class="empty-state py-4"><p class="text-secondary mb-0">No products found.</p></div>`;
+}
+
+function renderProductList() {
+    const list = document.getElementById("productList");
+    syncProductFilterControls();
+
+    const entries = getFilteredProductEntries();
+    const totalEntries = getProductEntries().length;
+    const mobileCatalogCount = document.getElementById("mobileProductCatalogCount");
+    if (mobileCatalogCount) mobileCatalogCount.textContent = `Products (${totalEntries})`;
+
+    const count = document.getElementById("productListCount");
+    if (count) count.textContent = `${entries.length} product${entries.length === 1 ? "" : "s"}`;
+
+    renderMobileProductList(entries);
+    if (!list) return;
 
     list.innerHTML = entries.length
         ? entries
@@ -384,7 +668,7 @@ function renderProductList() {
                     <button class="admin-product-item ${isActive ? "active" : ""}" type="button" data-select-product="${escapeHtml(id)}">
                         <span>
                             <strong>${escapeHtml(product.name || id)}</strong>
-                            <small>${escapeHtml(id)} · ${escapeHtml(product.category || "Digital")}</small>
+                            <small>${escapeHtml(id)} &middot; ${escapeHtml(product.category || "Digital")}</small>
                         </span>
                         <span class="admin-item-meta">
                             ${variationCount ? `<em>${variationCount} options</em>` : `<em>${money(product.price, state.database.currency)}</em>`}
@@ -404,6 +688,7 @@ function selectProduct(id) {
     state.originalId = id;
     const product = getSelectedProduct();
     state.draftVariations = Array.isArray(product?.variations) ? clone(product.variations) : [];
+    renderProductPicker();
 }
 
 function fillForm() {
@@ -442,6 +727,9 @@ function fillForm() {
 
     renderVariations();
     renderPreview();
+    updateEditorSectionBadges();
+    syncMobileEditorSections();
+    setUnsavedChanges(false);
 }
 
 function renderVariations() {
@@ -482,6 +770,7 @@ function renderVariations() {
         .map((variation) => `<option value="${escapeHtml(variation.id || "")}">${escapeHtml(variation.label || variation.name || variation.id || "Option")}</option>`)
         .join("")}`;
     defaultVariation.value = selectedProduct?.defaultVariation || state.draftVariations[0]?.id || "";
+    updateEditorSectionBadges();
 }
 
 function readFormProduct() {
@@ -571,6 +860,7 @@ function saveProduct(options = {}) {
         products[id] = product;
         selectProduct(id);
         renderAll();
+        setUnsavedChanges(false);
         if (!options.silent) showToast("Product saved in editor");
     } catch (error) {
         const msg = String(error?.message || error || "An error occurred");
@@ -603,6 +893,8 @@ function createNewProduct() {
     fillForm();
     document.getElementById("productId").value = "";
     document.getElementById("productName").focus();
+    updateEditorSectionBadges();
+    setUnsavedChanges(true);
 }
 
 function duplicateProduct() {
@@ -622,6 +914,23 @@ function duplicateProduct() {
     selectProduct(nextId);
     renderAll();
     showToast("Product duplicated");
+}
+
+function toggleProductVisibility(id) {
+    const product = getProducts()[id];
+    if (!product) return;
+
+    if (product.visible === false) {
+        delete product.visible;
+        showToast("Product published");
+    } else {
+        product.visible = false;
+        showToast("Product hidden");
+    }
+
+    if (id === state.selectedId) fillForm();
+    renderProductList();
+    updateJsonOutput();
 }
 
 function addCategory() {
@@ -648,7 +957,7 @@ function updateCategory(index, field, value) {
     if (!category) return;
 
     const previousName = category.name;
-    category[field] = value;
+    category[field] = field === "visible" ? Boolean(value) : value;
 
     if (field === "name") {
         Object.values(getProducts()).forEach((product) => {
@@ -668,6 +977,18 @@ function updateCategory(index, field, value) {
     renderProductList();
     renderPreview();
     updateJsonOutput();
+}
+
+function moveCategory(index, direction) {
+    const categories = getCategories();
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= categories.length) return;
+    const [category] = categories.splice(index, 1);
+    categories.splice(nextIndex, 0, category);
+    renderCategoryEditor();
+    renderCategoryOptions();
+    updateJsonOutput();
+    showToast("Category order updated");
 }
 
 function removeCategory(index) {
@@ -726,6 +1047,7 @@ function addVariation() {
     });
     renderVariations();
     renderPreview();
+    markProductDirty();
 }
 
 function updateVariation(index, field, value) {
@@ -747,12 +1069,14 @@ function updateVariation(index, field, value) {
         }
     }
     renderPreview();
+    markProductDirty();
 }
 
 function removeVariation(index) {
     state.draftVariations.splice(index, 1);
     renderVariations();
     renderPreview();
+    markProductDirty();
 }
 
 function getPreviewProduct() {
@@ -837,6 +1161,7 @@ function handlePhotoFile(file) {
     if (state.previewImages[path]) URL.revokeObjectURL(state.previewImages[path]);
     state.previewImages[path] = URL.createObjectURL(file);
     renderPreview();
+    markProductDirty();
     showToast(`Photo path set to ${path}`);
 }
 
@@ -857,11 +1182,16 @@ function updateJsonOutput() {
 
 function fillSettingsForm() {
     const settings = mergePaymentSettings(state.settings);
+    const store = settings.store;
     const d17 = settings.payment.d17;
     const flouci = settings.payment.flouci;
     const ttCard = settings.payment["tt-card"];
 
     const fields = {
+        storeNameSetting: store.name,
+        storeLogoSetting: store.logo,
+        supportWhatsappSetting: store.supportWhatsApp,
+        deliveryMessageSetting: store.deliveryMessage,
         d17Enabled: d17.enabled !== false,
         d17Instructions: d17.instructions,
         d17RecipientName: d17.recipientName,
@@ -905,6 +1235,12 @@ function readSettingsForm() {
     const checkedValue = (id) => document.getElementById(id)?.checked !== false;
 
     return {
+        store: {
+            name: textValue("storeNameSetting", DEFAULT_PAYMENT_SETTINGS.store.name),
+            logo: textValue("storeLogoSetting", DEFAULT_PAYMENT_SETTINGS.store.logo),
+            supportWhatsApp: textValue("supportWhatsappSetting", DEFAULT_PAYMENT_SETTINGS.store.supportWhatsApp),
+            deliveryMessage: textValue("deliveryMessageSetting", DEFAULT_PAYMENT_SETTINGS.store.deliveryMessage),
+        },
         payment: {
             d17: {
                 enabled: checkedValue("d17Enabled"),
@@ -970,16 +1306,142 @@ function downloadJson() {
 }
 
 function downloadSettingsJson() {
-    const blob = new Blob([getSettingsJson()], { type: "application/json" });
+    downloadTextFile("settings.json", getSettingsJson(), "application/json");
+    showToast("Downloaded settings.json");
+}
+
+function downloadTextFile(fileName, text, type = "text/plain") {
+    const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "settings.json";
+    link.download = fileName;
     document.body.append(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    showToast("Downloaded settings.json");
+}
+
+function csvEscape(value) {
+    const text = String(value ?? "");
+    if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+    return text;
+}
+
+function getProductsCsv() {
+    const rows = [
+        ["id", "name", "category", "price", "description", "image", "visible", "inStock", "variations"],
+        ...Object.entries(getProducts()).map(([id, product]) => [
+            id,
+            product.name || "",
+            product.category || "",
+            product.price ?? 0,
+            product.description || "",
+            product.image || "",
+            product.visible === false ? "false" : "true",
+            product.inStock === false ? "false" : "true",
+            Array.isArray(product.variations) ? JSON.stringify(product.variations) : "",
+        ]),
+    ];
+    return rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+}
+
+function exportProductsCsv() {
+    try {
+        if (document.getElementById("productId")?.value.trim()) saveProduct({ silent: true });
+        downloadTextFile("hyperkey-products.csv", getProductsCsv(), "text/csv");
+        showToast("Exported products CSV");
+    } catch (error) {
+        showToast(error.message || "Could not export CSV");
+    }
+}
+
+function downloadCsvTemplate() {
+    const template = [
+        ["id", "name", "category", "price", "description", "image", "visible", "inStock", "variations"],
+        ["steam-wallet-25", "Steam Wallet 25 TND", "Game Top-Ups", "25", "Digital wallet code.", "assets/hyperlogo.png", "true", "true", ""],
+    ];
+    downloadTextFile("hyperkey-products-template.csv", template.map((row) => row.map(csvEscape).join(",")).join("\n"), "text/csv");
+    showToast("Downloaded CSV template");
+}
+
+function parseCsv(text) {
+    const rows = [];
+    let row = [];
+    let cell = "";
+    let insideQuotes = false;
+
+    for (let index = 0; index < text.length; index += 1) {
+        const char = text[index];
+        const next = text[index + 1];
+
+        if (insideQuotes && char === '"' && next === '"') {
+            cell += '"';
+            index += 1;
+        } else if (char === '"') {
+            insideQuotes = !insideQuotes;
+        } else if (char === "," && !insideQuotes) {
+            row.push(cell);
+            cell = "";
+        } else if ((char === "\n" || char === "\r") && !insideQuotes) {
+            if (char === "\r" && next === "\n") index += 1;
+            row.push(cell);
+            if (row.some((value) => value.trim())) rows.push(row);
+            row = [];
+            cell = "";
+        } else {
+            cell += char;
+        }
+    }
+
+    row.push(cell);
+    if (row.some((value) => value.trim())) rows.push(row);
+    return rows;
+}
+
+async function importCsv(file) {
+    if (!file) return;
+    if (!window.confirm("Importing CSV can overwrite products with matching IDs. Continue?")) return;
+
+    const rows = parseCsv(await file.text());
+    const headers = (rows.shift() || []).map((header) => slugify(header));
+    const required = ["id", "name", "category", "price"];
+    if (!required.every((field) => headers.includes(field))) {
+        throw new Error("CSV must include id, name, category, and price columns");
+    }
+
+    rows.forEach((row) => {
+        const record = {};
+        headers.forEach((header, index) => {
+            record[header] = row[index] ?? "";
+        });
+        const id = slugify(record.id);
+        if (!id) return;
+
+        const product = {
+            name: record.name || id,
+            category: record.category || getCategories()[0]?.name || "Game Top-Ups",
+            price: Number(record.price || 0),
+        };
+        if (record.description) product.description = record.description;
+        if (record.image) product.image = record.image;
+        if (record.visible === "false") product.visible = false;
+        if (record.instock === "false") product.inStock = false;
+        if (record.variations) {
+            try {
+                const variations = JSON.parse(record.variations);
+                if (Array.isArray(variations)) product.variations = variations;
+            } catch {
+                throw new Error(`Invalid variations JSON for ${id}`);
+            }
+        }
+
+        getProducts()[id] = product;
+    });
+
+    selectProduct(Object.keys(getProducts())[0] || "");
+    renderAll();
+    showToast("Imported products CSV");
 }
 
 async function copyJson() {
@@ -994,6 +1456,7 @@ async function copyJson() {
 
 async function importJson(file) {
     if (!file) return;
+    if (!window.confirm("Importing JSON will replace the current product database in this editor. Continue?")) return;
     const text = await file.text();
     const database = JSON.parse(text);
     setDatabase(database);
@@ -1085,6 +1548,15 @@ function renderOrderItems(items) {
         .join("");
 }
 
+function getAdminOrderItemCount(items) {
+    if (!Array.isArray(items)) return 0;
+    return items.reduce((sum, item) => sum + Math.max(1, Number(item.quantity) || 1), 0);
+}
+
+function adminCountLabel(count, singular, plural = `${singular}s`) {
+    return `${count} ${count === 1 ? singular : plural}`;
+}
+
 function getAdminCustomerInputLabels(product) {
     const config = product?.customerInput;
     if (!config || config.enabled === false) return [];
@@ -1171,7 +1643,7 @@ function getDeliveryText(order) {
 function renderDeliveryControls(order) {
     const deliveryText = getDeliveryText(order);
     return `
-        <div class="admin-delivery-box mt-3">
+        <div class="admin-delivery-box">
             <div class="d-flex flex-column flex-lg-row justify-content-between gap-2 mb-2">
                 <div>
                     <p class="form-label mb-1">Delivery code / note</p>
@@ -1203,9 +1675,20 @@ function statusBadge(label, status) {
     `;
 }
 
+function getOrderWorkflowStatus(order) {
+    const payment = String(order.paymentStatus || "").toLowerCase();
+    const delivery = String(order.deliveryStatus || "").toLowerCase();
+    if (payment === "rejected" || delivery === "cancelled" || delivery === "canceled") return "cancelled";
+    if (delivery === "delivered") return "completed";
+    if (payment === "verified" && delivery === "waiting") return "delivering";
+    if (payment === "verified") return "paid";
+    return "pending";
+}
+
 function getFilteredOrders() {
     const search = state.orderFilters.search.trim().toLowerCase();
     return state.orders.filter((order) => {
+        if (state.orderFilters.workflow && getOrderWorkflowStatus(order) !== state.orderFilters.workflow) return false;
         if (state.orderFilters.payment && order.paymentStatus !== state.orderFilters.payment) return false;
         if (state.orderFilters.delivery && order.deliveryStatus !== state.orderFilters.delivery) return false;
 
@@ -1248,14 +1731,19 @@ function renderAdminOrders() {
             const createdAt = formatAdminDateTime(order.createdAt);
             const customerInputRequirements = getAdminCustomerInputRequirements(order);
             const customerInputHtml = renderOrderCustomerInputs(order.customerInputs, customerInputRequirements);
+            const itemCount = getAdminOrderItemCount(order.items);
+            const proofCount = Array.isArray(order.proofs) ? order.proofs.length : 0;
+            const customerInputCount = (Array.isArray(order.customerInputs) ? order.customerInputs.length : 0) + customerInputRequirements.length;
+            const deliveryText = getDeliveryText(order);
+            const workflowStatus = getOrderWorkflowStatus(order);
             return `
-                <article class="admin-order-card" data-admin-order-id="${escapeHtml(order.id)}">
+                <article class="admin-order-card order-priority-${workflowStatus}" data-admin-order-id="${escapeHtml(order.id)}">
                     <div class="admin-order-card-header">
                         <div class="admin-order-title-block">
                             <p class="eyebrow mb-1">${escapeHtml(createdAt)}</p>
                             <h3 class="h4 fw-black mb-2">${escapeHtml(order.id)}</h3>
                             <div class="admin-order-meta-row">
-                                <span><i class="bi bi-whatsapp"></i>${escapeHtml(order.customerPhoneDisplay)}</span>
+                                <span><i class="bi bi-whatsapp"></i><bdi class="phone-ltr">${escapeHtml(order.customerPhoneDisplay)}</bdi></span>
                                 <span><i class="bi bi-credit-card"></i>${escapeHtml(order.paymentMethodLabel)}</span>
                                 <strong>${formatPlainTndAmount(order.amountDue)}</strong>
                             </div>
@@ -1270,8 +1758,14 @@ function renderAdminOrders() {
                         </div>
                     </div>
 
-                    <div class="admin-order-body">
-                        <aside class="admin-order-status-panel">
+                    <div class="admin-order-body admin-order-body-groups">
+                        <details class="admin-order-details admin-order-status-details" open>
+                            <summary>
+                                <span><i class="bi bi-sliders me-1"></i>Status controls</span>
+                                <small>${escapeHtml(order.paymentStatusLabel)} / ${escapeHtml(order.deliveryStatusLabel)}</small>
+                                <i class="bi bi-chevron-down"></i>
+                            </summary>
+                            <div class="admin-order-status-panel">
                             <div class="admin-status-card">
                                 <span>Payment</span>
                                 ${statusBadge(order.paymentStatusLabel, order.paymentStatus)}
@@ -1293,35 +1787,54 @@ function renderAdminOrders() {
                                 </select>
                                 <button class="btn btn-primary btn-sm" type="button" data-update-order-status="${escapeHtml(order.id)}">Save status</button>
                             </div>
-                        </aside>
+                            </div>
+                        </details>
 
-                        <div class="admin-order-detail-stack">
-                            <details class="admin-order-details" open>
-                                <summary>
-                                    <span><i class="bi bi-bag-check me-1"></i>Order details</span>
-                                    <i class="bi bi-chevron-down"></i>
-                                </summary>
-                                <div class="admin-order-detail-grid">
-                                    <div>
-                                        <p class="form-label mb-2">Products</p>
-                                        ${renderOrderItems(order.items)}
+                        <details class="admin-order-details">
+                            <summary>
+                                <span><i class="bi bi-bag-check me-1"></i>Products</span>
+                                <small>${escapeHtml(adminCountLabel(itemCount, "item"))}</small>
+                                <i class="bi bi-chevron-down"></i>
+                            </summary>
+                            <div class="admin-order-detail-grid admin-order-detail-grid-single">
+                                <div>${renderOrderItems(order.items)}</div>
+                            </div>
+                        </details>
+
+                        <details class="admin-order-details">
+                            <summary>
+                                <span><i class="bi bi-receipt me-1"></i>Payment proof</span>
+                                <small>${escapeHtml(adminCountLabel(proofCount, "proof"))}</small>
+                                <i class="bi bi-chevron-down"></i>
+                            </summary>
+                            <div class="admin-order-detail-grid admin-order-detail-grid-single">
+                                <div>${renderProofs(order.proofs)}</div>
+                            </div>
+                        </details>
+
+                        ${
+                            customerInputHtml
+                                ? `<details class="admin-order-details" open>
+                                    <summary>
+                                        <span><i class="bi bi-person-lines-fill me-1"></i>Customer delivery info</span>
+                                        <small>${escapeHtml(adminCountLabel(customerInputCount, "field"))}</small>
+                                        <i class="bi bi-chevron-down"></i>
+                                    </summary>
+                                    <div class="admin-order-detail-grid admin-order-detail-grid-single">
+                                        <div class="admin-customer-inputs-block">${customerInputHtml}</div>
                                     </div>
-                                    <div>
-                                        <p class="form-label mb-2">Payment proof</p>
-                                        ${renderProofs(order.proofs)}
-                                    </div>
-                                    ${
-                                        customerInputHtml
-                                            ? `<div class="admin-customer-inputs-block">
-                                                <p class="form-label mb-2">Customer delivery info</p>
-                                                ${customerInputHtml}
-                                            </div>`
-                                            : ""
-                                    }
-                                </div>
-                            </details>
+                                </details>`
+                                : ""
+                        }
+
+                        <details class="admin-order-details admin-delivery-details" ${deliveryText ? "open" : ""}>
+                            <summary>
+                                <span><i class="bi bi-key me-1"></i>Delivery code / note</span>
+                                <small>${deliveryText ? "Saved" : "Empty"}</small>
+                                <i class="bi bi-chevron-down"></i>
+                            </summary>
                             ${renderDeliveryControls(order)}
-                        </div>
+                        </details>
                     </div>
                 </article>
             `;
@@ -1376,7 +1889,16 @@ async function saveAdminOrderDelivery(orderId) {
 }
 
 function bindEvents() {
-    document.getElementById("productSearch")?.addEventListener("input", renderProductList);
+    document.getElementById("productSearch")?.addEventListener("input", () => updateProductFiltersFromControls("desktop"));
+    document.getElementById("productCategoryFilter")?.addEventListener("change", () => updateProductFiltersFromControls("desktop"));
+    document.getElementById("productStatusFilter")?.addEventListener("change", () => updateProductFiltersFromControls("desktop"));
+    document.getElementById("mobileCatalogSearch")?.addEventListener("input", () => updateProductFiltersFromControls("mobile"));
+    document.getElementById("mobileCatalogCategoryFilter")?.addEventListener("change", () => updateProductFiltersFromControls("mobile"));
+    document.getElementById("mobileCatalogStatusFilter")?.addEventListener("change", () => updateProductFiltersFromControls("mobile"));
+    document.getElementById("mobileProductSelect")?.addEventListener("change", (event) => {
+        selectProduct(event.target.value);
+        renderAll();
+    });
     document.getElementById("newProductButton")?.addEventListener("click", createNewProduct);
     document.getElementById("duplicateProductButton")?.addEventListener("click", duplicateProduct);
     document.getElementById("deleteProductButton")?.addEventListener("click", deleteProduct);
@@ -1392,6 +1914,14 @@ function bindEvents() {
             .then(() => importJson(getSelectedImportFile("jsonImport", "products.json")))
             .catch((error) => showToast(error.message || "Could not import products.json"));
     });
+    document.getElementById("csvImport")?.addEventListener("change", () => showSelectedFileMessage("csvImport", "Import CSV"));
+    document.getElementById("importCsvButton")?.addEventListener("click", () => {
+        Promise.resolve()
+            .then(() => importCsv(getSelectedImportFile("csvImport", "products CSV")))
+            .catch((error) => showToast(error.message || "Could not import products CSV"));
+    });
+    document.getElementById("exportProductsCsvButton")?.addEventListener("click", exportProductsCsv);
+    document.getElementById("downloadCsvTemplateButton")?.addEventListener("click", downloadCsvTemplate);
     document.getElementById("downloadSettingsButton")?.addEventListener("click", downloadSettingsJson);
     document.getElementById("settingsImport")?.addEventListener("change", () => showSelectedFileMessage("settingsImport", "Import settings"));
     document.getElementById("importSettingsButton")?.addEventListener("click", () => {
@@ -1419,6 +1949,7 @@ function bindEvents() {
         const index = Number(row.dataset.customerInputIndex);
         state.draftCustomerInputs[index] = input.value.slice(0, 80);
         renderPreview();
+        markProductDirty();
     });
     document.getElementById("saveAdminTokenButton")?.addEventListener("click", () => {
         const token = document.getElementById("adminApiToken")?.value.trim() || "";
@@ -1445,7 +1976,24 @@ function bindEvents() {
         renderAdminOrders();
     });
 
-    document.querySelectorAll(".admin-settings-list .admin-setting-group input, .admin-settings-list .admin-setting-group textarea").forEach((input) => {
+    document.getElementById("adminOrderStatusFilters")?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-order-workflow-filter]");
+        if (!button) return;
+        state.orderFilters.workflow = button.dataset.orderWorkflowFilter || "";
+        document.querySelectorAll("[data-order-workflow-filter]").forEach((filterButton) => {
+            filterButton.classList.toggle("active", filterButton === button);
+            filterButton.classList.toggle("btn-primary", filterButton === button);
+            filterButton.classList.toggle("btn-outline-dark", filterButton !== button);
+        });
+        renderAdminOrders();
+    });
+
+    document.querySelectorAll("#paymentsPane input, #paymentsPane textarea").forEach((input) => {
+        input.addEventListener("input", saveSettingsFromForm);
+        input.addEventListener("change", saveSettingsFromForm);
+    });
+
+    document.querySelectorAll("[data-settings-field]").forEach((input) => {
         input.addEventListener("input", saveSettingsFromForm);
         input.addEventListener("change", saveSettingsFromForm);
     });
@@ -1455,6 +2003,34 @@ function bindEvents() {
         if (!button) return;
         selectProduct(button.dataset.selectProduct);
         renderAll();
+    });
+
+    document.getElementById("mobileProductList")?.addEventListener("click", (event) => {
+        const actionButton = event.target.closest("[data-mobile-product-action]");
+        if (actionButton) {
+            const productId = actionButton.dataset.productActionId;
+            const action = actionButton.dataset.mobileProductAction;
+            if (!productId || !getProducts()[productId]) return;
+
+            if (action === "duplicate") {
+                selectProduct(productId);
+                duplicateProduct();
+                closeMobileProductCatalog();
+            } else if (action === "toggle-visibility") {
+                toggleProductVisibility(productId);
+            } else if (action === "delete") {
+                selectProduct(productId);
+                deleteProduct();
+                closeMobileProductCatalog();
+            }
+            return;
+        }
+
+        const selectButton = event.target.closest("[data-select-mobile-product]");
+        if (!selectButton) return;
+        selectProduct(selectButton.dataset.selectMobileProduct);
+        renderAll();
+        closeMobileProductCatalog();
     });
 
     document.getElementById("variationList")?.addEventListener("input", (event) => {
@@ -1474,10 +2050,17 @@ function bindEvents() {
         const input = event.target.closest("[data-category-field]");
         if (!input) return;
         const row = input.closest("[data-category-index]");
-        updateCategory(Number(row.dataset.categoryIndex), input.dataset.categoryField, input.value);
+        const value = input.type === "checkbox" ? input.checked : input.value;
+        updateCategory(Number(row.dataset.categoryIndex), input.dataset.categoryField, value);
     });
 
     document.getElementById("categoryEditorList")?.addEventListener("click", (event) => {
+        const moveButton = event.target.closest("[data-move-category]");
+        if (moveButton) {
+            moveCategory(Number(moveButton.dataset.moveCategory), Number(moveButton.dataset.categoryDirection));
+            return;
+        }
+
         const button = event.target.closest("[data-remove-category]");
         if (!button) return;
         removeCategory(Number(button.dataset.removeCategory));
@@ -1494,7 +2077,16 @@ function bindEvents() {
 
     document.getElementById("productForm")?.addEventListener("input", () => {
         renderPreview();
+        markProductDirty();
     });
+
+    document.querySelectorAll("#adminWorkspaceTabs [data-bs-toggle='pill']").forEach((tab) => {
+        tab.addEventListener("shown.bs.tab", () => {
+            tab.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+        });
+    });
+
+    window.addEventListener("resize", syncResponsiveAdminLayout);
 
     document.getElementById("adminOrdersList")?.addEventListener("click", (event) => {
         const saveDeliveryButton = event.target.closest("[data-save-order-delivery]");
@@ -1541,6 +2133,7 @@ function bindEvents() {
 }
 
 bindEvents();
+syncResponsiveAdminLayout();
 const savedAdminToken = getAdminToken();
 if (savedAdminToken) {
     const tokenInput = document.getElementById("adminApiToken");
@@ -1548,3 +2141,4 @@ if (savedAdminToken) {
 }
 loadDatabase();
 loadSettings();
+

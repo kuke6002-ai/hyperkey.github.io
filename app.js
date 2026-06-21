@@ -359,6 +359,12 @@ function formatProductCount(count) {
     return `${value} product${value === 1 ? "" : "s"}`;
 }
 
+function localizeProductCountElements(root = document) {
+    root.querySelectorAll("[data-product-count-value]").forEach((element) => {
+        element.textContent = formatProductCount(element.dataset.productCountValue);
+    });
+}
+
 function translateTextNode(node) {
     const value = node.nodeValue || "";
     const key = normalizeI18nKey(value);
@@ -407,6 +413,7 @@ function translatePage() {
     document.documentElement.lang = CURRENT_LANGUAGE;
     document.documentElement.dir = CURRENT_LANGUAGE === "ar" ? "rtl" : "ltr";
     translateElement(document.body);
+    localizeProductCountElements(document.body);
     document.title = t(document.title);
     updateLanguageToggle();
 }
@@ -2021,7 +2028,11 @@ function renderOrderProducts(order, products) {
             <summary aria-label="${escapeHtml(t("Products in this order"))}">
                 <span class="order-products-summary-copy">
                     <small>${t("Products in this order")}</small>
-                    <strong>${escapeHtml(formatProductCount(itemCount))} &bull; ${escapeHtml(formatPlainTndAmount(total))}</strong>
+                    <strong class="order-products-summary-line">
+                        <span data-product-count-value="${escapeHtml(itemCount)}">${escapeHtml(formatProductCount(itemCount))}</span>
+                        <span aria-hidden="true">&bull;</span>
+                        <span class="ltr-value">${escapeHtml(formatPlainTndAmount(total))}</span>
+                    </strong>
                 </span>
                 <i class="bi bi-chevron-down"></i>
             </summary>
