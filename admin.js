@@ -17,6 +17,54 @@ const DEFAULT_PAYMENT_SETTINGS = {
         supportWhatsApp: "97671058",
         deliveryMessage: "Delivery is handled through WhatsApp after manual payment review.",
     },
+    statusMessages: {
+        paymentReview: {
+            title: "Payment review",
+            message: "We are checking your payment. Refresh later.",
+        },
+        paymentRejected: {
+            title: "Payment rejected",
+            message: "Your payment proof could not be verified. Contact support with your Order ID.",
+        },
+        customerInfoNeeded: {
+            title: "Delivery information needed",
+            message: "Payment is verified. Send the requested delivery information below.",
+        },
+        deliveryWaiting: {
+            title: "Delivery waiting",
+            message: "Your order is being prepared.",
+        },
+        delivered: {
+            title: "Delivered",
+            message: "Copy your delivered item below.",
+        },
+        cancelled: {
+            title: "Order cancelled",
+            message: "This order was cancelled. Contact support with your Order ID if you need help.",
+        },
+    },
+    faq: [
+        {
+            question: "How do I receive my order?",
+            answer: "After payment is reviewed, delivery appears on the Check Order page and we can also contact you on WhatsApp when needed.",
+        },
+        {
+            question: "How long does delivery take?",
+            answer: "Most orders are handled manually as soon as payment is verified. Some products can take longer depending on supplier availability.",
+        },
+        {
+            question: "What payment methods are supported?",
+            answer: "HyperKey Store supports D17 transfer, Flouci transfer, and Tunisie Telecom recharge cards when enabled.",
+        },
+        {
+            question: "What if my payment is rejected?",
+            answer: "Check the reason on the order status page, then contact support with your Order ID and payment proof.",
+        },
+        {
+            question: "Do I need an account?",
+            answer: "No account is required. Keep your Order ID and use the same WhatsApp number to check your order.",
+        },
+    ],
     payment: {
         d17: {
             enabled: true,
@@ -182,6 +230,17 @@ function mergePaymentSettings(settings = {}) {
             ...merged.store,
             ...settings.store,
         };
+    }
+
+    if (settings.statusMessages && typeof settings.statusMessages === "object") {
+        merged.statusMessages = {
+            ...merged.statusMessages,
+            ...settings.statusMessages,
+        };
+    }
+
+    if (Array.isArray(settings.faq)) {
+        merged.faq = settings.faq;
     }
 
     const incomingPayment = settings.payment && typeof settings.payment === "object" ? settings.payment : {};
@@ -1183,6 +1242,7 @@ function updateJsonOutput() {
 function fillSettingsForm() {
     const settings = mergePaymentSettings(state.settings);
     const store = settings.store;
+    const statusMessages = settings.statusMessages;
     const d17 = settings.payment.d17;
     const flouci = settings.payment.flouci;
     const ttCard = settings.payment["tt-card"];
@@ -1192,6 +1252,18 @@ function fillSettingsForm() {
         storeLogoSetting: store.logo,
         supportWhatsappSetting: store.supportWhatsApp,
         deliveryMessageSetting: store.deliveryMessage,
+        statusPaymentReviewTitle: statusMessages.paymentReview.title,
+        statusPaymentReviewMessage: statusMessages.paymentReview.message,
+        statusPaymentRejectedTitle: statusMessages.paymentRejected.title,
+        statusPaymentRejectedMessage: statusMessages.paymentRejected.message,
+        statusCustomerInfoTitle: statusMessages.customerInfoNeeded.title,
+        statusCustomerInfoMessage: statusMessages.customerInfoNeeded.message,
+        statusDeliveryWaitingTitle: statusMessages.deliveryWaiting.title,
+        statusDeliveryWaitingMessage: statusMessages.deliveryWaiting.message,
+        statusDeliveredTitle: statusMessages.delivered.title,
+        statusDeliveredMessage: statusMessages.delivered.message,
+        statusCancelledTitle: statusMessages.cancelled.title,
+        statusCancelledMessage: statusMessages.cancelled.message,
         d17Enabled: d17.enabled !== false,
         d17Instructions: d17.instructions,
         d17RecipientName: d17.recipientName,
@@ -1241,6 +1313,33 @@ function readSettingsForm() {
             supportWhatsApp: textValue("supportWhatsappSetting", DEFAULT_PAYMENT_SETTINGS.store.supportWhatsApp),
             deliveryMessage: textValue("deliveryMessageSetting", DEFAULT_PAYMENT_SETTINGS.store.deliveryMessage),
         },
+        statusMessages: {
+            paymentReview: {
+                title: textValue("statusPaymentReviewTitle", DEFAULT_PAYMENT_SETTINGS.statusMessages.paymentReview.title),
+                message: textValue("statusPaymentReviewMessage", DEFAULT_PAYMENT_SETTINGS.statusMessages.paymentReview.message),
+            },
+            paymentRejected: {
+                title: textValue("statusPaymentRejectedTitle", DEFAULT_PAYMENT_SETTINGS.statusMessages.paymentRejected.title),
+                message: textValue("statusPaymentRejectedMessage", DEFAULT_PAYMENT_SETTINGS.statusMessages.paymentRejected.message),
+            },
+            customerInfoNeeded: {
+                title: textValue("statusCustomerInfoTitle", DEFAULT_PAYMENT_SETTINGS.statusMessages.customerInfoNeeded.title),
+                message: textValue("statusCustomerInfoMessage", DEFAULT_PAYMENT_SETTINGS.statusMessages.customerInfoNeeded.message),
+            },
+            deliveryWaiting: {
+                title: textValue("statusDeliveryWaitingTitle", DEFAULT_PAYMENT_SETTINGS.statusMessages.deliveryWaiting.title),
+                message: textValue("statusDeliveryWaitingMessage", DEFAULT_PAYMENT_SETTINGS.statusMessages.deliveryWaiting.message),
+            },
+            delivered: {
+                title: textValue("statusDeliveredTitle", DEFAULT_PAYMENT_SETTINGS.statusMessages.delivered.title),
+                message: textValue("statusDeliveredMessage", DEFAULT_PAYMENT_SETTINGS.statusMessages.delivered.message),
+            },
+            cancelled: {
+                title: textValue("statusCancelledTitle", DEFAULT_PAYMENT_SETTINGS.statusMessages.cancelled.title),
+                message: textValue("statusCancelledMessage", DEFAULT_PAYMENT_SETTINGS.statusMessages.cancelled.message),
+            },
+        },
+        faq: Array.isArray(state.settings.faq) ? state.settings.faq : DEFAULT_PAYMENT_SETTINGS.faq,
         payment: {
             d17: {
                 enabled: checkedValue("d17Enabled"),
@@ -1675,6 +1774,19 @@ function statusBadge(label, status) {
     `;
 }
 
+function getOrderReasonSummary(order) {
+    const reasons = [
+        order.paymentStatusReason ? `Payment: ${order.paymentStatusReason}` : "",
+        order.deliveryStatusReason ? `Delivery: ${order.deliveryStatusReason}` : "",
+    ].filter(Boolean);
+    if (!reasons.length) return "";
+    return `
+        <div class="admin-status-reasons">
+            ${reasons.map((reason) => `<div><i class="bi bi-info-circle me-1"></i>${escapeHtml(reason)}</div>`).join("")}
+        </div>
+    `;
+}
+
 function getOrderWorkflowStatus(order) {
     const payment = String(order.paymentStatus || "").toLowerCase();
     const delivery = String(order.deliveryStatus || "").toLowerCase();
@@ -1700,8 +1812,11 @@ function getFilteredOrders() {
             order.paymentMethodLabel,
             order.paymentStatusLabel,
             order.deliveryStatusLabel,
+            order.paymentStatusReason,
+            order.deliveryStatusReason,
             ...(order.items || []).map((item) => item.productName),
             ...(order.proofs || []).map((proof) => `${proof.label} ${proof.value}`),
+            ...(order.deliveries || []).map((delivery) => `${delivery.text || ""} ${(delivery.lines || []).map((line) => `${line.note} ${line.code}`).join(" ")}`),
             ...(order.customerInputs || []).map((input) => `${input.label} ${input.productName} ${input.value}`),
             ...getAdminCustomerInputRequirements(order).map((input) => `${input.label} ${input.productName}`),
         ]
@@ -1774,6 +1889,7 @@ function renderAdminOrders() {
                                 <span>Delivery</span>
                                 ${statusBadge(order.deliveryStatusLabel, order.deliveryStatus)}
                             </div>
+                            ${getOrderReasonSummary(order)}
                             <div class="admin-status-controls">
                                 <select class="form-select form-select-sm" data-order-payment-status aria-label="Payment status">
                                     <option value="pending" ${order.paymentStatus === "pending" ? "selected" : ""}>Payment pending</option>
@@ -1786,6 +1902,33 @@ function renderAdminOrders() {
                                     <option value="cancelled" ${order.deliveryStatus === "cancelled" ? "selected" : ""}>Cancelled</option>
                                 </select>
                                 <button class="btn btn-primary btn-sm" type="button" data-update-order-status="${escapeHtml(order.id)}">Save status</button>
+                            </div>
+                            <div class="admin-reason-controls">
+                                <label>
+                                    <span>Payment rejection reason</span>
+                                    <input class="form-control form-control-sm" data-order-payment-reason type="text" value="${escapeHtml(order.paymentStatusReason || "")}" placeholder="Reason shown to customer if rejected" />
+                                </label>
+                                <label>
+                                    <span>Cancel reason</span>
+                                    <input class="form-control form-control-sm" data-order-delivery-reason type="text" value="${escapeHtml(order.deliveryStatusReason || "")}" placeholder="Reason shown to customer if cancelled" />
+                                </label>
+                            </div>
+                            <div class="admin-quick-actions">
+                                <button class="btn btn-outline-dark btn-sm" type="button" data-quick-order-action="payment:verified" data-quick-order-id="${escapeHtml(order.id)}">
+                                    <i class="bi bi-check-circle me-1"></i>Verify payment
+                                </button>
+                                <button class="btn btn-outline-danger btn-sm" type="button" data-quick-order-action="payment:rejected" data-quick-order-id="${escapeHtml(order.id)}">
+                                    <i class="bi bi-x-circle me-1"></i>Reject payment
+                                </button>
+                                <button class="btn btn-outline-dark btn-sm" type="button" data-quick-order-action="delivery:waiting" data-quick-order-id="${escapeHtml(order.id)}">
+                                    <i class="bi bi-hourglass-split me-1"></i>Not delivered
+                                </button>
+                                <button class="btn btn-outline-dark btn-sm" type="button" data-quick-order-action="delivery:delivered" data-quick-order-id="${escapeHtml(order.id)}">
+                                    <i class="bi bi-truck me-1"></i>Delivered
+                                </button>
+                                <button class="btn btn-outline-danger btn-sm" type="button" data-quick-order-action="delivery:cancelled" data-quick-order-id="${escapeHtml(order.id)}">
+                                    <i class="bi bi-slash-circle me-1"></i>Cancel order
+                                </button>
                             </div>
                             </div>
                         </details>
@@ -1860,16 +2003,68 @@ async function updateAdminOrderStatus(orderId) {
 
     const paymentStatus = card.querySelector("[data-order-payment-status]")?.value || "";
     const deliveryStatus = card.querySelector("[data-order-delivery-status]")?.value || "";
+    let paymentStatusReason = card.querySelector("[data-order-payment-reason]")?.value || "";
+    let deliveryStatusReason = card.querySelector("[data-order-delivery-reason]")?.value || "";
+    if (paymentStatus === "rejected" && !paymentStatusReason.trim()) {
+        paymentStatusReason = window.prompt("Payment rejection reason shown to customer:", "Payment proof could not be verified.") || "";
+        const input = card.querySelector("[data-order-payment-reason]");
+        if (input) input.value = paymentStatusReason;
+    }
+    if (deliveryStatus === "cancelled" && !deliveryStatusReason.trim()) {
+        deliveryStatusReason = window.prompt("Cancel reason shown to customer:", "Order was cancelled by support.") || "";
+        const input = card.querySelector("[data-order-delivery-reason]");
+        if (input) input.value = deliveryStatusReason;
+    }
     const result = await adminRequest({
         action: "admin-update-order",
         orderId,
         paymentStatus,
         deliveryStatus,
+        paymentStatusReason,
+        deliveryStatusReason,
     });
 
     state.orders = state.orders.map((order) => (order.id === result.order.id ? result.order : order));
     renderAdminOrders();
     showToast("Order status updated");
+}
+
+async function quickUpdateAdminOrder(orderId, action) {
+    const card = [...document.querySelectorAll("[data-admin-order-id]")].find((item) => item.dataset.adminOrderId === orderId);
+    if (!card) return;
+
+    const [target, status] = String(action || "").split(":");
+    if (!target || !status) return;
+
+    const payload = {
+        action: "admin-update-order",
+        orderId,
+    };
+
+    if (target === "payment") {
+        payload.paymentStatus = status;
+        payload.paymentStatusReason = card.querySelector("[data-order-payment-reason]")?.value || "";
+        if (status === "rejected" && !payload.paymentStatusReason.trim()) {
+            payload.paymentStatusReason = window.prompt("Payment rejection reason shown to customer:", "Payment proof could not be verified.") || "";
+            const input = card.querySelector("[data-order-payment-reason]");
+            if (input) input.value = payload.paymentStatusReason;
+        }
+    }
+
+    if (target === "delivery") {
+        payload.deliveryStatus = status;
+        payload.deliveryStatusReason = card.querySelector("[data-order-delivery-reason]")?.value || "";
+        if (status === "cancelled" && !payload.deliveryStatusReason.trim()) {
+            payload.deliveryStatusReason = window.prompt("Cancel reason shown to customer:", "Order was cancelled by support.") || "";
+            const input = card.querySelector("[data-order-delivery-reason]");
+            if (input) input.value = payload.deliveryStatusReason;
+        }
+    }
+
+    const result = await adminRequest(payload);
+    state.orders = state.orders.map((order) => (order.id === result.order.id ? result.order : order));
+    renderAdminOrders();
+    showToast("Order updated");
 }
 
 async function saveAdminOrderDelivery(orderId) {
@@ -2089,6 +2284,14 @@ function bindEvents() {
     window.addEventListener("resize", syncResponsiveAdminLayout);
 
     document.getElementById("adminOrdersList")?.addEventListener("click", (event) => {
+        const quickActionButton = event.target.closest("[data-quick-order-action]");
+        if (quickActionButton) {
+            quickUpdateAdminOrder(quickActionButton.dataset.quickOrderId, quickActionButton.dataset.quickOrderAction).catch((error) =>
+                showToast(error.message || "Could not update order"),
+            );
+            return;
+        }
+
         const saveDeliveryButton = event.target.closest("[data-save-order-delivery]");
         if (saveDeliveryButton) {
             saveAdminOrderDelivery(saveDeliveryButton.dataset.saveOrderDelivery).catch((error) =>

@@ -2,8 +2,41 @@ const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 const MAX_QUANTITY = 99;
 const processedOrders = new Map();
 let customerInputTableReady = false;
+let orderSchemaReady = false;
 
 const DEFAULT_PAYMENT_SETTINGS = {
+    store: {
+        name: "HyperKey Store",
+        logo: "assets/hyperlogo.png",
+        supportWhatsApp: "97671058",
+        deliveryMessage: "Delivery is handled through WhatsApp after manual payment review.",
+    },
+    statusMessages: {
+        paymentReview: {
+            title: "Payment review",
+            message: "We are checking your payment. Refresh later.",
+        },
+        paymentRejected: {
+            title: "Payment rejected",
+            message: "Your payment proof could not be verified. Contact support with your Order ID.",
+        },
+        customerInfoNeeded: {
+            title: "Delivery information needed",
+            message: "Payment is verified. Send the requested delivery information below.",
+        },
+        deliveryWaiting: {
+            title: "Delivery waiting",
+            message: "Your order is being prepared.",
+        },
+        delivered: {
+            title: "Delivered",
+            message: "Copy your delivered item below.",
+        },
+        cancelled: {
+            title: "Order cancelled",
+            message: "This order was cancelled. Contact support with your Order ID if you need help.",
+        },
+    },
     payment: {
         d17: {
             enabled: true,
@@ -75,6 +108,28 @@ function getOrderDb(env) {
     return env.DB;
 }
 
+async function ensureOrderSchema(env) {
+    if (orderSchemaReady) return;
+
+    const db = getOrderDb(env);
+    const migrations = [
+        "ALTER TABLE orders ADD COLUMN payment_status_reason TEXT",
+        "ALTER TABLE orders ADD COLUMN delivery_status_reason TEXT",
+        "ALTER TABLE orders ADD COLUMN updated_at TEXT",
+    ];
+
+    for (const migration of migrations) {
+        try {
+            await db.prepare(migration).run();
+        } catch (error) {
+            const message = String(error?.message || "");
+            if (!/duplicate column|already exists/i.test(message)) throw error;
+        }
+    }
+
+    orderSchemaReady = true;
+}
+
 function requireAdmin(request, env) {
     if (!env.ADMIN_API_TOKEN) {
         const error = new Error("ADMIN_API_TOKEN is not configured");
@@ -139,6 +194,24 @@ function clone(value) {
 
 function mergePaymentSettings(settings = {}) {
     const merged = clone(DEFAULT_PAYMENT_SETTINGS);
+    if (settings.store && typeof settings.store === "object") {
+        merged.store = {
+            ...merged.store,
+            ...settings.store,
+        };
+    }
+
+    if (settings.statusMessages && typeof settings.statusMessages === "object") {
+        merged.statusMessages = {
+            ...merged.statusMessages,
+            ...settings.statusMessages,
+        };
+    }
+
+    if (Array.isArray(settings.faq)) {
+        merged.faq = settings.faq;
+    }
+
     const incomingPayment = settings.payment && typeof settings.payment === "object" ? settings.payment : {};
 
     Object.entries(incomingPayment).forEach(([method, config]) => {
@@ -339,6 +412,41 @@ function getDeliveryStatusLabel(status) {
     return labels[status] || String(status || "Waiting for delivery");
 }
 
+function normalizeStatusReason(value) {
+    return String(value || "").trim().replace(/\s+/g, " ").slice(0, 240);
+}
+
+function getDefaultStatusReason(target, status) {
+    if (target === "payment" && status === "rejected") {
+        return "Payment proof could not be verified. Contact support with your Order ID.";
+    }
+    if (target === "delivery" && status === "cancelled") {
+        return "Order was cancelled. Contact support with your Order ID.";
+    }
+    return "";
+}
+
+function getStatusMessageKey(record, customerInputs = []) {
+    const payment = String(record.payment_status || "").toLowerCase();
+    const delivery = String(record.delivery_status || "").toLowerCase();
+    if (payment === "rejected") return "paymentRejected";
+    if (delivery === "cancelled" || delivery === "canceled") return "cancelled";
+    if (delivery === "delivered") return "delivered";
+    if (payment === "verified" && Array.isArray(customerInputs) && customerInputs.length) return "customerInfoNeeded";
+    if (payment === "verified") return "deliveryWaiting";
+    return "paymentReview";
+}
+
+function getStatusCopy(settings, record, customerInputs = []) {
+    const key = getStatusMessageKey(record, customerInputs);
+    const copy = settings?.statusMessages?.[key] || DEFAULT_PAYMENT_SETTINGS.statusMessages[key] || {};
+    return {
+        key,
+        title: copy.title || DEFAULT_PAYMENT_SETTINGS.statusMessages[key]?.title || getPaymentStatusLabel(record.payment_status),
+        message: copy.message || DEFAULT_PAYMENT_SETTINGS.statusMessages[key]?.message || "",
+    };
+}
+
 function formatTndAmount(amount) {
     const value = Number(amount) || 0;
     const formatted = value.toLocaleString("en-US", {
@@ -384,6 +492,9 @@ function buildOrderLines(items, database) {
             if (!variationId) throw new Error(`Missing selected option for product: ${productId}`);
             variation = getVariation(product, variationId);
             if (!variation) throw new Error(`Invalid selected option for product: ${productId}`);
+            if (variation.visible === false || variation.inStock === false) {
+                throw new Error(`Selected option is unavailable: ${productId}`);
+            }
         } else if (variationId) {
             throw new Error(`Product has no selectable options: ${productId}`);
         }
@@ -485,6 +596,9 @@ async function getOrderByCheckoutRequestId(env, checkoutRequestId) {
                 payment_method_label,
                 payment_status,
                 delivery_status,
+                payment_status_reason,
+                delivery_status_reason,
+                updated_at,
                 telegram_notified_at
             FROM orders
             WHERE checkout_request_id = ?`,
@@ -513,7 +627,10 @@ async function getOrderByIdAndPhone(env, orderId, customerPhone) {
                 payment_method,
                 payment_method_label,
                 payment_status,
-                delivery_status
+                delivery_status,
+                payment_status_reason,
+                delivery_status_reason,
+                updated_at
             FROM orders
             WHERE id = ? AND customer_phone IN (?, ?, ?)`,
         )
@@ -538,6 +655,9 @@ async function getOrderById(env, orderId) {
                 payment_method_label,
                 payment_status,
                 delivery_status,
+                payment_status_reason,
+                delivery_status_reason,
+                updated_at,
                 telegram_notified_at
             FROM orders
             WHERE id = ?`,
@@ -820,8 +940,10 @@ async function getSavedOrderForNotification(env, record) {
         paymentMethodLabel: record.payment_method_label,
         paymentStatus: record.payment_status,
         paymentStatusLabel: getPaymentStatusLabel(record.payment_status),
+        paymentStatusReason: record.payment_status_reason || "",
         deliveryStatus: record.delivery_status,
         deliveryStatusLabel: getDeliveryStatusLabel(record.delivery_status),
+        deliveryStatusReason: record.delivery_status_reason || "",
         paymentProof: isTtCard
             ? {
                   type: "tt-card",
@@ -850,12 +972,14 @@ async function getSavedOrderForNotification(env, record) {
 }
 
 async function getOrderStatusPayload(env, record) {
-    const [items, deliveries, savedInputs] = await Promise.all([
+    const [items, deliveries, savedInputs, settings] = await Promise.all([
         getOrderItems(env, record.id),
         getOrderDeliveries(env, record.id),
         getOrderCustomerInputs(env, record.id),
+        readSettings(env),
     ]);
     const customerInputs = await getCustomerInputRequirements(env, record, items, savedInputs);
+    const statusCopy = getStatusCopy(settings, record, customerInputs);
     return {
         ok: true,
         order: {
@@ -868,8 +992,13 @@ async function getOrderStatusPayload(env, record) {
             paymentMethod: record.payment_method_label,
             paymentStatusCode: record.payment_status,
             paymentStatus: getPaymentStatusLabel(record.payment_status),
+            paymentStatusReason: record.payment_status_reason || "",
             deliveryStatusCode: record.delivery_status,
             deliveryStatus: getDeliveryStatusLabel(record.delivery_status),
+            deliveryStatusReason: record.delivery_status_reason || "",
+            statusMessageKey: statusCopy.key,
+            statusTitle: statusCopy.title,
+            statusMessage: statusCopy.message,
             items: items.map((item) => ({
                 productId: item.product_id,
                 variationId: item.variation_id || "",
@@ -913,8 +1042,10 @@ async function getAdminOrderPayload(env, record) {
         paymentMethodLabel: record.payment_method_label,
         paymentStatus: record.payment_status,
         paymentStatusLabel: getPaymentStatusLabel(record.payment_status),
+        paymentStatusReason: record.payment_status_reason || "",
         deliveryStatus: record.delivery_status,
         deliveryStatusLabel: getDeliveryStatusLabel(record.delivery_status),
+        deliveryStatusReason: record.delivery_status_reason || "",
         telegramNotifiedAt: record.telegram_notified_at,
         items: items.map((item) => ({
             productId: item.product_id,
@@ -951,6 +1082,9 @@ async function listAdminOrders(env, limit = 50) {
                     payment_method_label,
                     payment_status,
                     delivery_status,
+                    payment_status_reason,
+                    delivery_status_reason,
+                    updated_at,
                     telegram_notified_at
                 FROM orders
                 ORDER BY created_at DESC
@@ -975,15 +1109,25 @@ async function updateAdminOrder(env, body) {
         if (!allowedPayment.has(body.paymentStatus)) throw new Error("Invalid payment status");
         updates.push("payment_status = ?");
         values.push(body.paymentStatus);
+
+        const reason = normalizeStatusReason(body.paymentStatusReason);
+        updates.push("payment_status_reason = ?");
+        values.push(body.paymentStatus === "rejected" ? reason || getDefaultStatusReason("payment", body.paymentStatus) : "");
     }
 
     if (typeof body.deliveryStatus === "string" && body.deliveryStatus) {
         if (!allowedDelivery.has(body.deliveryStatus)) throw new Error("Invalid delivery status");
         updates.push("delivery_status = ?");
         values.push(body.deliveryStatus);
+
+        const reason = normalizeStatusReason(body.deliveryStatusReason);
+        updates.push("delivery_status_reason = ?");
+        values.push(body.deliveryStatus === "cancelled" ? reason || getDefaultStatusReason("delivery", body.deliveryStatus) : "");
     }
 
     if (!updates.length) throw new Error("No status update was provided");
+    updates.push("updated_at = ?");
+    values.push(new Date().toISOString());
     values.push(orderId);
 
     const db = getOrderDb(env);
@@ -1008,7 +1152,9 @@ async function saveAdminOrderDelivery(env, body) {
     try {
         if (!deliveryText || deliveryText === "0") {
             await deleteStatement.run();
+            await db.prepare("UPDATE orders SET updated_at = ? WHERE id = ?").bind(new Date().toISOString(), orderId).run();
         } else {
+            const now = new Date().toISOString();
             await db.batch([
                 deleteStatement,
                 db
@@ -1019,7 +1165,8 @@ async function saveAdminOrderDelivery(env, body) {
                             created_at
                         ) VALUES (?, ?, ?)`,
                     )
-                    .bind(orderId, deliveryText, new Date().toISOString()),
+                    .bind(orderId, deliveryText, now),
+                db.prepare("UPDATE orders SET updated_at = ? WHERE id = ?").bind(now, orderId),
             ]);
         }
     } catch (error) {
@@ -1102,8 +1249,11 @@ async function saveOrderToDatabase(env, checkoutRequestId, order) {
                     payment_method,
                     payment_method_label,
                     payment_status,
-                    delivery_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    delivery_status,
+                    payment_status_reason,
+                    delivery_status_reason,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .bind(
                 order.id,
@@ -1118,6 +1268,9 @@ async function saveOrderToDatabase(env, checkoutRequestId, order) {
                 order.paymentMethodLabel,
                 order.paymentStatus,
                 "waiting",
+                "",
+                "",
+                order.createdAt,
             );
 
         const itemStatements = order.lines.map((line) =>
@@ -1246,40 +1399,49 @@ function formatAdminMessage(order) {
         ...formatProofLines(order),
         "",
         `${ICONS.warning} Payment: ${escapeHtml(order.paymentStatusLabel)}`,
+        order.paymentStatusReason ? `Reason: ${escapeHtml(order.paymentStatusReason)}` : "",
         `${ICONS.delivery} Delivery: ${escapeHtml(order.deliveryStatusLabel || getDeliveryStatusLabel(order.deliveryStatus || "waiting"))}`,
-    ].join("\n");
+        order.deliveryStatusReason ? `Reason: ${escapeHtml(order.deliveryStatusReason)}` : "",
+    ]
+        .filter((line) => line !== "")
+        .join("\n");
 }
 
 function getAdminOrderKeyboard(order) {
     const phone = normalizePhone(order.customerPhone);
-    const keyboard = [
-        [
-            {
-                text: "\u2705 Verify payment",
-                callback_data: `hk|payment|verified|${order.id}`,
-            },
-            {
-                text: "\u274C Reject payment",
-                callback_data: `hk|payment|rejected|${order.id}`,
-            },
-        ],
-        [
-            {
-                text: "\uD83D\uDE9A Delivered",
-                callback_data: `hk|delivery|delivered|${order.id}`,
-            },
-            {
-                text: "\uD83D\uDEAB Cancel order",
-                callback_data: `hk|delivery|cancelled|${order.id}`,
-            },
-        ],
-        [
-            {
-                text: "\uD83D\uDD11 Add delivery code",
-                callback_data: `hk|deliverycode|${order.id}`,
-            },
-        ],
-    ];
+    const paymentStatus = String(order.paymentStatus || "").toLowerCase();
+    const keyboard =
+        paymentStatus === "verified"
+            ? [
+                  [
+                      {
+                          text: "\uD83D\uDE9A Delivered",
+                          callback_data: `hk|delivery|delivered|${order.id}`,
+                      },
+                      {
+                          text: "\u23F3 Not delivered",
+                          callback_data: `hk|delivery|waiting|${order.id}`,
+                      },
+                  ],
+                  [
+                      {
+                          text: "\uD83D\uDD11 Add delivery keys / note",
+                          callback_data: `hk|deliverycode|${order.id}`,
+                      },
+                  ],
+              ]
+            : [
+                  [
+                      {
+                          text: "\u2705 Verify payment",
+                          callback_data: `hk|payment|verified|${order.id}`,
+                      },
+                      {
+                          text: "\u274C Reject payment",
+                          callback_data: `hk|payment|rejected|${order.id}`,
+                      },
+                  ],
+              ];
 
     if (/^\d{8}$/.test(phone)) {
         keyboard.push([
@@ -1363,6 +1525,7 @@ function cleanupProcessedOrders() {
 }
 
 async function handleOrderStatus(body, env, corsHeaders) {
+    await ensureOrderSchema(env);
     const orderId = normalizeOrderId(body.orderId);
     if (!/^HK-\d{6}$/.test(orderId)) {
         return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
@@ -1402,6 +1565,7 @@ function formatCustomerInputMessage(record, inputs) {
 }
 
 async function handleCustomerInput(body, env, corsHeaders) {
+    await ensureOrderSchema(env);
     const orderId = normalizeOrderId(body.orderId);
     if (!/^HK-\d{6}$/.test(orderId)) {
         return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
@@ -1475,6 +1639,7 @@ async function handleCustomerInput(body, env, corsHeaders) {
 
 async function handleAdminAction(body, request, env, corsHeaders) {
     requireAdmin(request, env);
+    await ensureOrderSchema(env);
 
     if (body.action === "admin-list-orders") {
         return jsonResponse({ ok: true, orders: await listAdminOrders(env, body.limit) }, 200, corsHeaders);
@@ -1558,6 +1723,7 @@ async function handleTelegramDeliveryReply(message, env) {
 
 async function handleTelegramWebhook(body, request, env, corsHeaders) {
     requireTelegramWebhook(request, env);
+    await ensureOrderSchema(env);
 
     const callbackQuery = body.callback_query;
     if (!callbackQuery) {
@@ -1621,6 +1787,12 @@ async function handleTelegramWebhook(body, request, env, corsHeaders) {
         orderId: action.orderId,
         ...(action.target === "payment" ? { paymentStatus: action.status } : { deliveryStatus: action.status }),
     };
+    if (action.target === "payment" && action.status === "rejected") {
+        updateBody.paymentStatusReason = getDefaultStatusReason("payment", "rejected");
+    }
+    if (action.target === "delivery" && action.status === "cancelled") {
+        updateBody.deliveryStatusReason = getDefaultStatusReason("delivery", "cancelled");
+    }
 
     try {
         await updateAdminOrder(env, updateBody);
@@ -1666,6 +1838,8 @@ async function handleOrder(request, env, corsHeaders) {
 
     const checkoutRequestId = String(body.checkoutRequestId || "").trim();
     if (!checkoutRequestId) return jsonResponse({ error: "Missing checkout request ID" }, 400, corsHeaders);
+
+    await ensureOrderSchema(env);
 
     if (processedOrders.has(checkoutRequestId)) {
         const existing = processedOrders.get(checkoutRequestId);

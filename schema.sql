@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS orders (
     payment_method_label TEXT NOT NULL,
     payment_status TEXT NOT NULL DEFAULT 'pending',
     delivery_status TEXT NOT NULL DEFAULT 'waiting',
+    payment_status_reason TEXT,
+    delivery_status_reason TEXT,
+    updated_at TEXT,
     telegram_notified_at TEXT
 );
 

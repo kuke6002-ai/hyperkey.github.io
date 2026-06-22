@@ -170,6 +170,8 @@ const ORDER_API_URL = window.GAMEVAULT_ORDER_API_URL || "";
 const SUPPORT_WHATSAPP_NUMBER = "21655159280";
 const CART_VARIATION_SEPARATOR = "::";
 const SUPPORTED_LANGUAGES = ["en", "fr", "ar"];
+const HOME_CATEGORY_PREVIEW_LIMIT = 4;
+const HOME_FEATURED_PRODUCT_LIMIT = 4;
 const LANGUAGE_LABELS = {
     en: "EN",
     fr: "FR",
@@ -193,6 +195,60 @@ let paymentSubmitting = false;
 let customerInputSubmitting = false;
 const ART_CLASSES = [...new Set(Object.values(PRODUCTS).map((product) => product.art).filter(Boolean))];
 const DEFAULT_PAYMENT_SETTINGS = {
+    store: {
+        name: "HyperKey Store",
+        logo: "assets/hyperlogo.png",
+        supportWhatsApp: "97671058",
+        deliveryMessage: "Delivery is handled through WhatsApp after manual payment review.",
+    },
+    statusMessages: {
+        paymentReview: {
+            title: "Payment review",
+            message: "We are checking your payment. Refresh later.",
+        },
+        paymentRejected: {
+            title: "Payment rejected",
+            message: "Your payment proof could not be verified. Contact support with your Order ID.",
+        },
+        customerInfoNeeded: {
+            title: "Delivery information needed",
+            message: "Payment is verified. Send the requested delivery information below.",
+        },
+        deliveryWaiting: {
+            title: "Delivery waiting",
+            message: "Your order is being prepared.",
+        },
+        delivered: {
+            title: "Delivered",
+            message: "Copy your delivered item below.",
+        },
+        cancelled: {
+            title: "Order cancelled",
+            message: "This order was cancelled. Contact support with your Order ID if you need help.",
+        },
+    },
+    faq: [
+        {
+            question: "How do I receive my order?",
+            answer: "After payment is reviewed, delivery appears on the Check Order page and we can also contact you on WhatsApp when needed.",
+        },
+        {
+            question: "How long does delivery take?",
+            answer: "Most orders are handled manually as soon as payment is verified. Some products can take longer depending on supplier availability.",
+        },
+        {
+            question: "What payment methods are supported?",
+            answer: "HyperKey Store supports D17 transfer, Flouci transfer, and Tunisie Telecom recharge cards when enabled.",
+        },
+        {
+            question: "What if my payment is rejected?",
+            answer: "Check the reason on the order status page, then contact support with your Order ID and payment proof.",
+        },
+        {
+            question: "Do I need an account?",
+            answer: "No account is required. Keep your Order ID and use the same WhatsApp number to check your order.",
+        },
+    ],
     payment: {
         d17: {
             enabled: true,
@@ -393,7 +449,7 @@ function translateElement(root = document.body) {
         acceptNode(node) {
             const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
             if (!element) return NodeFilter.FILTER_REJECT;
-            if (element.closest("script, style, textarea, code, [data-no-i18n]")) return NodeFilter.FILTER_REJECT;
+            if (element.closest("script, style, textarea, code, [data-no-i18n], [data-policy-lang]")) return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
         },
     });
@@ -409,9 +465,19 @@ function translateElement(root = document.body) {
     }
 }
 
+function updateLocalizedPolicyBlocks() {
+    document.querySelectorAll("[data-policy-lang]").forEach((block) => {
+        const isActive = block.dataset.policyLang === CURRENT_LANGUAGE;
+        block.classList.toggle("d-none", !isActive);
+        block.hidden = !isActive;
+        block.setAttribute("aria-hidden", isActive ? "false" : "true");
+    });
+}
+
 function translatePage() {
     document.documentElement.lang = CURRENT_LANGUAGE;
     document.documentElement.dir = CURRENT_LANGUAGE === "ar" ? "rtl" : "ltr";
+    updateLocalizedPolicyBlocks();
     translateElement(document.body);
     localizeProductCountElements(document.body);
     document.title = t(document.title);
@@ -539,6 +605,24 @@ function clone(value) {
 
 function mergePaymentSettings(settings = {}) {
     const merged = clone(DEFAULT_PAYMENT_SETTINGS);
+    if (settings.store && typeof settings.store === "object") {
+        merged.store = {
+            ...merged.store,
+            ...settings.store,
+        };
+    }
+
+    if (settings.statusMessages && typeof settings.statusMessages === "object") {
+        merged.statusMessages = {
+            ...merged.statusMessages,
+            ...settings.statusMessages,
+        };
+    }
+
+    if (Array.isArray(settings.faq)) {
+        merged.faq = settings.faq;
+    }
+
     const incomingPayment = settings.payment && typeof settings.payment === "object" ? settings.payment : {};
     Object.entries(incomingPayment).forEach(([method, config]) => {
         const key = method === "ttCard" ? "tt-card" : method;
@@ -708,10 +792,16 @@ function getVariation(product, variationId) {
     return getProductVariations(product).find((variation) => variation.id === variationId) || null;
 }
 
+function isVariationInStock(variation) {
+    return !variation || (variation.visible !== false && variation.inStock !== false);
+}
+
 function getDefaultVariation(product) {
     const variations = getProductVariations(product);
     if (!variations.length) return null;
-    return getVariation(product, product.defaultVariation) || variations[0];
+    const defaultVariation = getVariation(product, product.defaultVariation);
+    if (isVariationInStock(defaultVariation)) return defaultVariation;
+    return variations.find((variation) => isVariationInStock(variation)) || variations[0];
 }
 
 function getProductPrice(product) {
@@ -765,7 +855,7 @@ function getCartLine(cartKey) {
         icon: product.icon || "bi-box",
         art: product.art || "gamekey-art",
         image: getProductImage(product),
-        inStock: isProductInStock(product),
+        inStock: isProductInStock(product) && isVariationInStock(variation),
     };
 }
 
@@ -909,9 +999,31 @@ function renderFeaturedProducts() {
     if (!featuredProducts) return;
 
     featuredProducts.innerHTML = getCatalogProducts()
+        .slice(0, HOME_FEATURED_PRODUCT_LIMIT)
         .map(([id, product]) => productCardTemplate(id, product))
         .join("");
     translatePage();
+}
+
+async function renderFaqPage() {
+    const faqList = document.getElementById("faqList");
+    if (!faqList) return;
+
+    const settings = await loadPaymentSettings();
+    const faqs = Array.isArray(settings.faq) && settings.faq.length ? settings.faq : DEFAULT_PAYMENT_SETTINGS.faq;
+    faqList.innerHTML = faqs
+        .map(
+            (item, index) => `
+                <details class="content-panel faq-item" ${index === 0 ? "open" : ""}>
+                    <summary>
+                        <span>${escapeHtml(t(item.question || "Question"))}</span>
+                        <i class="bi bi-chevron-down"></i>
+                    </summary>
+                    <p class="text-secondary mb-0">${escapeHtml(t(item.answer || ""))}</p>
+                </details>
+            `,
+        )
+        .join("");
 }
 
 function renderHomeCategories() {
@@ -919,6 +1031,7 @@ function renderHomeCategories() {
     if (!homeCategoryGrid) return;
 
     homeCategoryGrid.innerHTML = getCategories()
+        .slice(0, HOME_CATEGORY_PREVIEW_LIMIT)
         .map((category) => {
             const count = getCatalogProducts().filter(([, product]) => getProductCategory(product) === category.name).length;
             return categoryCardTemplate(category, count, "");
@@ -1086,6 +1199,10 @@ function addToCart(id, variationId = "") {
     }
 
     const selectedVariation = variationId || getDefaultVariation(product)?.id || "";
+    if (!isVariationInStock(getVariation(product, selectedVariation))) {
+        showToast("This option is currently out of stock.");
+        return;
+    }
     const cartKey = makeCartKey(id, selectedVariation);
     const cart = getCart();
     cart[cartKey] = (cart[cartKey] || 0) + 1;
@@ -1956,8 +2073,19 @@ function getOrderCurrentStatus(order) {
     };
 }
 
+function getOrderStatusReason(order) {
+    const paymentStatus = String(order.paymentStatusCode || "").toLowerCase();
+    const deliveryStatus = String(order.deliveryStatusCode || "").toLowerCase();
+    if (paymentStatus === "rejected") return order.paymentStatusReason || "";
+    if (deliveryStatus === "cancelled" || deliveryStatus === "canceled") return order.deliveryStatusReason || "";
+    return "";
+}
+
 function renderCurrentStatusPanel(order) {
     const current = getOrderCurrentStatus(order);
+    const title = order.statusTitle || current.label;
+    const message = order.statusMessage || current.action;
+    const reason = getOrderStatusReason(order);
     return `
         <div class="current-status-panel status-${escapeHtml(current.tone)} mb-4">
             <div class="current-status-icon">
@@ -1965,8 +2093,16 @@ function renderCurrentStatusPanel(order) {
             </div>
             <div class="current-status-content">
                 <span>${t("Current status")}</span>
-                <strong>${escapeHtml(t(current.label))}</strong>
-                <p class="current-status-action">${escapeHtml(t(current.action))}</p>
+                <strong>${escapeHtml(t(title))}</strong>
+                <p class="current-status-action">${escapeHtml(t(message))}</p>
+                ${
+                    reason
+                        ? `<div class="status-reason-box mt-3">
+                            <span>${t("Reason")}</span>
+                            <b>${escapeHtml(reason)}</b>
+                        </div>`
+                        : ""
+                }
             </div>
         </div>
     `;
@@ -2355,8 +2491,8 @@ function updateProductDetailSelection(productId, variationId = "") {
     const product = PRODUCTS[productId];
     if (!product) return;
 
-    const inStock = isProductInStock(product);
     const variation = getVariation(product, variationId) || getDefaultVariation(product);
+    const inStock = isProductInStock(product) && isVariationInStock(variation);
     const displayName = getVariationName(product, variation);
     const displayPrice = variation?.price ?? product.price ?? 0;
     const priceElement = document.getElementById("selectedProductPrice");
@@ -2390,10 +2526,15 @@ function updateProductDetailSelection(productId, variationId = "") {
     });
 
     document.querySelectorAll("[data-product-option]").forEach((button) => {
+        const option = getVariation(product, button.dataset.productOption);
+        const optionAvailable = isProductInStock(product) && isVariationInStock(option);
         const isActive = variation && button.dataset.productOption === variation.id;
         button.classList.toggle("btn-dark", isActive);
         button.classList.toggle("btn-outline-dark", !isActive);
+        button.classList.toggle("disabled", !optionAvailable);
+        button.disabled = !optionAvailable;
         button.setAttribute("aria-pressed", String(isActive));
+        button.setAttribute("aria-disabled", String(!optionAvailable));
     });
 }
 
@@ -2404,6 +2545,7 @@ function setupProductOptions() {
     optionContainer.addEventListener("click", (event) => {
         const button = event.target.closest("[data-product-option]");
         if (!button) return;
+        if (button.disabled || button.getAttribute("aria-disabled") === "true") return;
         updateProductDetailSelection(optionContainer.dataset.productId, button.dataset.productOption);
     });
 }
@@ -2412,6 +2554,7 @@ function rerenderDynamicSections() {
     renderProductsPage(document.getElementById("productSearch")?.value || "");
     renderHomeCategories();
     renderFeaturedProducts();
+    renderFaqPage().then(() => translatePage()).catch(() => {});
     renderCategoryPage();
     renderCartPage();
     renderCheckoutSummary();
@@ -2609,7 +2752,9 @@ function setupFooterUtilityLinks() {
     document.querySelectorAll(".site-footer .d-flex").forEach((footer) => {
         [
             ["payment-guide.html", "How to order"],
+            ["faq.html", "FAQ"],
             ["terms.html", "Terms"],
+            ["privacy.html", "Privacy"],
         ].forEach(([href, label]) => {
             if (footer.querySelector(`a[href="${href}"]`)) return;
             const link = document.createElement("a");
@@ -2694,6 +2839,7 @@ async function initSite() {
     setupProductSearch();
     renderHomeCategories();
     renderFeaturedProducts();
+    await renderFaqPage();
     renderCategoryPage();
     renderCartPage();
     renderCheckoutSummary();
