@@ -1337,6 +1337,63 @@ input[inputmode="tel"] {
     min-height: 48px;
 }
 
+.payment-radio-list {
+    display: grid;
+    gap: 10px;
+}
+
+.payment-radio-option {
+    align-items: flex-start;
+    background: var(--gv-soft);
+    border: 1px solid var(--gv-border);
+    border-radius: 8px;
+    cursor: pointer;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: 58px;
+    padding: 14px;
+    transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.payment-radio-option:hover,
+.payment-radio-option:focus-within {
+    background: rgba(255, 122, 26, 0.08);
+    border-color: rgba(255, 122, 26, 0.55);
+    box-shadow: 0 14px 34px rgba(255, 122, 26, 0.12);
+}
+
+.payment-radio-option .form-check-input {
+    border-color: rgba(255, 122, 26, 0.75);
+    margin: 3px 0 0;
+}
+
+.payment-radio-option .form-check-input:checked {
+    background-color: var(--gv-primary);
+    border-color: var(--gv-primary);
+}
+
+.payment-radio-option:has(.form-check-input:checked) {
+    background: rgba(255, 122, 26, 0.12);
+    border-color: var(--gv-primary);
+}
+
+.payment-radio-option strong {
+    color: var(--gv-ink);
+    display: block;
+    font-size: 1rem;
+    font-weight: 950;
+}
+
+.payment-radio-option small {
+    color: var(--gv-muted);
+    display: block;
+    font-size: 0.86rem;
+    font-weight: 750;
+    line-height: 1.35;
+    margin-top: 3px;
+}
+
 .payment-total-grid {
     display: grid;
     gap: 14px;
@@ -4894,6 +4951,266 @@ body {
 
     .admin-order-card {
         padding: 12px;
+    }
+}
+
+/* Compact public mobile UI */
+@media (max-width: 767.98px) {
+    body {
+        font-size: 0.92rem;
+    }
+
+    .container {
+        --bs-gutter-x: 1rem;
+    }
+
+    .navbar {
+        min-height: 58px;
+    }
+
+    .navbar-brand {
+        font-size: 1rem;
+        gap: 8px;
+    }
+
+    .brand-mark {
+        border-radius: 7px;
+        height: 34px;
+        width: 34px;
+    }
+
+    .navbar .btn,
+    .language-toggle,
+    .navbar-toggler {
+        min-height: 38px;
+        padding: 0.42rem 0.62rem;
+    }
+
+    .home-hero {
+        padding: 2rem 0 1.35rem;
+    }
+
+    .home-hero .display-3 {
+        font-size: clamp(2rem, 10vw, 2.65rem);
+        line-height: 1.04;
+    }
+
+    .home-hero-copy,
+    .page-heading p,
+    .text-secondary {
+        line-height: 1.38;
+    }
+
+    .home-hero-ctas {
+        gap: 8px;
+        margin-bottom: 1rem !important;
+    }
+
+    .btn,
+    .btn-lg {
+        border-radius: 8px;
+        min-height: 40px;
+        padding: 0.55rem 0.75rem;
+    }
+
+    .btn-lg {
+        font-size: 0.95rem;
+    }
+
+    main .py-5,
+    .home-band,
+    .home-section-compact {
+        padding-bottom: 1.45rem !important;
+        padding-top: 1.45rem !important;
+    }
+
+    .page-heading .container {
+        padding-bottom: 1rem !important;
+        padding-top: 1rem !important;
+    }
+
+    .page-heading h1,
+    .section-heading-row h2,
+    .home-process h2 {
+        font-size: 1.45rem;
+        line-height: 1.12;
+    }
+
+    .section-heading-row {
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 1rem;
+    }
+
+    .row.g-4,
+    .row.g-3 {
+        --bs-gutter-x: 0.65rem;
+        --bs-gutter-y: 0.65rem;
+    }
+
+    .content-panel,
+    .summary-card,
+    .checkout-form,
+    .customer-trust-card,
+    .hero-console,
+    .home-process,
+    .payment-recipient-card,
+    .order-status-card {
+        padding: 14px;
+    }
+
+    .form-control,
+    .form-select,
+    .checkout-form .form-control,
+    .checkout-form .form-select {
+        min-height: 42px;
+        padding: 0.52rem 0.7rem;
+    }
+
+    .form-label {
+        font-size: 0.86rem;
+        margin-bottom: 0.35rem;
+    }
+
+    .alert {
+        font-size: 0.86rem;
+        padding: 0.75rem;
+    }
+
+    .payment-radio-option {
+        gap: 9px;
+        min-height: 50px;
+        padding: 10px;
+    }
+
+    .payment-radio-option strong {
+        font-size: 0.9rem;
+    }
+
+    .payment-radio-option small {
+        font-size: 0.76rem;
+    }
+
+    .customer-trust-grid,
+    .process-steps,
+    .hero-payment-list {
+        gap: 8px;
+    }
+
+    .customer-trust-grid > div,
+    .process-steps > div,
+    .hero-payment-list > div {
+        padding: 10px;
+    }
+
+    .product-card {
+        border-radius: 8px;
+        min-width: 0;
+    }
+
+    .product-card .product-art {
+        aspect-ratio: 1 / 1;
+    }
+
+    .product-card .product-art i {
+        font-size: 2.35rem;
+    }
+
+    .product-card .card-body {
+        padding: 9px;
+    }
+
+    .product-card .card-body .d-flex.flex-wrap {
+        gap: 4px !important;
+        margin-bottom: 0.4rem !important;
+    }
+
+    .product-card .badge {
+        font-size: 0.58rem;
+        max-width: 100%;
+        overflow: hidden;
+        padding: 0.24rem 0.35rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .product-card h2 {
+        font-size: 0.88rem;
+        line-height: 1.16;
+        margin-bottom: 0.35rem;
+    }
+
+    .product-card p.text-secondary {
+        display: none;
+    }
+
+    .product-card .card-body > .d-flex.justify-content-between {
+        align-items: stretch !important;
+        flex-direction: column;
+        gap: 7px;
+    }
+
+    .product-card .price {
+        font-size: 0.84rem;
+        line-height: 1.15;
+    }
+
+    .product-card .btn-sm {
+        font-size: 0.75rem;
+        min-height: 32px;
+        padding: 0.34rem 0.4rem;
+        width: 100%;
+    }
+
+    .category-card {
+        gap: 8px;
+        padding: 12px;
+    }
+
+    .category-card i {
+        font-size: 1rem;
+        height: 34px;
+        width: 34px;
+    }
+
+    .category-card span {
+        font-size: 0.9rem;
+        line-height: 1.15;
+    }
+
+    .category-card small,
+    .catalog-category-card strong {
+        font-size: 0.72rem;
+    }
+
+    .support-whatsapp {
+        bottom: 10px;
+        min-height: 42px;
+        padding: 10px 11px;
+        right: 10px;
+    }
+
+    [dir="rtl"] .support-whatsapp {
+        left: 10px;
+        right: auto;
+    }
+}
+
+@media (max-width: 380px) {
+    .product-card .card-body {
+        padding: 8px;
+    }
+
+    .product-card h2 {
+        font-size: 0.82rem;
+    }
+
+    .product-card .badge {
+        font-size: 0.54rem;
+    }
+
+    .product-card .price {
+        font-size: 0.78rem;
     }
 }
 

@@ -869,7 +869,7 @@ function productCardTemplate(id, product) {
     const inStock = isProductInStock(product);
 
     return `
-        <div class="col-md-6 col-xl-3">
+        <div class="col-6 col-md-6 col-xl-3">
             <article class="card product-card h-100">
                 <a class="product-art ${art}" href="product.html?product=${encodeURIComponent(id)}" aria-label="View ${escapeHtml(product.name)}">
                     ${
@@ -1398,7 +1398,7 @@ function setupCheckoutForm() {
         const button = document.getElementById("placeOrderButton");
         const buttonText = button?.querySelector(".order-button-text");
         const checkoutRequestId = getCheckoutRequestId();
-        const paymentMethod = document.getElementById("paymentMethod")?.value || "";
+        const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked')?.value || "";
         const customerPhone = normalizeTunisianPhoneInput(document.getElementById("customerPhone")?.value || "");
 
         if (!customerPhone) {
