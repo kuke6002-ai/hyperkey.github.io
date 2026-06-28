@@ -659,70 +659,42 @@
                 "label": "Player ID"
             }
         },
-       "roblox": {
-    "name": "Roblox",
-    "category": "Game Top-Ups",
-    "price": 20,
-    "image": "assets/CnP_16062026_164525.png",
-    "description": "Roblox Robux & Premium packages.",
-    "variations": [
-        {
-            "id": "roblox-500-robux",
-            "label": "500 Robux",
-            "name": "500 Robux",
-            "price": 20
+        "roblox": {
+            "name": "Roblox",
+            "category": "Game Top-Ups",
+            "price": 20,
+            "image": "assets/CnP_16062026_164525.png",
+            "icon": "bi-gem",
+            "art": "topup-art",
+            "description": "Roblox Robux packages.",
+            "variations": [
+                {
+                    "id": "roblox-500-robux",
+                    "label": "500 Robux",
+                    "name": "500 Robux",
+                    "price": 20
+                },
+                {
+                    "id": "roblox-1000-robux",
+                    "label": "1000 Robux",
+                    "name": "1000 Robux",
+                    "price": 40
+                },
+                {
+                    "id": "roblox-2000-robux",
+                    "label": "2000 Robux",
+                    "name": "2000 Robux",
+                    "price": 80
+                },
+                {
+                    "id": "roblox-5250-robux",
+                    "label": "5250 Robux",
+                    "name": "5250 Robux",
+                    "price": 199
+                }
+            ],
+            "defaultVariation": "roblox-1000-robux"
         },
-        {
-            "id": "roblox-1000-robux",
-            "label": "1000 Robux",
-            "name": "1000 Robux",
-            "price": 40
-        },
-        {
-            "id": "roblox-1500-robux",
-            "label": "1500 Robux",
-            "name": "1500 Robux",
-            "price": 60
-        },
-        {
-            "id": "roblox-2000-robux",
-            "label": "2000 Robux",
-            "name": "2000 Robux",
-            "price": 80
-        },
-        {
-            "id": "roblox-3625-robux",
-            "label": "3625 Robux",
-            "name": "3625 Robux",
-            "price": 140
-        },
-        {
-            "id": "roblox-5250-robux",
-            "label": "5250 Robux",
-            "name": "5250 Robux",
-            "price": 200
-        },
-        {
-            "id": "roblox-plus",
-            "label": "Roblox Plus",
-            "name": "Roblox Plus",
-            "price": 20
-        },
-        {
-            "id": "plus-500",
-            "label": "Plus 500",
-            "name": "Plus 500",
-            "price": 36
-        },
-        {
-            "id": "plus-1000",
-            "label": "Plus 1000",
-            "name": "Plus 1000",
-            "price": 52
-        }
-    ],
-    "defaultVariation": "roblox-1000-robux"
-},
         "efootball-mobile": {
             "name": "eFooball Mobile",
             "category": "Game Top-Ups",
@@ -1042,27 +1014,6 @@
                 }
             ],
             "defaultVariation": "clash-royal-80-gems"
-        },
-        "grand-theft-auto-v-enhanced": {
-            "name": "Grand Theft Auto V Enhanced Rockstar Lancher",
-            "category": "Game Keys",
-            "price": 48,
-            "image": "assets/CnP_23062026_163636.png",
-            "description": "THIS EDITION INCLUDES\nGrand Theft Auto V Enhanced\nGrand Theft Auto V Legacy\nGrand Theft Auto V - Criminal Enterprise Starter Pack"
-        },
-        "arc-raiders": {
-            "name": "ARC Raiders",
-            "category": "Game Keys",
-            "price": 90,
-            "image": "assets/CnP_23062026_163931.png",
-            "description": "ARC Raiders Steam Key"
-        },
-        "red-dead-redemption-2": {
-            "name": "Red Dead Redemption 2",
-            "category": "Game Keys",
-            "price": 60,
-            "image": "assets/CnP_23062026_164250.png",
-            "description": "Rockstar Games Launcher Key :\nRed Dead Redemption 2 Story Mode\nRed Dead Redemption 2 Online"
         }
     }
 }
