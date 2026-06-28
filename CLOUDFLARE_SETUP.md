@@ -15,20 +15,11 @@ In the Worker settings, add these names:
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_ADMIN_CHAT_ID=
 TELEGRAM_WEBHOOK_SECRET=
-PRODUCT_DATABASE_URL=
-PAYMENT_SETTINGS_URL=
 ADMIN_API_TOKEN=
 ```
 
 Use Cloudflare secrets for `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, and
 `ADMIN_API_TOKEN`.
-
-`PRODUCT_DATABASE_URL` must be the public URL for this store's `products.json`
-on GitHub Pages.
-
-`PAYMENT_SETTINGS_URL` should be the public URL for this store's `settings.json`
-on GitHub Pages. If it is missing, the Worker uses the default rules already in
-`cloudflare-worker.js`.
 
 ## 3. Bind the D1 Order Database
 
@@ -40,8 +31,33 @@ Variable name: DB
 Database: hyperkey-orders
 ```
 
-Open the D1 database console and run the SQL in `schema.sql`. The Worker expects
-these tables before it can save orders.
+Open the D1 database console and run the order tables from `schema.sql`:
+
+```sql
+-- orders, order_items, payment_proofs, order_deliveries, order_customer_inputs
+```
+
+## 3.5 Bind the D1 Catalog Database
+
+Create a second D1 database named `hyperkey-catalog`, then bind it:
+
+```text
+Binding type: D1 database
+Variable name: product_db
+Database: hyperkey-catalog
+```
+
+Open the D1 database console and run the catalog tables from `schema.sql`:
+
+```sql
+CREATE TABLE IF NOT EXISTS categories (...);
+CREATE TABLE IF NOT EXISTS products (...);
+CREATE TABLE IF NOT EXISTS store_config (...);
+CREATE TABLE IF NOT EXISTS settings (...);
+```
+
+The Worker uses `product_db` for product/category/settings data and `DB` for orders.
+Both are separate Cloudflare D1 databases.
 
 ## 4. Connect GitHub Pages to the Worker
 
@@ -51,11 +67,25 @@ After deployment, copy the Worker URL and paste it into `config.js`:
 window.GAMEVAULT_ORDER_API_URL = "https://your-worker.yourname.workers.dev";
 ```
 
-## 5. Test
+## 5. Populate the Catalog Database
 
-Open the store, add a product to the cart, enter an 8-digit Tunisian WhatsApp number on checkout,
-choose a payment method, enter the required reference or card codes on
-`payment.html`, and submit the order.
+The catalog is stored entirely in D1 — no static JSON files are used.
+
+Open `nope.html` and enter your `ADMIN_API_TOKEN`, then click Save. Use the
+admin panel to:
+
+- Add, edit, or delete products and categories
+- Click **"Save Products to DB"** to sync products/categories to D1
+- Click **"Save Settings to DB"** to sync payment settings to D1
+
+On first deploy the catalog tables are empty. You must populate them through
+the admin panel before products will appear in the store.
+
+## 6. Test
+
+Open the store, add a product to the cart, enter an 8-digit Tunisian WhatsApp
+number on checkout, choose a payment method, enter the required reference or
+card codes on `payment.html`, and submit the order.
 
 After the order succeeds, check the D1 tables:
 
@@ -68,7 +98,7 @@ SELECT * FROM payment_proofs ORDER BY id DESC;
 The customer can check the order later on `order-status.html` using the short
 Order ID, for example `HK-123456`, and the same WhatsApp number used at checkout.
 
-## 6. Telegram Status Buttons
+## 7. Telegram Status Buttons
 
 New order notifications include Telegram buttons to:
 
@@ -86,7 +116,7 @@ https://api.telegram.org/botYOUR_BOT_TOKEN/setWebhook?url=YOUR_WORKER_URL&secret
 After this, tapping a status button in the admin Telegram chat updates the D1
 order and edits the original Telegram notification with the latest status.
 
-## 7. Admin Orders
+## 8. Admin Orders
 
 Open `nope.html`, enter the `ADMIN_API_TOKEN`, click Save, then Load orders.
 The admin dashboard can:

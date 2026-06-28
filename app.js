@@ -3,160 +3,7 @@
 // Set visible: false only when you want to hide a product from listings.
 // Add variations with: variations: [{ id: "small", label: "Small", price: 10 }]
 // The selected variation price will update on product.html and in the cart.
-const PRODUCTS = {
-    "steam-wallet": {
-        name: "Steam Wallet",
-        category: "Game Keys",
-        price: 108.99,
-        icon: "bi-steam",
-        art: "steam-art",
-        description: "Choose a Steam wallet value and receive a digital code for games and DLC.",
-        defaultVariation: "steam-10",
-        variations: [
-            {
-                id: "steam-10",
-                label: "10 TND",
-                name: "Steam Wallet 10 TND",
-                price: 108.99,
-            },
-            {
-                id: "steam-25",
-                label: "25 TND",
-                name: "Steam Wallet 25 TND",
-                price: 258,
-            },
-            {
-                id: "steam-50",
-                label: "50 TND",
-                name: "Steam Wallet 50 TND",
-                price: 50,
-            },
-            {
-                id: "steam-100",
-                label: "100 TND",
-                name: "Steam Wallet 100 TND",
-                price: 100,
-            },
-        ],
-    },
-    "ss-10": {
-        name: "SwdawdaND",
-        category: "Game Keys",
-        price: 1808.8799,
-        icon: "bi-steam",
-        art: "steam-art",
-        visible: false,
-    },
-    "steam-10": {
-        name: "Steam Wassssllet 10 TND",
-        category: "Game Keys",
-        price: 108.8799,
-        icon: "bi-steam",
-        art: "steam-art",
-        visible: false,
-    },
-    "steam-25": {
-        name: "Steam Wallwdet 25 TND",
-        category: "Game Keys",
-        price: 258,
-        icon: "bi-steam",
-        art: "steam-art",
-        visible: false,
-    },
-    "steam-50": {
-        name: "Steam Wallet 50 TND",
-        category: "Game Keys",
-        price: 50,
-        icon: "bi-steam",
-        art: "steam-art",
-        description: "Global Steam wallet code for games and DLC.",
-        visible: false,
-    },
-    "steam-100": {
-        name: "Steam Wallet 100 TND",
-        category: "Game Keys",
-        price: 100,
-        icon: "bi-steam",
-        art: "steam-art",
-        visible: false,
-    },
-    "xbox-25": {
-        name: "Xbox Gift Card 25 TND",
-        category: "Game Keys",
-        price: 25,
-        icon: "bi-xbox",
-        art: "xbox-art",
-        description: "Redeem for games, add-ons, movies, and subscriptions.",
-    },
-    "playstation-30": {
-        name: "PlayStation Store 30 TND",
-        category: "Game Keys",
-        price: 30,
-        icon: "bi-playstation",
-        art: "playstation-art",
-        description: "Buy games, expansions, and wallet credit.",
-    },
-    "ml-diamonds-500": {
-        name: "Mobile Legends 500 Diamonds",
-        category: "Game Top-Ups",
-        price: 9.99,
-        icon: "bi-gem",
-        art: "topup-art",
-        description: "Fast top up handled through Telegram order support.",
-    },
-    "free-fire-diamonds-100": {
-        name: "Free Fire 100 Diamonds",
-        category: "Game Top-Ups",
-        price: 3.5,
-        icon: "bi-fire",
-        art: "topup-art",
-        description: "Free Fire 100 diamond top up handled through Telegram order support.",
-        customerInput: {
-            enabled: true,
-            label: "Player ID",
-        },
-    },
-    "fortnite-vbucks-1000": {
-        name: "Fortnite 1,000 V-Bucks",
-        category: "Game Top-Ups",
-        price: 7.99,
-        icon: "bi-lightning-charge",
-        art: "vbucks-art",
-        description: "Add V-Bucks for outfits, emotes, and battle pass items.",
-    },
-    "valorant-2050": {
-        name: "Valorant 2,050 Points",
-        category: "Game Top-Ups",
-        price: 19.99,
-        icon: "bi-crosshair",
-        art: "valorant-art",
-        description: "Wallet points for skins, bundles, and passes.",
-    },
-    "minecraft-java-key": {
-        name: "Minecraft Java & Bedrock Key",
-        category: "Game Keys",
-        price: 29.99,
-        icon: "bi-joystick",
-        art: "gamekey-art",
-        description: "Full game key with digital activation instructions.",
-    },
-    "starter-account": {
-        name: "Starter Game Account",
-        category: "Game Keys",
-        price: 39,
-        icon: "bi-shield-check",
-        art: "account-art",
-        description: "Verified starter account with recovery guide included.",
-    },
-    "roblox-25": {
-        name: "Roblox Gift Card 25 TND",
-        category: "Game Keys",
-        price: 25,
-        icon: "bi-box",
-        art: "roblox-art",
-        description: "Robux and premium credit delivered digitally.",
-    },
-};
+const PRODUCTS = {};
 
 const CART_KEY = "hyperkey-cart";
 const CHECKOUT_SESSION_KEY = "hyperkey-checkout-session";
@@ -164,9 +11,8 @@ const ORDER_STATUS_LOOKUP_KEY = "hyperkey-last-order-status-lookup";
 const THEME_KEY = "hyperkey-theme-v2";
 const LANGUAGE_KEY = "hyperkey-language";
 let CURRENCY = "TND";
-const DATABASE_URL = "products.json";
-const SETTINGS_URL = "settings.json";
 const ORDER_API_URL = window.GAMEVAULT_ORDER_API_URL || "";
+const CATALOG_API_URL = ORDER_API_URL ? `${ORDER_API_URL.replace(/\/+$/, "")}/api` : "";
 const SUPPORT_WHATSAPP_NUMBER = "21655159280";
 const CART_VARIATION_SEPARATOR = "::";
 const SUPPORTED_LANGUAGES = ["en", "fr", "ar"];
@@ -283,84 +129,8 @@ const DEFAULT_PAYMENT_SETTINGS = {
     },
 };
 // Add a category here if you introduce a new product category in PRODUCTS.
-const CATEGORIES = [
-    {
-        name: "Game Top-Ups",
-        id: "game-top-ups",
-        page: "game-top-ups.html",
-        label: "Game Top-Ups",
-        icon: "bi-gem",
-        teaser: "Diamonds, Robux, coins, V-Bucks",
-        heading: "Game credits and currencies",
-        description: "In-game currencies and top-ups with manual payment review and WhatsApp delivery.",
-    },
-    {
-        name: "Game Keys",
-        id: "game-keys",
-        page: "game-keys.html",
-        label: "Game Keys",
-        icon: "bi-joystick",
-        teaser: "Wallet cards, activation keys, accounts",
-        heading: "Game keys and wallet codes",
-        description: "Game keys, wallet codes, and game account products delivered digitally.",
-    },
-    {
-        name: "AI Subscriptions",
-        id: "ai-subscriptions",
-        page: "ai-subscriptions.html",
-        label: "AI Subscriptions",
-        icon: "bi-cpu",
-        teaser: "ChatGPT and AI tools",
-        heading: "AI subscriptions and credits",
-        description: "AI subscriptions and top-ups with manual payment review.",
-    },
-    {
-        name: "Creative & Productivity Apps",
-        id: "creative-productivity-apps",
-        page: "creative-productivity-apps.html",
-        label: "Creative & Productivity Apps",
-        icon: "bi-brush",
-        teaser: "Design and work apps",
-        heading: "Creative and productivity apps",
-        description: "Digital app subscriptions for design, productivity, and creator workflows.",
-    },
-    {
-        name: "Streaming & Entertainment",
-        id: "streaming-entertainment",
-        page: "streaming-entertainment.html",
-        label: "Streaming & Entertainment",
-        icon: "bi-play-btn",
-        teaser: "Netflix and entertainment",
-        heading: "Streaming and entertainment",
-        description: "Streaming and entertainment subscriptions with WhatsApp delivery.",
-    },
-    {
-        name: "Software Licenses",
-        id: "software-licenses",
-        page: "software-licenses.html",
-        label: "Software Licenses",
-        icon: "bi-patch-check",
-        teaser: "Software keys and licenses",
-        heading: "Software licenses",
-        description: "Software activation keys and license products delivered digitally.",
-    },
-    {
-        name: "Social Media Services",
-        id: "social-media-services",
-        page: "social-media-services.html",
-        label: "Social Media Services",
-        icon: "bi-share",
-        teaser: "Followers, likes, coins, sponsorships",
-        heading: "Social media services",
-        description: "Social media growth, coins, and sponsorship services with manual review.",
-    },
-];
-const PRODUCT_ROUTES = {
-    "steam-10": { productId: "steam-wallet", variationId: "steam-10" },
-    "steam-25": { productId: "steam-wallet", variationId: "steam-25" },
-    "steam-50": { productId: "steam-wallet", variationId: "steam-50" },
-    "steam-100": { productId: "steam-wallet", variationId: "steam-100" },
-};
+const CATEGORIES = [];
+const PRODUCT_ROUTES = {};
 
 function refreshArtClasses() {
     ART_CLASSES.splice(
@@ -532,39 +302,32 @@ function setupLanguageToggle() {
 }
 
 async function loadProductDatabase() {
-    try {
-        const response = await fetch(`${DATABASE_URL}?v=${Date.now()}`, { cache: "no-store" });
-        if (!response.ok) throw new Error(`Could not load ${DATABASE_URL}`);
+    const apiUrl = CATALOG_API_URL ? `${CATALOG_API_URL}/data` : "";
+    let loaded = false;
 
-        const responseText = await response.text();
-        let database = {};
+    if (apiUrl) {
         try {
-            database = responseText ? JSON.parse(responseText) : {};
-        } catch {
-            throw new Error(`${DATABASE_URL} did not return JSON. Check that products.json exists on your GitHub Pages site.`);
+            const response = await fetch(`${apiUrl}?v=${Date.now()}`, { cache: "no-store" });
+            if (response.ok) {
+                const database = await response.json();
+                if (database.products && typeof database.products === "object") {
+                    Object.keys(PRODUCTS).forEach((id) => delete PRODUCTS[id]);
+                    Object.assign(PRODUCTS, database.products);
+                }
+                if (database.currency) CURRENCY = database.currency;
+                if (Array.isArray(database.categories)) {
+                    CATEGORIES.splice(0, CATEGORIES.length, ...database.categories);
+                }
+                if (database.routes && typeof database.routes === "object") {
+                    Object.keys(PRODUCT_ROUTES).forEach((id) => delete PRODUCT_ROUTES[id]);
+                    Object.assign(PRODUCT_ROUTES, database.routes);
+                }
+                refreshArtClasses();
+                loaded = true;
+            }
+        } catch (error) {
+            console.warn("Could not load products from API, using built-in fallback:", error);
         }
-
-        if (database.products && typeof database.products === "object") {
-            Object.keys(PRODUCTS).forEach((id) => delete PRODUCTS[id]);
-            Object.assign(PRODUCTS, database.products);
-        }
-
-        if (database.currency) {
-            CURRENCY = database.currency;
-        }
-
-        if (Array.isArray(database.categories)) {
-            CATEGORIES.splice(0, CATEGORIES.length, ...database.categories);
-        }
-
-        if (database.routes && typeof database.routes === "object") {
-            Object.keys(PRODUCT_ROUTES).forEach((id) => delete PRODUCT_ROUTES[id]);
-            Object.assign(PRODUCT_ROUTES, database.routes);
-        }
-
-        refreshArtClasses();
-    } catch (error) {
-        console.warn("Using fallback product data:", error);
     }
 }
 
@@ -636,14 +399,22 @@ function mergePaymentSettings(settings = {}) {
 }
 
 async function loadPaymentSettings() {
-    try {
-        const response = await fetch(`${SETTINGS_URL}?v=${Date.now()}`, { cache: "no-store" });
-        if (!response.ok) throw new Error(`Could not load ${SETTINGS_URL}`);
-        return mergePaymentSettings(await response.json());
-    } catch (error) {
-        console.warn("Using fallback payment settings:", error);
-        return clone(DEFAULT_PAYMENT_SETTINGS);
+    const apiUrl = CATALOG_API_URL ? `${CATALOG_API_URL}/settings` : "";
+    if (apiUrl) {
+        try {
+            const response = await fetch(`${apiUrl}?v=${Date.now()}`, { cache: "no-store" });
+            if (response.ok) {
+                const data = await response.json();
+                if (data && typeof data === "object" && Object.keys(data).length) {
+                    return mergePaymentSettings(data);
+                }
+            }
+        } catch (error) {
+            console.warn("Could not load settings from API, using defaults:", error);
+        }
     }
+
+    return clone(DEFAULT_PAYMENT_SETTINGS);
 }
 
 function getPaymentConfig(settings, method) {
@@ -762,7 +533,7 @@ function getCategories() {
 
 function getCategoryPage(category) {
     const id = category.id || slugify(category.name) || "digital";
-    return category.page || `${encodeURIComponent(id)}.html`;
+    return `category.html?category=${encodeURIComponent(id)}`;
 }
 
 function getProductDescription(product) {
@@ -1044,8 +815,13 @@ function renderCategoryPage() {
     const categoryProducts = document.getElementById("categoryProducts");
     if (!categoryProducts) return;
 
-    const categoryName = document.body.dataset.category;
-    const category = getCategories().find((item) => item.name === categoryName);
+    const params = new URLSearchParams(window.location.search);
+    const categoryId = params.get("category");
+    const currentPage = window.location.pathname.split("/").pop() || "";
+    const category = categoryId
+        ? getCategories().find((item) => item.id === categoryId || slugify(item.name) === categoryId)
+        : getCategories().find((item) => item.page === currentPage);
+    const categoryName = category?.name || "";
     const products = getCatalogProducts().filter(([, product]) => getProductCategory(product) === categoryName);
     const title = document.getElementById("categoryPageTitle");
     const description = document.getElementById("categoryPageDescription");
@@ -1061,7 +837,7 @@ function renderCategoryPage() {
         : `<div class="col-12">
             <div class="content-panel text-center">
                 <h2 class="h4 fw-black">No products in this category</h2>
-                <p class="text-secondary mb-0">Add products to this category in products.json.</p>
+                <p class="text-secondary mb-0">Add products to this category in the admin panel.</p>
             </div>
         </div>`;
     translatePage();
@@ -2622,10 +2398,11 @@ function setupProductDetailPage() {
     if (!productPrice || !productShowcase) return;
 
     const params = new URLSearchParams(window.location.search);
-    const requestedProductId = params.get("product") || "steam-wallet";
+    const requestedProductId = params.get("product") || "";
     const route = PRODUCT_ROUTES[requestedProductId] || { productId: requestedProductId };
-    const activeProductId = PRODUCTS[route.productId] ? route.productId : "steam-wallet";
-    const product = PRODUCTS[activeProductId] || PRODUCTS["steam-wallet"];
+    const activeProductId = PRODUCTS[route.productId] ? route.productId : (Object.keys(PRODUCTS)[0] || "");
+    const product = PRODUCTS[activeProductId];
+    if (!product) return;
     const variations = getProductVariations(product);
     const selectedVariation =
         getVariation(product, params.get("variation")) ||

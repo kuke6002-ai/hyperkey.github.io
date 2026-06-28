@@ -102,6 +102,8 @@ const DEFAULT_PAYMENT_SETTINGS = {
 const ADMIN_TOKEN_KEY = "hyperkey-admin-token";
 const ORDER_API_URL = window.GAMEVAULT_ORDER_API_URL || "";
 
+let lastProductNameSlug = "";
+
 const state = {
     database: {
         currency: "TND",
@@ -127,6 +129,8 @@ const state = {
         payment: "",
         delivery: "",
         workflow: "",
+        dateFrom: "",
+        dateTo: "",
     },
 };
 
@@ -299,38 +303,9 @@ function setUnsavedChanges(isDirty) {
     indicator.innerHTML = `<span></span>${state.hasUnsavedChanges ? "Unsaved changes" : "Saved"}`;
 }
 
-function setSectionState(id, tone, label) {
-    const element = document.getElementById(id);
-    if (!element) return;
-    element.className = `admin-section-state admin-section-state-${tone}`;
-    element.textContent = label;
-}
-
-function updateEditorSectionBadges() {
-    const productId = document.getElementById("productId")?.value.trim() || "";
-    const productName = document.getElementById("productName")?.value.trim() || "";
-    const productCategory = document.getElementById("productCategory")?.value || "";
-    const price = Number(document.getElementById("productPrice")?.value || 0);
-    const image = document.getElementById("productImage")?.value.trim() || "";
-    const customerInputEnabled = document.getElementById("productCustomerInputEnabled")?.checked || false;
-    const customerInputs = (state.draftCustomerInputs || []).map((label) => String(label || "").trim()).filter(Boolean);
-    const variationCount = state.draftVariations.length;
-    const invalidVariation = state.draftVariations.some((variation) => {
-        const hasText = String(variation.id || variation.label || variation.name || "").trim();
-        const variationPrice = Number(variation.price ?? 0);
-        return !hasText || !Number.isFinite(variationPrice) || variationPrice < 0;
-    });
-
-    setSectionState("basicInfoState", productId && productName && productCategory ? "complete" : "missing", productId && productName && productCategory ? "Complete" : "Missing information");
-    setSectionState("pricingState", Number.isFinite(price) && price >= 0 ? "complete" : "missing", Number.isFinite(price) && price >= 0 ? "Complete" : "Missing information");
-    setSectionState("displayState", image ? "complete" : "optional", image ? "Complete" : "Optional");
-    setSectionState("availabilityState", !customerInputEnabled || customerInputs.length ? "complete" : "missing", !customerInputEnabled || customerInputs.length ? "Complete" : "Missing information");
-    setSectionState("variationsState", invalidVariation ? "missing" : variationCount ? "complete" : "optional", invalidVariation ? "Missing information" : variationCount ? "Complete" : "Optional");
-}
-
+function updateEditorSectionBadges() {}
 function markProductDirty() {
     setUnsavedChanges(true);
-    updateEditorSectionBadges();
 }
 
 function isAdminMobileViewport() {
@@ -343,26 +318,10 @@ function syncMobileEditorSections() {
     sections.forEach((section) => {
         section.open = false;
     });
-
-    const firstIncomplete = sections.find((section) => section.querySelector(".admin-section-state-missing"));
-    if (firstIncomplete) firstIncomplete.open = true;
+    if (sections[0]) sections[0].open = true;
 }
 
-function syncResponsiveAdminLayout() {
-    const previewDetails = document.getElementById("adminPreviewDetails");
-    if (!previewDetails) return;
-
-    if (isAdminMobileViewport()) {
-        if (previewDetails.dataset.mobileInitialized !== "true") {
-            previewDetails.open = false;
-            previewDetails.dataset.mobileInitialized = "true";
-        }
-        return;
-    }
-
-    previewDetails.open = true;
-    delete previewDetails.dataset.mobileInitialized;
-}
+function syncResponsiveAdminLayout() {}
 
 function closeMobileProductCatalog() {
     const catalog = document.getElementById("mobileProductCatalogSheet");
@@ -418,14 +377,23 @@ function setDatabase(database) {
 }
 
 async function loadDatabase() {
-    try {
-        const response = await fetch(`products.json?v=${Date.now()}`, { cache: "no-store" });
-        if (!response.ok) throw new Error("Could not load products.json");
-        setDatabase(await response.json());
-        showToast("Loaded products.json");
-    } catch (error) {
-        renderAll();
-        showToast(error.message || "Could not load products.json");
+    const apiUrl = CATALOG_API_URL ? `${CATALOG_API_URL}/data` : "";
+    if (apiUrl) {
+        try {
+            const database = await adminGetRequest(apiUrl);
+            setDatabase(database);
+            showToast("Loaded products from database");
+            return;
+        } catch (error) {
+            console.warn("Could not load from API:", error.message);
+        }
+    }
+
+    renderAll();
+    if (!apiUrl) {
+        showToast("Configure GAMEVAULT_ORDER_API_URL in config.js to connect to the database");
+    } else {
+        showToast("Could not load products from API. Make sure the Worker is running.");
     }
 }
 
@@ -435,14 +403,22 @@ function setSettings(settings) {
 }
 
 async function loadSettings() {
-    try {
-        const response = await fetch(`settings.json?v=${Date.now()}`, { cache: "no-store" });
-        if (!response.ok) throw new Error("Could not load settings.json");
-        setSettings(await response.json());
-    } catch (error) {
-        setSettings(DEFAULT_PAYMENT_SETTINGS);
-        showToast(error.message || "Using default payment settings");
+    const apiUrl = CATALOG_API_URL ? `${CATALOG_API_URL}/settings` : "";
+    if (apiUrl) {
+        try {
+            const settings = await adminGetRequest(apiUrl);
+            if (settings && typeof settings === "object" && Object.keys(settings).length) {
+                setSettings(settings);
+                showToast("Loaded settings from database");
+                return;
+            }
+        } catch (error) {
+            console.warn("Could not load settings from API:", error.message);
+        }
     }
+
+    setSettings(DEFAULT_PAYMENT_SETTINGS);
+    showToast("Could not load settings from API. Using defaults.");
 }
 
 function renderAll() {
@@ -753,6 +729,7 @@ function selectProduct(id) {
 function fillForm() {
     const product = getSelectedProduct();
     const isNew = !product;
+    lastProductNameSlug = slugify(product?.name || "");
     document.getElementById("editorTitle").textContent = isNew ? "New product" : product.name || state.selectedId;
 
     const productId = document.getElementById("productId");
@@ -786,6 +763,7 @@ function fillForm() {
 
     renderVariations();
     renderPreview();
+    updateImagePreview();
     updateEditorSectionBadges();
     syncMobileEditorSections();
     setUnsavedChanges(false);
@@ -957,22 +935,24 @@ function createNewProduct() {
 }
 
 function duplicateProduct() {
-    const product = getSelectedProduct();
-    if (!product) return;
-    const baseId = `${state.selectedId || slugify(product.name)}-copy`;
-    let nextId = baseId;
+    const original = getSelectedProduct();
+    if (!original) { showToast("Select a product to duplicate."); return; }
+
+    const baseName = String(original.name || "Product").trim();
+    const newName = `${baseName} (copy)`;
+    const baseId = slugify(newName) || "duplicate-product";
+    let newId = baseId;
     let counter = 2;
-    while (getProducts()[nextId]) {
-        nextId = `${baseId}-${counter}`;
+    const existing = new Set(Object.keys(getProducts()));
+    while (existing.has(newId)) {
+        newId = `${baseId}-${counter}`;
         counter += 1;
     }
-    getProducts()[nextId] = {
-        ...clone(product),
-        name: `${product.name || "Product"} Copy`,
-    };
-    selectProduct(nextId);
+
+    getProducts()[newId] = { ...clone(original), name: newName };
+    selectProduct(newId);
     renderAll();
-    showToast("Product duplicated");
+    showToast(`Duplicated as ${newId}`);
 }
 
 function toggleProductVisibility(id) {
@@ -998,7 +978,6 @@ function addCategory() {
     getCategories().push({
         name,
         id,
-        page: `${id}.html`,
         label: name,
         icon: "bi-box",
         teaser: "Digital products",
@@ -1079,7 +1058,7 @@ function validateCategories() {
 
         category.name = name;
         category.id = String(category.id || slugify(name) || `category-${index + 1}`).trim();
-        category.page = String(category.page || `${category.id}.html`).trim();
+        category.page = String(category.page || "").trim();
         category.label = String(category.label || name).trim();
         category.photo = String(category.photo || "assets/hyperlogo.png").trim();
         category.teaser = String(category.teaser || "").trim();
@@ -1112,8 +1091,8 @@ function addVariation() {
 function updateVariation(index, field, value) {
     if (!state.draftVariations[index]) return;
     state.draftVariations[index][field] = field === "price" ? Number(value || 0) : value;
-    // auto-generate id from name when appropriate
-    if (field === "name") {
+    // auto-generate id from name or label when appropriate
+    if (field === "name" || field === "label") {
         const currentId = String(state.draftVariations[index].id || "").trim();
         if (!currentId) {
             let base = slugify(String(value || "option"));
@@ -1164,52 +1143,77 @@ function getPreviewProduct() {
 }
 
 function renderPreview() {
-    const preview = document.getElementById("adminPreviewCard");
-    if (!preview) return;
-    const { product } = getPreviewProduct();
-    const firstVariation = product.variations?.[0];
-    const price = firstVariation?.price ?? product.price ?? 0;
-    const image = product.image ? state.previewImages[product.image] || product.image : "assets/hyperlogo.png";
+    const container = document.getElementById("adminPreviewBody");
+    if (!container) return;
 
-    const badges = [];
-    if (product.customerInput?.enabled) {
-        const labels = Array.isArray(product.customerInput.labels)
-            ? product.customerInput.labels
-            : product.customerInput.label
-            ? [product.customerInput.label]
-            : [];
-        labels.forEach((lbl) => badges.push(`<span class="badge text-bg-warning mb-2">${escapeHtml(lbl)} required</span>`));
-    }
-
-    // Match store product card markup so preview visually matches the storefront
+    const { id, product } = getPreviewProduct();
+    const image = String(product.image || "").trim();
+    const statePreviewImage = state.previewImages?.[image];
+    const hasVariations = Array.isArray(product.variations) && product.variations.length > 0;
+    const defaultVariation = hasVariations && product.variations.find((v) => v.visible !== false && v.inStock !== false) || product.variations?.[0];
+    const displayPrice = defaultVariation?.price ?? product.price ?? 0;
     const inStock = product.inStock !== false;
-    const category = escapeHtml(product.category || "Digital");
-    const title = escapeHtml(product.name || "New product");
-    const desc = escapeHtml(product.description || "Product description");
-    const priceLabel = Array.isArray(product.variations) && product.variations.length ? `From ${money(price, state.database.currency)}` : money(price, state.database.currency);
+    const art = product.art || "gamekey-art";
+    const icon = product.icon || "bi-box";
 
-    preview.innerHTML = `
-        <div class="col-12">
+    container.innerHTML = `
+        <div class="col-12 px-0">
             <article class="card product-card h-100">
-                <div class="product-art" aria-hidden="true">
-                    ${image ? `<img class="product-image" src="${escapeHtml(image)}" alt="${title}" />` : `<i class="bi bi-box"></i>`}
-                </div>
+                <a class="product-art ${escapeHtml(art)}" href="product.html?product=${encodeURIComponent(id)}">
+                    ${image
+                        ? `<img class="product-image" src="${escapeHtml(statePreviewImage || image)}" alt="${escapeHtml(product.name)}" />`
+                        : `<i class="bi ${escapeHtml(icon)}"></i>`
+                    }
+                </a>
                 <div class="card-body d-flex flex-column">
                     <div class="d-flex flex-wrap gap-2 mb-2">
-                        <span class="badge text-bg-dark">${category}</span>
+                        <span class="badge text-bg-dark">${escapeHtml(product.category || "Digital")}</span>
                         <span class="badge ${inStock ? "text-bg-success" : "text-bg-secondary"}">${inStock ? "Available" : "Out of stock"}</span>
                     </div>
-                    <h2 class="h5">${title}</h2>
-                    <p class="text-secondary flex-grow-1">${desc}</p>
-                    ${badges.join(" ")}
+                    <h2 class="h5">${escapeHtml(product.name || "New product")}</h2>
+                    <p class="text-secondary flex-grow-1">${escapeHtml(product.description || "") || "&nbsp;"}</p>
                     <div class="d-flex justify-content-between align-items-center">
-                        <strong class="price">${priceLabel}</strong>
-                        <button class="btn btn-primary btn-sm" disabled>Add</button>
+                        <strong class="price">${hasVariations ? "From " : ""}${money(displayPrice, state.database.currency)}</strong>
+                        <button class="btn btn-primary btn-sm" ${inStock ? "" : "disabled"}>${inStock ? "Add" : "Unavailable"}</button>
                     </div>
                 </div>
             </article>
         </div>
+        <div class="admin-preview-details mt-3">
+            <details>
+                <summary>Product info</summary>
+                <div class="small text-secondary mt-2" style="white-space: pre-wrap;">
+ID: ${escapeHtml(id)}
+${hasVariations ? `Variations: ${product.variations.length}` : `Price: ${money(displayPrice, state.database.currency)}`}
+Category: ${escapeHtml(product.category || "Digital")}
+${image ? `Image: ${escapeHtml(image)}` : "No image"}
+${product.visible === false ? "Hidden from store" : "Visible"}
+${!inStock ? "Out of stock" : ""}
+${product.customerInput?.enabled ? "Customer input enabled" : ""}
+                </div>
+            </details>
+        </div>
     `;
+}
+
+function updateImagePreview() {
+    const container = document.getElementById("adminImagePreview");
+    const img = document.getElementById("adminImagePreviewImg");
+    if (!container || !img) return;
+
+    const pathInput = document.getElementById("productImage");
+    const path = pathInput?.value?.trim() || "";
+    const blobUrl = state.previewImages?.[path];
+
+    if (blobUrl) {
+        img.src = blobUrl;
+        container.style.display = "";
+    } else if (path) {
+        img.src = path;
+        container.style.display = "";
+    } else {
+        container.style.display = "none";
+    }
 }
 
 function handlePhotoFile(file) {
@@ -1219,6 +1223,7 @@ function handlePhotoFile(file) {
     if (input) input.value = path;
     if (state.previewImages[path]) URL.revokeObjectURL(state.previewImages[path]);
     state.previewImages[path] = URL.createObjectURL(file);
+    updateImagePreview();
     renderPreview();
     markProductDirty();
     showToast(`Photo path set to ${path}`);
@@ -1396,17 +1401,17 @@ function downloadJson() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "products.json";
+    link.download = "hyperkey-catalog-export.json";
     document.body.append(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    showToast("Downloaded products.json");
+    showToast("Catalog exported");
 }
 
 function downloadSettingsJson() {
-    downloadTextFile("settings.json", getSettingsJson(), "application/json");
-    showToast("Downloaded settings.json");
+    downloadTextFile("hyperkey-settings-export.json", getSettingsJson(), "application/json");
+    showToast("Settings exported");
 }
 
 function downloadTextFile(fileName, text, type = "text/plain") {
@@ -1567,7 +1572,7 @@ async function importSettingsJson(file) {
     const text = await file.text();
     const settings = JSON.parse(text);
     setSettings(settings);
-    showToast("Imported settings.json");
+    showToast("Settings imported from file");
 }
 
 function getSelectedImportFile(inputId, label) {
@@ -1583,11 +1588,93 @@ function showSelectedFileMessage(inputId, label) {
 }
 
 function getAdminToken() {
-    return sessionStorage.getItem(ADMIN_TOKEN_KEY) || document.getElementById("adminApiToken")?.value.trim() || "";
+    return sessionStorage.getItem(ADMIN_TOKEN_KEY) || "";
 }
 
 function setAdminToken(token) {
     sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+}
+
+function showAdminContent() {
+    const lockScreen = document.getElementById("adminLockScreen");
+    const content = document.getElementById("adminContent");
+    if (lockScreen) lockScreen.style.display = "none";
+    if (content) content.style.display = "";
+}
+
+function showLockScreen() {
+    const lockScreen = document.getElementById("adminLockScreen");
+    const content = document.getElementById("adminContent");
+    if (lockScreen) lockScreen.style.display = "";
+    if (content) content.style.display = "none";
+}
+
+async function verifyAdminToken() {
+    try {
+        await adminRequest({ action: "admin-verify" });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function unlockAdminPanel(token) {
+    const errorEl = document.getElementById("adminLockError");
+    const button = document.getElementById("adminUnlockButton");
+    if (!token) return;
+    setAdminToken(token);
+    if (button) {
+        button.disabled = true;
+        button.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Verifying...`;
+    }
+    try {
+        const valid = await verifyAdminToken();
+        if (!valid) throw new Error("Token is invalid");
+        sessionStorage.setItem("hyperkey-admin-unlocked", "1");
+        showAdminContent();
+        initAdminPanel();
+    } catch (err) {
+        setAdminToken("");
+        sessionStorage.removeItem("hyperkey-admin-unlocked");
+        if (errorEl) {
+            errorEl.textContent = err.message || "Token is invalid";
+            errorEl.style.display = "";
+        }
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = `<i class="bi bi-unlock me-1"></i>Unlock`;
+        }
+    }
+}
+
+function lockAdminPanel() {
+    setAdminToken("");
+    sessionStorage.removeItem("hyperkey-admin-unlocked");
+    showLockScreen();
+    const errorEl = document.getElementById("adminLockError");
+    if (errorEl) errorEl.style.display = "none";
+    const tokenInput = document.getElementById("adminLockToken");
+    if (tokenInput) tokenInput.value = "";
+}
+
+async function uploadToGitHub(file) {
+    const path = `assets/${safeAssetFileName(file.name)}`;
+
+    const data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = () => reject(new Error("Could not read file"));
+        reader.readAsDataURL(file);
+    });
+
+    const result = await adminRequest({
+        action: "admin-upload-image",
+        fileName: path,
+        base64: data,
+    });
+
+    return { path };
 }
 
 async function adminRequest(body) {
@@ -1650,6 +1737,44 @@ function renderOrderItems(items) {
 function getAdminOrderItemCount(items) {
     if (!Array.isArray(items)) return 0;
     return items.reduce((sum, item) => sum + Math.max(1, Number(item.quantity) || 1), 0);
+}
+
+const CATALOG_API_URL = ORDER_API_URL ? `${ORDER_API_URL.replace(/\/+$/, "")}/api` : "";
+
+async function adminGetRequest(url) {
+    const response = await fetch(`${url}?v=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`API returned ${response.status}`);
+    return response.json();
+}
+
+async function syncDatabaseToApi() {
+    if (!CATALOG_API_URL) throw new Error("Worker URL is not configured in config.js");
+    try {
+        if (document.getElementById("productId")?.value.trim()) saveProduct({ silent: true });
+    } catch (error) {
+        throw new Error(error.message || "Could not save current product");
+    }
+    const data = {
+        action: "admin-save-data",
+        products: getProducts(),
+        categories: getCategories().map((cat) => ({
+            ...cat,
+            visible: cat.visible !== false,
+        })),
+        currency: state.database.currency || "TND",
+        routes: state.database.routes || {},
+    };
+    await adminRequest(data);
+    setUnsavedChanges(false);
+}
+
+async function syncSettingsToApi() {
+    if (!CATALOG_API_URL) throw new Error("Worker URL is not configured in config.js");
+    saveSettingsFromForm();
+    await adminRequest({
+        action: "admin-save-settings",
+        settings: state.settings,
+    });
 }
 
 function adminCountLabel(count, singular, plural = `${singular}s`) {
@@ -1799,10 +1924,18 @@ function getOrderWorkflowStatus(order) {
 
 function getFilteredOrders() {
     const search = state.orderFilters.search.trim().toLowerCase();
+    const dateFrom = state.orderFilters.dateFrom ? new Date(state.orderFilters.dateFrom + "T00:00:00") : null;
+    const dateTo = state.orderFilters.dateTo ? new Date(state.orderFilters.dateTo + "T23:59:59") : null;
     return state.orders.filter((order) => {
         if (state.orderFilters.workflow && getOrderWorkflowStatus(order) !== state.orderFilters.workflow) return false;
         if (state.orderFilters.payment && order.paymentStatus !== state.orderFilters.payment) return false;
         if (state.orderFilters.delivery && order.deliveryStatus !== state.orderFilters.delivery) return false;
+
+        if (dateFrom || dateTo) {
+            const createdAt = new Date(order.createdAt);
+            if (dateFrom && createdAt < dateFrom) return false;
+            if (dateTo && createdAt > dateTo) return false;
+        }
 
         if (!search) return true;
         const haystack = [
@@ -2095,19 +2228,28 @@ function bindEvents() {
         renderAll();
     });
     document.getElementById("newProductButton")?.addEventListener("click", createNewProduct);
-    document.getElementById("duplicateProductButton")?.addEventListener("click", duplicateProduct);
     document.getElementById("deleteProductButton")?.addEventListener("click", deleteProduct);
     document.getElementById("addVariationButton")?.addEventListener("click", addVariation);
     document.getElementById("addCategoryButton")?.addEventListener("click", addCategory);
     document.getElementById("resetFormButton")?.addEventListener("click", fillForm);
+    document.getElementById("syncDatabaseButton")?.addEventListener("click", () => {
+        syncDatabaseToApi()
+            .then(() => showToast("Saved products and categories to database"))
+            .catch((error) => showToast(error.message || "Could not save to database"));
+    });
+    document.getElementById("syncSettingsButton")?.addEventListener("click", () => {
+        syncSettingsToApi()
+            .then(() => showToast("Saved settings to database"))
+            .catch((error) => showToast(error.message || "Could not save settings to database"));
+    });
     document.getElementById("downloadJsonButton")?.addEventListener("click", downloadJson);
     document.getElementById("copyJsonButton")?.addEventListener("click", copyJson);
     document.getElementById("copyJsonButtonSecondary")?.addEventListener("click", copyJson);
     document.getElementById("jsonImport")?.addEventListener("change", () => showSelectedFileMessage("jsonImport", "Import products"));
     document.getElementById("importJsonButton")?.addEventListener("click", () => {
         Promise.resolve()
-            .then(() => importJson(getSelectedImportFile("jsonImport", "products.json")))
-            .catch((error) => showToast(error.message || "Could not import products.json"));
+            .then(() => importJson(getSelectedImportFile("jsonImport", "catalog JSON file")))
+            .catch((error) => showToast(error.message || "Could not import catalog from file"));
     });
     document.getElementById("csvImport")?.addEventListener("change", () => showSelectedFileMessage("csvImport", "Import CSV"));
     document.getElementById("importCsvButton")?.addEventListener("click", () => {
@@ -2121,14 +2263,33 @@ function bindEvents() {
     document.getElementById("settingsImport")?.addEventListener("change", () => showSelectedFileMessage("settingsImport", "Import settings"));
     document.getElementById("importSettingsButton")?.addEventListener("click", () => {
         Promise.resolve()
-            .then(() => importSettingsJson(getSelectedImportFile("settingsImport", "settings.json")))
-            .catch((error) => showToast(error.message || "Could not import settings.json"));
+            .then(() => importSettingsJson(getSelectedImportFile("settingsImport", "settings JSON file")))
+            .catch((error) => showToast(error.message || "Could not import settings from file"));
     });
     document.getElementById("productPhotoFile")?.addEventListener("change", (event) => handlePhotoFile(event.target.files[0]));
+    document.getElementById("productImage")?.addEventListener("input", () => {
+        updateImagePreview();
+        renderPreview();
+    });
     document.getElementById("productName")?.addEventListener("input", (event) => {
         const name = event.target.value || "";
         const idInput = document.getElementById("productId");
-        if (!state.originalId && idInput) idInput.value = slugify(name);
+        if (!idInput) return;
+        const currentId = idInput.value.trim();
+        if (!currentId || !state.originalId) {
+            lastProductNameSlug = slugify(name);
+            idInput.value = lastProductNameSlug;
+        }
+    });
+    document.getElementById("productName")?.addEventListener("blur", (event) => {
+        const name = event.target.value || "";
+        const idInput = document.getElementById("productId");
+        if (!idInput) return;
+        const currentId = idInput.value.trim();
+        if (!currentId || currentId === slugify(name) || currentId === lastProductNameSlug) {
+            lastProductNameSlug = slugify(name);
+            idInput.value = lastProductNameSlug;
+        }
     });
     document.getElementById("addCustomerInputButton")?.addEventListener("click", () => addCustomerInput());
     document.getElementById("productCustomerInputs")?.addEventListener("click", (event) => {
@@ -2146,20 +2307,19 @@ function bindEvents() {
         renderPreview();
         markProductDirty();
     });
-    document.getElementById("saveAdminTokenButton")?.addEventListener("click", () => {
-        const token = document.getElementById("adminApiToken")?.value.trim() || "";
-        if (!token) {
-            showToast("Enter the admin token");
-            return;
-        }
-        setAdminToken(token);
-        showToast("Admin token saved for this tab");
-    });
     document.getElementById("loadOrdersButton")?.addEventListener("click", () => {
         loadAdminOrders().catch((error) => showToast(error.message || "Could not load orders"));
     });
     document.getElementById("adminOrderSearch")?.addEventListener("input", (event) => {
         state.orderFilters.search = event.target.value || "";
+        renderAdminOrders();
+    });
+    document.getElementById("adminOrderDateFrom")?.addEventListener("change", (event) => {
+        state.orderFilters.dateFrom = event.target.value || "";
+        renderAdminOrders();
+    });
+    document.getElementById("adminOrderDateTo")?.addEventListener("change", (event) => {
+        state.orderFilters.dateTo = event.target.value || "";
         renderAdminOrders();
     });
     document.getElementById("adminPaymentFilter")?.addEventListener("change", (event) => {
@@ -2207,12 +2367,12 @@ function bindEvents() {
             const action = actionButton.dataset.mobileProductAction;
             if (!productId || !getProducts()[productId]) return;
 
-            if (action === "duplicate") {
+            if (action === "toggle-visibility") {
+                toggleProductVisibility(productId);
+            } else if (action === "duplicate") {
                 selectProduct(productId);
                 duplicateProduct();
                 closeMobileProductCatalog();
-            } else if (action === "toggle-visibility") {
-                toggleProductVisibility(productId);
             } else if (action === "delete") {
                 selectProduct(productId);
                 deleteProduct();
@@ -2333,15 +2493,65 @@ function bindEvents() {
             return;
         }
     });
+
+    document.getElementById("adminUnlockForm")?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const token = document.getElementById("adminLockToken")?.value.trim();
+        if (!token) return;
+        unlockAdminPanel(token);
+    });
+
+    document.getElementById("lockAdminButton")?.addEventListener("click", () => {
+        lockAdminPanel();
+    });
+
+    document.getElementById("uploadToGitHubButton")?.addEventListener("click", async () => {
+        const fileInput = document.getElementById("productPhotoFile");
+        if (!fileInput?.files?.[0]) {
+            showToast("Select a photo file first");
+            return;
+        }
+        const file = fileInput.files[0];
+        const statusEl = document.getElementById("uploadStatus");
+        if (statusEl) statusEl.textContent = "Uploading to GitHub...";
+        try {
+            const result = await uploadToGitHub(file);
+            const pathInput = document.getElementById("productImage");
+            if (pathInput) pathInput.value = result.path;
+            updateImagePreview();
+            renderPreview();
+            markProductDirty();
+            if (statusEl) statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>Uploaded: ${result.path}</span>`;
+            showToast("Image uploaded to GitHub");
+        } catch (error) {
+            if (statusEl) statusEl.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>${escapeHtml(error.message)}</span>`;
+            showToast(error.message || "Upload failed");
+        }
+    });
+
 }
 
 bindEvents();
-syncResponsiveAdminLayout();
-const savedAdminToken = getAdminToken();
-if (savedAdminToken) {
-    const tokenInput = document.getElementById("adminApiToken");
-    if (tokenInput) tokenInput.value = savedAdminToken;
+
+function initAdminPanel() {
+    syncResponsiveAdminLayout();
+    loadDatabase();
+    loadSettings();
 }
-loadDatabase();
-loadSettings();
+
+// start locked; check if already verified this session
+(async () => {
+    const alreadyUnlocked = sessionStorage.getItem("hyperkey-admin-unlocked");
+    const savedToken = getAdminToken();
+    if (alreadyUnlocked && savedToken) {
+        const valid = await verifyAdminToken();
+        if (valid) {
+            showAdminContent();
+            initAdminPanel();
+            return;
+        }
+        sessionStorage.removeItem("hyperkey-admin-unlocked");
+    }
+    showLockScreen();
+})();
 

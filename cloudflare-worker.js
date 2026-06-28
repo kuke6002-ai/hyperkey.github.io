@@ -93,7 +93,7 @@ function getCorsHeaders(request) {
     const origin = request.headers.get("Origin") || "*";
     return {
         "Access-Control-Allow-Origin": origin,
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token",
         Vary: "Origin",
     };
@@ -106,6 +106,15 @@ function getOrderDb(env) {
         throw error;
     }
     return env.DB;
+}
+
+function getCatalogDb(env) {
+    if (!env.product_db) {
+        const error = new Error("D1 database binding product_db is not configured");
+        error.statusCode = 500;
+        throw error;
+    }
+    return env.product_db;
 }
 
 async function ensureOrderSchema(env) {
@@ -160,34 +169,6 @@ function requireTelegramWebhook(request, env) {
     }
 }
 
-async function readJsonUrl(url, label) {
-    const separator = url.includes("?") ? "&" : "?";
-    const response = await fetch(`${url}${separator}v=${Date.now()}`, {
-        headers: { Accept: "application/json" },
-        cf: { cacheTtl: 0, cacheEverything: false },
-    });
-    if (!response.ok) {
-        throw new Error(`Could not load ${label}: ${response.status}`);
-    }
-
-    const text = await response.text();
-    try {
-        return JSON.parse(text);
-    } catch {
-        throw new Error(`${label} did not return JSON`);
-    }
-}
-
-async function readDatabase(env) {
-    if (!env.PRODUCT_DATABASE_URL) {
-        const error = new Error("PRODUCT_DATABASE_URL is not configured");
-        error.statusCode = 500;
-        throw error;
-    }
-
-    return readJsonUrl(env.PRODUCT_DATABASE_URL, "product database");
-}
-
 function clone(value) {
     return JSON.parse(JSON.stringify(value));
 }
@@ -226,9 +207,123 @@ function mergePaymentSettings(settings = {}) {
     return merged;
 }
 
-async function readSettings(env) {
-    if (!env.PAYMENT_SETTINGS_URL) return clone(DEFAULT_PAYMENT_SETTINGS);
-    return mergePaymentSettings(await readJsonUrl(env.PAYMENT_SETTINGS_URL, "payment settings"));
+let catalogSchemaReady = false;
+
+async function ensureCatalogSchema(env) {
+    if (catalogSchemaReady) return;
+
+    const db = getCatalogDb(env);
+    const statements = [
+        db.prepare(`CREATE TABLE IF NOT EXISTS categories (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            label TEXT,
+            page TEXT,
+            photo TEXT DEFAULT 'assets/hyperlogo.png',
+            icon TEXT DEFAULT 'bi-box',
+            teaser TEXT,
+            heading TEXT,
+            description TEXT,
+            visible INTEGER DEFAULT 1,
+            sort_order INTEGER DEFAULT 0
+        )`),
+        db.prepare(`CREATE TABLE IF NOT EXISTS products (
+            id TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            category TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )`),
+        db.prepare(`CREATE TABLE IF NOT EXISTS store_config (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )`),
+        db.prepare(`CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )`),
+        db.prepare("CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)"),
+    ];
+
+    await db.batch(statements);
+    catalogSchemaReady = true;
+}
+
+async function readAllProducts(env) {
+    await ensureCatalogSchema(env);
+    const db = getCatalogDb(env);
+    const rows = await getAllResults(db.prepare("SELECT id, data FROM products").bind());
+    const products = {};
+    rows.forEach((row) => {
+        try {
+            products[row.id] = JSON.parse(row.data);
+        } catch {
+            products[row.id] = {};
+        }
+    });
+    return products;
+}
+
+async function readAllCategories(env) {
+    await ensureCatalogSchema(env);
+    const db = getCatalogDb(env);
+    const rows = await getAllResults(
+        db.prepare("SELECT * FROM categories ORDER BY sort_order ASC, name ASC").bind(),
+    );
+    return rows.map((row) => ({
+        name: row.name,
+        id: row.id,
+        page: row.page,
+        label: row.label,
+        icon: row.icon,
+        teaser: row.teaser,
+        heading: row.heading,
+        description: row.description,
+        photo: row.photo,
+        visible: row.visible !== 0,
+    }));
+}
+
+async function readStoreConfig(env) {
+    await ensureCatalogSchema(env);
+    const db = getCatalogDb(env);
+    const rows = await getAllResults(db.prepare("SELECT key, value FROM store_config").bind());
+    const config = {};
+    rows.forEach((row) => {
+        try {
+            config[row.key] = JSON.parse(row.value);
+        } catch {
+            config[row.key] = row.value;
+        }
+    });
+    return config;
+}
+
+async function readPaymentSettings(env) {
+    await ensureCatalogSchema(env);
+    const db = getCatalogDb(env);
+    const row = await db.prepare("SELECT value FROM settings WHERE key = 'payment_settings'").first();
+    if (!row) return null;
+    try {
+        return JSON.parse(row.value);
+    } catch {
+        return null;
+    }
+}
+
+async function getCatalogData(env) {
+    const [products, categories, config] = await Promise.all([
+        readAllProducts(env),
+        readAllCategories(env),
+        readStoreConfig(env),
+    ]);
+
+    return {
+        products,
+        categories,
+        currency: config.currency || "TND",
+        routes: config.routes || {},
+    };
 }
 
 function slugify(value) {
@@ -481,7 +576,7 @@ function buildOrderLines(items, database) {
 
         const product = products[productId];
         if (!product) {
-            throw new Error(`Invalid product: ${productId}. Check PRODUCT_DATABASE_URL and make sure products.json is deployed.`);
+            throw new Error(`Invalid product: ${productId}. Make sure the product exists in the D1 catalog database.`);
         }
         if (product.visible === false) throw new Error(`Product is hidden: ${productId}`);
         if (product.inStock === false) throw new Error(`Product is out of stock: ${productId}`);
@@ -886,9 +981,9 @@ function getCustomerInputKey(productId, variationId, label = "") {
 async function getCustomerInputRequirements(env, record, items, savedInputs = null) {
     if (record.payment_status !== "verified" || record.delivery_status !== "waiting") return [];
 
-    let database = null;
+    let products = {};
     try {
-        database = await readDatabase(env);
+        products = await readAllProducts(env);
     } catch (error) {
         console.warn("Could not load product database for customer input requirements", error);
         return [];
@@ -900,7 +995,6 @@ async function getCustomerInputRequirements(env, record, items, savedInputs = nu
             getCustomerInputKey(input.product_id || input.productId, input.variation_id || input.variationId || "", input.input_label || input.label || ""),
         ),
     );
-    const products = database.products || {};
 
     return items
         .flatMap((item) => {
@@ -976,7 +1070,7 @@ async function getOrderStatusPayload(env, record) {
         getOrderItems(env, record.id),
         getOrderDeliveries(env, record.id),
         getOrderCustomerInputs(env, record.id),
-        readSettings(env),
+        readPaymentSettings(env).then((s) => (s ? mergePaymentSettings(s) : clone(DEFAULT_PAYMENT_SETTINGS))),
     ]);
     const customerInputs = await getCustomerInputRequirements(env, record, items, savedInputs);
     const statusCopy = getStatusCopy(settings, record, customerInputs);
@@ -1658,7 +1752,161 @@ async function handleAdminAction(body, request, env, corsHeaders) {
         return jsonResponse({ ok: true, deleted: result.id }, 200, corsHeaders);
     }
 
+    if (body.action === "admin-save-data") {
+        return jsonResponse(await handleAdminSaveData(body, request, env, corsHeaders), 200, corsHeaders);
+    }
+
+    if (body.action === "admin-save-settings") {
+        return jsonResponse(await handleAdminSaveSettings(body, request, env, corsHeaders), 200, corsHeaders);
+    }
+
+    if (body.action === "admin-upload-image") {
+        return jsonResponse(await handleAdminUploadImage(body, env), 200, corsHeaders);
+    }
+
+    if (body.action === "admin-verify") {
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
     return jsonResponse({ error: "Unknown admin action" }, 400, corsHeaders);
+}
+
+async function handleAdminSaveData(body, request, env, corsHeaders) {
+    requireAdmin(request, env);
+    await ensureCatalogSchema(env);
+    const db = getCatalogDb(env);
+    const now = new Date().toISOString();
+    const statements = [];
+
+    if (body.categories && Array.isArray(body.categories)) {
+        statements.push(db.prepare("DELETE FROM categories").bind());
+        body.categories.forEach((cat, index) => {
+            statements.push(
+                db
+                    .prepare(
+                        `INSERT INTO categories (id, name, label, page, photo, icon, teaser, heading, description, visible, sort_order)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    )
+                    .bind(
+                        cat.id || `cat-${index}`,
+                        cat.name || "",
+                        cat.label || cat.name || "",
+                        cat.page || "",
+                        cat.photo || "assets/hyperlogo.png",
+                        cat.icon || "bi-box",
+                        cat.teaser || "",
+                        cat.heading || cat.label || cat.name || "",
+                        cat.description || "",
+                        cat.visible !== false ? 1 : 0,
+                        index,
+                    ),
+            );
+        });
+    }
+
+    if (body.products && typeof body.products === "object") {
+        statements.push(db.prepare("DELETE FROM products").bind());
+        Object.entries(body.products).forEach(([id, product]) => {
+            statements.push(
+                db
+                    .prepare("INSERT INTO products (id, data, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+                    .bind(id, JSON.stringify(product), product.category || "Digital", now, now),
+            );
+        });
+    }
+
+    if (body.currency) {
+        statements.push(
+            db
+                .prepare("INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)")
+                .bind("currency", JSON.stringify(body.currency)),
+        );
+    }
+
+    if (body.routes && typeof body.routes === "object") {
+        statements.push(
+            db
+                .prepare("INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)")
+                .bind("routes", JSON.stringify(body.routes)),
+        );
+    }
+
+    if (statements.length) await db.batch(statements);
+    return { ok: true };
+}
+
+async function handleAdminSaveSettings(body, request, env, corsHeaders) {
+    requireAdmin(request, env);
+    await ensureCatalogSchema(env);
+    const db = getCatalogDb(env);
+
+    if (body.settings && typeof body.settings === "object") {
+        await db
+            .prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
+            .bind("payment_settings", JSON.stringify(body.settings))
+            .run();
+    }
+
+    return { ok: true };
+}
+
+async function handleAdminUploadImage(body, env) {
+    const fileName = String(body.fileName || "").trim();
+    const base64 = String(body.base64 || "").trim();
+    if (!fileName || !base64) {
+        return { error: "Missing fileName or base64" };
+    }
+
+    const token = env.GITHUB_TOKEN;
+    const owner = env.GITHUB_OWNER || "kuke6002-ai";
+    const repo = env.GITHUB_REPO || "hyperkey.github.io";
+    const branch = env.GITHUB_BRANCH || "main";
+
+    if (!token) {
+        return { error: "GITHUB_TOKEN is not configured on the server" };
+    }
+
+    const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeURIComponent(fileName)}`;
+
+    let sha = null;
+    try {
+        const checkRes = await fetch(url, {
+            headers: { Authorization: `Bearer ${token}`, "User-Agent": "hyperkey-worker" },
+        });
+        if (checkRes.ok) {
+            const existing = await checkRes.json();
+            sha = existing.sha;
+        }
+    } catch {}
+
+    const putBody = {
+        message: sha ? `Update ${fileName}` : `Upload ${fileName}`,
+        content: base64,
+        branch,
+    };
+    if (sha) putBody.sha = sha;
+
+    const res = await fetch(url, {
+        method: "PUT",
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "User-Agent": "hyperkey-worker",
+        },
+        body: JSON.stringify(putBody),
+    });
+
+    const result = await res.json();
+
+    if (!res.ok) {
+        const msg = result.message || `GitHub API returned ${res.status}`;
+        if (result.errors && result.errors.length) {
+            return { error: `${msg}: ${result.errors.map((e) => e.message).join("; ")}` };
+        }
+        return { error: msg };
+    }
+
+    return { ok: true, path: fileName };
 }
 
 function parseTelegramAction(data) {
@@ -1873,7 +2121,18 @@ async function handleOrder(request, env, corsHeaders) {
         throw error;
     }
 
-    const [database, settings] = await Promise.all([readDatabase(env), readSettings(env)]);
+    await ensureCatalogSchema(env);
+    const [allProducts, config, paymentSettings] = await Promise.all([
+        readAllProducts(env),
+        readStoreConfig(env),
+        readPaymentSettings(env),
+    ]);
+    const database = {
+        products: allProducts,
+        currency: config.currency || "TND",
+        routes: config.routes || {},
+    };
+    const settings = paymentSettings ? mergePaymentSettings(paymentSettings) : clone(DEFAULT_PAYMENT_SETTINGS);
     const order = buildOrder(body, database, settings);
 
     processedOrders.set(checkoutRequestId, { createdAt: Date.now(), pending: true });
@@ -1914,12 +2173,41 @@ async function handleOrder(request, env, corsHeaders) {
     return jsonResponse(savedOrder.response, 200, corsHeaders);
 }
 
+function parseUrlPath(request) {
+    try {
+        return new URL(request.url).pathname;
+    } catch {
+        return "/";
+    }
+}
+
 export default {
     async fetch(request, env) {
         const corsHeaders = getCorsHeaders(request);
 
         if (request.method === "OPTIONS") {
             return new Response(null, { status: 204, headers: corsHeaders });
+        }
+
+        const urlPath = parseUrlPath(request);
+
+        if (request.method === "GET") {
+            try {
+                if (urlPath === "/api/data") {
+                    const data = await getCatalogData(env);
+                    return jsonResponse(data, 200, corsHeaders);
+                }
+
+                if (urlPath === "/api/settings") {
+                    const settings = await readPaymentSettings(env);
+                    return jsonResponse(settings || {}, 200, corsHeaders);
+                }
+
+                return jsonResponse({ error: "Not found" }, 404, corsHeaders);
+            } catch (error) {
+                console.error(error);
+                return jsonResponse({ error: error.message || "API error" }, error.statusCode || 500, corsHeaders);
+            }
         }
 
         if (request.method !== "POST") {
