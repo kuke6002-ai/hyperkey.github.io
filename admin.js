@@ -1271,7 +1271,6 @@ function fillSettingsForm() {
         statusCancelledMessage: statusMessages.cancelled.message,
         d17Enabled: d17.enabled !== false,
         d17Instructions: d17.instructions,
-        d17RecipientName: d17.recipientName,
         d17RecipientValue: d17.recipientValue,
         d17RecipientHint: d17.recipientHint,
         d17ProofLabel: d17.proofLabel,
@@ -1279,7 +1278,6 @@ function fillSettingsForm() {
         d17RoundUpToDecimal: d17.roundUpToDecimal,
         flouciEnabled: flouci.enabled !== false,
         flouciInstructions: flouci.instructions,
-        flouciRecipientName: flouci.recipientName,
         flouciRecipientValue: flouci.recipientValue,
         flouciRecipientHint: flouci.recipientHint,
         flouciProofLabel: flouci.proofLabel,
@@ -1308,7 +1306,7 @@ function readSettingsForm() {
         const value = Number(document.getElementById(id)?.value ?? fallback);
         return Number.isFinite(value) ? value : fallback;
     };
-    const textValue = (id, fallback) => document.getElementById(id)?.value.trim() || fallback;
+    const textValue = (id, fallback) => document.getElementById(id)?.value?.trim() || fallback;
     const checkedValue = (id) => document.getElementById(id)?.checked !== false;
 
     return {
@@ -1350,7 +1348,6 @@ function readSettingsForm() {
                 enabled: checkedValue("d17Enabled"),
                 label: "D17 transfer",
                 instructions: textValue("d17Instructions", DEFAULT_PAYMENT_SETTINGS.payment.d17.instructions),
-                recipientName: textValue("d17RecipientName", ""),
                 recipientValue: textValue("d17RecipientValue", ""),
                 recipientHint: textValue("d17RecipientHint", ""),
                 proofLabel: textValue("d17ProofLabel", DEFAULT_PAYMENT_SETTINGS.payment.d17.proofLabel),
@@ -1361,7 +1358,6 @@ function readSettingsForm() {
                 enabled: checkedValue("flouciEnabled"),
                 label: "Flouci transfer",
                 instructions: textValue("flouciInstructions", DEFAULT_PAYMENT_SETTINGS.payment.flouci.instructions),
-                recipientName: textValue("flouciRecipientName", ""),
                 recipientValue: textValue("flouciRecipientValue", ""),
                 recipientHint: textValue("flouciRecipientHint", ""),
                 proofLabel: textValue("flouciProofLabel", DEFAULT_PAYMENT_SETTINGS.payment.flouci.proofLabel),

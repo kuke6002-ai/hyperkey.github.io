@@ -101,7 +101,7 @@ const DEFAULT_PAYMENT_SETTINGS = {
             label: "D17 transfer",
             instructions: "Send the shown amount by D17, then enter only the authorization number from your receipt.",
             recipientName: "",
-            recipientValue: "",
+            recipientValue: "97671058",
             recipientHint: "",
             proofLabel: "Authorization number",
             feePercent: 1,
@@ -112,7 +112,7 @@ const DEFAULT_PAYMENT_SETTINGS = {
             label: "Flouci transfer",
             instructions: "Send the shown amount by Flouci, then enter only the transaction ID from your receipt.",
             recipientName: "",
-            recipientValue: "",
+            recipientValue: "97671058",
             recipientHint: "",
             proofLabel: "Transaction ID",
             feeUnder100: 1,
@@ -1280,14 +1280,13 @@ function renderPaymentRecipient(details) {
         return;
     }
 
-    const hasRecipient = Boolean(details.recipientName || details.recipientValue || details.recipientHint);
+    const hasRecipient = Boolean(details.recipientValue || details.recipientHint);
     recipient.classList.remove("d-none");
     recipient.innerHTML = hasRecipient
         ? `
             <div class="payment-recipient-card">
                 <div>
                     <span>${t("Send money to")}</span>
-                    <strong>${escapeHtml(details.recipientName || details.label)}</strong>
                     ${
                         details.recipientValue
                             ? `<code>${escapeHtml(details.recipientValue)}</code>`
