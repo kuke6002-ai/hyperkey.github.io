@@ -1,6 +1,7 @@
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 const MAX_QUANTITY = 99;
 const processedOrders = new Map();
+const pendingDeliveryOrders = new Map();
 let customerInputTableReady = false;
 let orderSchemaReady = false;
 
@@ -160,6 +161,7 @@ async function ensureOrderSchema(env) {
     }
 
     await ensureAffiliateSchema(env);
+    await ensureSellerSchema(env);
 
     orderSchemaReady = true;
 }
@@ -219,6 +221,65 @@ async function ensureAffiliateSchema(env) {
     for (const migration of tableMigrations) {
         try {
             await db.prepare(migration).run();
+        } catch (error) {
+            const message = String(error?.message || "");
+            if (/already exists/i.test(message)) continue;
+            throw error;
+        }
+    }
+}
+
+async function ensureSellerSchema(env) {
+    const db = getOrderDb(env);
+    const migrations = [
+        "ALTER TABLE order_items ADD COLUMN seller_id TEXT",
+        "ALTER TABLE order_items ADD COLUMN seller_status TEXT DEFAULT 'pending'",
+    ];
+
+    for (const migration of migrations) {
+        try {
+            await db.prepare(migration).run();
+        } catch (error) {
+            const message = String(error?.message || "");
+            if (!/duplicate column|already exists/i.test(message)) throw error;
+        }
+    }
+
+    const tables = [
+        `CREATE TABLE IF NOT EXISTS sellers (
+            id TEXT PRIMARY KEY,
+            store_name TEXT NOT NULL,
+            email TEXT,
+            phone TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            commission_percent REAL NOT NULL DEFAULT 0,
+            balance REAL NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1,
+            approved INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS seller_sessions (
+            token TEXT PRIMARY KEY,
+            seller_id TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS seller_payouts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            seller_id TEXT NOT NULL,
+            amount REAL NOT NULL,
+            method TEXT NOT NULL,
+            recipient_detail TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'requested',
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_order_items_seller_id ON order_items(seller_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_seller_payouts_seller_id ON seller_payouts(seller_id)`,
+    ];
+
+    for (const sql of tables) {
+        try {
+            await db.prepare(sql).run();
         } catch (error) {
             const message = String(error?.message || "");
             if (/already exists/i.test(message)) continue;
@@ -343,11 +404,31 @@ async function ensureCatalogSchema(env) {
 
     await db.batch(statements);
 
-    try {
-        await db.prepare("ALTER TABLE categories ADD COLUMN commission_percent REAL NOT NULL DEFAULT 0").run();
-    } catch (error) {
-        if (!/duplicate column|already exists/i.test(String(error?.message || ""))) throw error;
+    const catalogMigrations = [
+        "ALTER TABLE categories ADD COLUMN commission_percent REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE categories ADD COLUMN seller_id TEXT",
+        "ALTER TABLE products ADD COLUMN seller_id TEXT",
+        "ALTER TABLE products ADD COLUMN approved INTEGER DEFAULT 0",
+    ];
+
+    for (const migration of catalogMigrations) {
+        try {
+            await db.prepare(migration).run();
+        } catch (error) {
+            const message = String(error?.message || "");
+            if (!/duplicate column|already exists/i.test(message)) throw error;
+        }
     }
+
+    try {
+        await db.prepare("CREATE INDEX IF NOT EXISTS idx_products_seller_id ON products(seller_id)").run();
+    } catch { /* ignore */ }
+    try {
+        await db.prepare("CREATE INDEX IF NOT EXISTS idx_products_approved ON products(approved)").run();
+    } catch { /* ignore */ }
+    try {
+        await db.prepare("CREATE INDEX IF NOT EXISTS idx_categories_seller_id ON categories(seller_id)").run();
+    } catch { /* ignore */ }
 
     catalogSchemaReady = true;
 }
@@ -355,11 +436,26 @@ async function ensureCatalogSchema(env) {
 async function readAllProducts(env) {
     await ensureCatalogSchema(env);
     const db = getCatalogDb(env);
-    const rows = await getAllResults(db.prepare("SELECT id, data FROM products").bind());
+    const rows = await getAllResults(db.prepare("SELECT id, data, seller_id, approved FROM products").bind());
     const products = {};
+
+    const sellerNames = {};
+    try {
+        const sdb = getOrderDb(env);
+        const sellerRows = await getAllResults(sdb.prepare("SELECT id, store_name FROM sellers").bind());
+        for (const sr of sellerRows) {
+            sellerNames[sr.id] = sr.store_name;
+        }
+    } catch { /* order DB may not exist yet */ }
+
     rows.forEach((row) => {
         try {
             products[row.id] = JSON.parse(row.data);
+            products[row.id].seller_id = row.seller_id;
+            products[row.id].approved = row.approved === 1;
+            if (row.seller_id && sellerNames[row.seller_id]) {
+                products[row.id].sellerStoreName = sellerNames[row.seller_id];
+            }
         } catch {
             products[row.id] = {};
         }
@@ -712,6 +808,7 @@ function buildOrderLines(items, database) {
             quantity,
             unitPrice,
             lineTotal: unitPrice * quantity,
+            sellerId: product.seller_id || null,
         });
     });
 
@@ -980,7 +1077,9 @@ async function getOrderItems(env, orderId) {
                     option_label,
                     quantity,
                     unit_price,
-                    line_total
+                    line_total,
+                    seller_id,
+                    seller_status
                 FROM order_items
                 WHERE order_id = ?
                 ORDER BY id`,
@@ -1130,7 +1229,11 @@ async function getCustomerInputRequirements(env, record, items, savedInputs = nu
         .filter(Boolean);
 }
 async function getSavedOrderForNotification(env, record) {
-    const [items, proofs] = await Promise.all([getOrderItems(env, record.id), getPaymentProofs(env, record.id)]);
+    const [items, proofs, deliveries] = await Promise.all([
+        getOrderItems(env, record.id),
+        getPaymentProofs(env, record.id),
+        getOrderDeliveries(env, record.id),
+    ]);
     const isTtCard = record.payment_method === "tt-card";
 
     return {
@@ -1172,6 +1275,7 @@ async function getSavedOrderForNotification(env, record) {
         total: Number(record.product_total),
         amountDue: Number(record.amount_due),
         referredBy: record.referred_by || "",
+        deliveryText: deliveries.map((d) => d.delivery_text).join("\n"),
     };
 }
 
@@ -1343,8 +1447,42 @@ async function updateAdminOrder(env, body) {
     const record = await getOrderById(env, orderId);
     if (!record) throw new Error("Order was not found");
 
-    if (body.deliveryStatus === "delivered" && record.referred_by) {
-        await calculateAndSaveCommissions(env, record);
+    if (body.deliveryStatus === "delivered") {
+        if (record.referred_by) {
+            await calculateAndSaveCommissions(env, record);
+        }
+        const sellerItems = await getAllResults(
+            db.prepare("SELECT id, seller_id, line_total FROM order_items WHERE order_id = ? AND seller_id IS NOT NULL AND seller_status != 'delivered'").bind(orderId)
+        );
+        if (sellerItems.length) {
+            const sellerEarnings = {};
+            for (const item of sellerItems) {
+                const seller = await db.prepare("SELECT id, commission_percent FROM sellers WHERE id = ?").bind(item.seller_id).first();
+                if (seller) {
+                    const commissionPercent = Number(seller.commission_percent) || 0;
+                    const itemTotal = Number(item.line_total || 0);
+                    const earning = Number((itemTotal * (100 - commissionPercent) / 100).toFixed(3));
+                    if (earning > 0) {
+                        sellerEarnings[item.seller_id] = (sellerEarnings[item.seller_id] || 0) + earning;
+                    }
+                }
+            }
+            const batchStatements = sellerItems.map((item) =>
+                db.prepare("UPDATE order_items SET seller_status = 'delivered' WHERE id = ?").bind(item.id)
+            );
+            Object.entries(sellerEarnings).forEach(([sellerId, amount]) => {
+                batchStatements.push(
+                    db.prepare("UPDATE sellers SET balance = balance + ? WHERE id = ?").bind(amount, sellerId)
+                );
+            });
+            await db.batch(batchStatements);
+        }
+    }
+
+    if (body.paymentStatus === "verified" && record.telegram_username) {
+        sendCustomerTelegramNotification(env, record, "payment_verified").catch((err) =>
+            console.warn("Customer Telegram notification failed", err),
+        );
     }
 
     return getAdminOrderPayload(env, record);
@@ -1386,6 +1524,12 @@ async function saveAdminOrderDelivery(env, body) {
             throw new Error("order_deliveries table is missing. Run schema.sql in Cloudflare D1.");
         }
         throw error;
+    }
+
+    if (deliveryText && deliveryText !== "0" && record.telegram_username) {
+        sendCustomerTelegramNotification(env, record, "delivery", deliveryText).catch((err) =>
+            console.warn("Customer Telegram notification failed", err),
+        );
     }
 
     return getAdminOrderPayload(env, record);
@@ -1499,8 +1643,9 @@ async function saveOrderToDatabase(env, checkoutRequestId, order) {
                         option_label,
                         quantity,
                         unit_price,
-                        line_total
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                        line_total,
+                        seller_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 )
                 .bind(
                     order.id,
@@ -1511,6 +1656,7 @@ async function saveOrderToDatabase(env, checkoutRequestId, order) {
                     line.quantity,
                     line.unitPrice,
                     line.lineTotal,
+                    line.sellerId || null,
                 ),
         );
 
@@ -1558,10 +1704,11 @@ async function saveOrderToDatabase(env, checkoutRequestId, order) {
 
 async function markTelegramNotified(env, orderId) {
     const db = getOrderDb(env);
-    await db
-        .prepare("UPDATE orders SET telegram_notified_at = ? WHERE id = ?")
+    const result = await db
+        .prepare("UPDATE orders SET telegram_notified_at = ? WHERE id = ? AND telegram_notified_at IS NULL")
         .bind(new Date().toISOString(), orderId)
         .run();
+    return (result.changes || 0) > 0;
 }
 
 function escapeHtml(value) {
@@ -1572,6 +1719,21 @@ function escapeHtml(value) {
         .replace(/"/g, "&quot;");
 }
 
+function truncateLines(lines, maxLen = 3800) {
+    const result = [];
+    let total = 0;
+    for (const line of lines) {
+        const len = line.length + 1;
+        if (total + len > maxLen) {
+            result.push(`...and ${lines.length - result.length} more`);
+            break;
+        }
+        result.push(line);
+        total += len;
+    }
+    return result;
+}
+
 function telegramCode(value) {
     return `<code>${escapeHtml(value)}</code>`;
 }
@@ -1579,10 +1741,11 @@ function telegramCode(value) {
 function formatProofLines(order) {
     if (order.paymentProof.type === "tt-card") {
         const codes = order.paymentProof.cardCodes.map((code, index) => `${index + 1}. ${telegramCode(code)}`);
+        const truncated = truncateLines(codes, 1500);
         return [
             `${ICONS.ticket} Cards: ${order.paymentProof.cardCodes.length} x ${escapeHtml(formatTndAmount(order.paymentDetails.cardValue))}`,
             "Codes:",
-            ...codes,
+            ...truncated,
         ];
     }
 
@@ -1592,72 +1755,101 @@ function formatProofLines(order) {
 }
 
 function formatAdminMessage(order) {
-    const products = order.lines
-        .map((line) => {
-            const quantity = Number(line.quantity) > 1 ? `${line.quantity}\u00D7 ` : "";
-            const productLabel = getProductOptionName(line.name, line.optionLabel);
-            return `\u2022 ${escapeHtml(quantity)}${escapeHtml(productLabel)} \u2014 ${escapeHtml(formatTndAmount(line.lineTotal))}`;
-        })
-        .join("\n");
+    const productLines = order.lines.map((line) => {
+        const quantity = Number(line.quantity) > 1 ? `${line.quantity}\u00D7 ` : "";
+        const productLabel = getProductOptionName(line.name, line.optionLabel);
+        return `  \u2022 ${escapeHtml(quantity)}${escapeHtml(productLabel)}  \u2014 <code>${escapeHtml(formatTndAmount(line.lineTotal))}</code>`;
+    });
+    const products = truncateLines(productLines, 2000).join("\n");
+    const itemCount = order.lines.reduce((sum, l) => sum + Number(l.quantity), 0);
 
-    return [
-        `${ICONS.cart} New order \u2014 ${escapeHtml(order.id)}`,
+    const lines = [
+        `${ICONS.cart} <b>${escapeHtml(order.id)}</b>`,
+        "\u2501".repeat(21),
+        `${ICONS.phone} <code>${escapeHtml(formatTunisianPhone(order.customerPhone))}</code>`,
+    ];
+
+    if (order.referredBy) {
+        lines.push(`${ICONS.link} <code>${escapeHtml(order.referredBy)}</code>`);
+    }
+
+    lines.push(
         "",
-        `${ICONS.phone} WhatsApp: ${escapeHtml(formatTunisianPhone(order.customerPhone))}`,
-        `${ICONS.link} Referred by: ${order.referredBy ? escapeHtml(order.referredBy) : "Direct"}`,
-        "",
+        `<b>${escapeHtml(formatTndAmount(order.total))}</b> \u2014 ${itemCount} item${itemCount !== 1 ? "s" : ""}`,
         products,
         "",
-        `${ICONS.money} Products: ${escapeHtml(formatTndAmount(order.total))}`,
-        `${ICONS.card} Payment: ${escapeHtml(order.paymentMethodLabel)}`,
-        `${ICONS.verify} To verify: ${escapeHtml(formatTndAmount(order.amountDue))}`,
+        `<b>Payment:</b> <code>${escapeHtml(formatTndAmount(order.total))}</code> via ${escapeHtml(order.paymentMethodLabel)}`,
+        ...formatProofLines(order).map((l) => `   ${l}`),
+        `   Status:  ${order.paymentStatus === "verified" ? ICONS.verify : ICONS.warning} ${escapeHtml(order.paymentStatusLabel)}`,
+    );
+
+    if (order.paymentStatusReason) {
+        lines.push(`   Reason: ${escapeHtml(order.paymentStatusReason)}`);
+    }
+
+    lines.push(
         "",
-        ...formatProofLines(order),
-        "",
-        `${ICONS.warning} Payment: ${escapeHtml(order.paymentStatusLabel)}`,
-        order.paymentStatusReason ? `Reason: ${escapeHtml(order.paymentStatusReason)}` : "",
-        `${ICONS.delivery} Delivery: ${escapeHtml(order.deliveryStatusLabel || getDeliveryStatusLabel(order.deliveryStatus || "waiting"))}`,
-        order.deliveryStatusReason ? `Reason: ${escapeHtml(order.deliveryStatusReason)}` : "",
-    ]
-        .filter((line) => line !== "")
-        .join("\n");
+        `<b>Delivery:</b> ${ICONS.delivery} ${escapeHtml(order.deliveryStatusLabel || getDeliveryStatusLabel(order.deliveryStatus || "waiting"))}`,
+    );
+
+    if (order.deliveryStatusReason) {
+        lines.push(`   Reason: ${escapeHtml(order.deliveryStatusReason)}`);
+    }
+
+    if (order.deliveryText) {
+        const deliveryLines = order.deliveryText.split("\n").map((l) => l.trim()).filter(Boolean);
+        if (deliveryLines.length) {
+            lines.push(`${ICONS.key} ${deliveryLines.join("\n   ")}`);
+        }
+    }
+
+    return lines.filter((line) => line !== "").join("\n");
 }
 
 function getAdminOrderKeyboard(order) {
     const phone = normalizePhone(order.customerPhone);
     const paymentStatus = String(order.paymentStatus || "").toLowerCase();
-    const keyboard =
-        paymentStatus === "verified"
-            ? [
-                  [
-                      {
-                          text: "\uD83D\uDE9A Delivered",
-                          callback_data: `hk|delivery|delivered|${order.id}`,
-                      },
-                      {
-                          text: "\u23F3 Not delivered",
-                          callback_data: `hk|delivery|waiting|${order.id}`,
-                      },
-                  ],
-                  [
-                      {
-                          text: "\uD83D\uDD11 Add delivery keys / note",
-                          callback_data: `hk|deliverycode|${order.id}`,
-                      },
-                  ],
-              ]
-            : [
-                  [
-                      {
-                          text: "\u2705 Verify payment",
-                          callback_data: `hk|payment|verified|${order.id}`,
-                      },
-                      {
-                          text: "\u274C Reject payment",
-                          callback_data: `hk|payment|rejected|${order.id}`,
-                      },
-                  ],
-              ];
+    const deliveryStatus = String(order.deliveryStatus || "").toLowerCase();
+    const keyboard = [];
+
+    if (deliveryStatus === "delivered") {
+        keyboard.push([
+            {
+                text: "\u21A9\uFE0F Undo delivery",
+                callback_data: `hk|delivery|waiting|${order.id}`,
+            },
+        ]);
+    } else if (paymentStatus === "verified") {
+        keyboard.push(
+            [
+                {
+                    text: "\uD83D\uDE9A Delivered",
+                    callback_data: `hk|delivery|delivered|${order.id}`,
+                },
+                {
+                    text: "\u23F3 Not delivered",
+                    callback_data: `hk|delivery|waiting|${order.id}`,
+                },
+            ],
+            [
+                {
+                    text: "\uD83D\uDD11 Add delivery keys / note",
+                    callback_data: `hk|deliverycode|${order.id}`,
+                },
+            ],
+        );
+    } else {
+        keyboard.push([
+            {
+                text: "\u2705 Verify payment",
+                callback_data: `hk|payment|verified|${order.id}`,
+            },
+            {
+                text: "\u274C Reject payment",
+                callback_data: `hk|payment|rejected|${order.id}`,
+            },
+        ]);
+    }
 
     if (/^\d{8}$/.test(phone)) {
         keyboard.push([
@@ -1678,9 +1870,7 @@ function getAdminOrderKeyboard(order) {
     }
 
     return {
-        inline_keyboard: [
-            ...keyboard,
-        ],
+        inline_keyboard: keyboard,
     };
 }
 
@@ -1731,6 +1921,28 @@ async function editTelegramMessage(env, chatId, messageId, text, replyMarkup) {
     };
     if (replyMarkup) payload.reply_markup = replyMarkup;
     await callTelegramApi(env, "editMessageText", payload);
+}
+
+async function deleteTelegramMessage(env, chatId, messageId) {
+    await callTelegramApi(env, "deleteMessage", { chat_id: chatId, message_id: messageId });
+}
+
+async function sendCustomerTelegramNotification(env, record, type, extraText) {
+    const username = String(record.telegram_username || "").replace(/^@/, "").trim();
+    if (!username) return;
+
+    const orderId = record.id;
+    let text;
+
+    if (type === "payment_verified") {
+        text = `${ICONS.verify} Your order ${escapeHtml(orderId)} payment has been verified. We will process it shortly. Thank you!`;
+    } else if (type === "delivery") {
+        text = `${ICONS.key} Delivery details for ${escapeHtml(orderId)}:\n${extraText || ""}\n\nThank you for shopping with us!`;
+    } else {
+        return;
+    }
+
+    await sendTelegramMessage(env, `@${username}`, text);
 }
 
 function cleanupProcessedOrders() {
@@ -2037,6 +2249,182 @@ async function approveAdminPayout(env, body) {
     return { id, status: newStatus };
 }
 
+async function listAdminSellers(env) {
+    await ensureOrderSchema(env);
+    const db = getOrderDb(env);
+    const rows = await getAllResults(db.prepare("SELECT id, store_name, email, phone, commission_percent, balance, active, approved, created_at FROM sellers ORDER BY created_at DESC").bind());
+    return rows.map((r) => ({
+        id: r.id,
+        storeName: r.store_name,
+        email: r.email || "",
+        phone: r.phone,
+        commissionPercent: Number(r.commission_percent),
+        balance: Number(r.balance),
+        active: !!r.active,
+        approved: !!r.approved,
+        createdAt: r.created_at,
+    }));
+}
+
+async function createAdminSeller(env, body) {
+    await ensureOrderSchema(env);
+    const storeName = String(body.storeName || "").trim();
+    const phone = String(body.phone || "").trim().replace(/\D/g, "");
+    const password = String(body.password || "").trim();
+    const commissionPercent = Number(body.commissionPercent) || 0;
+    if (!storeName) throw new Error("Store name is required");
+    if (!phone) throw new Error("Phone is required");
+    if (!password || password.length < 4) throw new Error("Password must be at least 4 characters");
+
+    const encoder = new TextEncoder();
+    const passwordBuffer = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", passwordBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    let sellerId = storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!sellerId) throw new Error("Could not generate seller ID from store name");
+
+    const db = getOrderDb(env);
+    let existing = await db.prepare("SELECT id FROM sellers WHERE id = ?").bind(sellerId).first();
+    let suffix = 2;
+    const originalId = sellerId;
+    while (existing) {
+        sellerId = `${originalId}-${suffix}`;
+        suffix++;
+        existing = await db.prepare("SELECT id FROM sellers WHERE id = ?").bind(sellerId).first();
+    }
+
+    const now = new Date().toISOString();
+    await db.prepare(
+        "INSERT INTO sellers (id, store_name, email, phone, password_hash, commission_percent, balance, active, approved, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, 1, 1, ?)"
+    ).bind(sellerId, storeName, body.email || "", phone, hashHex, commissionPercent, now).run();
+
+    return { id: sellerId, storeName, phone, commissionPercent };
+}
+
+async function toggleAdminSeller(env, body) {
+    await ensureOrderSchema(env);
+    const id = String(body.id || "").trim().toLowerCase();
+    if (!id) throw new Error("Seller ID is required");
+    const db = getOrderDb(env);
+    const seller = await db.prepare("SELECT active FROM sellers WHERE id = ?").bind(id).first();
+    if (!seller) throw new Error("Seller not found");
+    const newActive = seller.active ? 0 : 1;
+    await db.prepare("UPDATE sellers SET active = ? WHERE id = ?").bind(newActive, id).run();
+    return { id, active: !!newActive };
+}
+
+async function approveAdminSeller(env, body) {
+    await ensureOrderSchema(env);
+    const id = String(body.id || "").trim().toLowerCase();
+    if (!id) throw new Error("Seller ID is required");
+    const db = getOrderDb(env);
+    const seller = await db.prepare("SELECT id FROM sellers WHERE id = ?").bind(id).first();
+    if (!seller) throw new Error("Seller not found");
+    await db.prepare("UPDATE sellers SET approved = 1 WHERE id = ?").bind(id).run();
+    return { id, approved: true };
+}
+
+async function changeAdminSellerPassword(env, body) {
+    await ensureOrderSchema(env);
+    const id = String(body.id || "").trim().toLowerCase();
+    const password = String(body.password || "").trim();
+    if (!id) throw new Error("Seller ID is required");
+    if (!password || password.length < 4) throw new Error("Password must be at least 4 characters");
+    const encoder = new TextEncoder();
+    const passwordBuffer = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", passwordBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    const db = getOrderDb(env);
+    const result = await db.prepare("UPDATE sellers SET password_hash = ? WHERE id = ?").bind(hashHex, id).run();
+    if (!result.meta?.changes) throw new Error("Seller not found");
+}
+
+async function deleteAdminSeller(env, body) {
+    await ensureOrderSchema(env);
+    const id = String(body.id || "").trim().toLowerCase();
+    if (!id) throw new Error("Seller ID is required");
+    const db = getOrderDb(env);
+    await db.batch([
+        db.prepare("DELETE FROM seller_payouts WHERE seller_id = ?").bind(id),
+        db.prepare("DELETE FROM seller_sessions WHERE seller_id = ?").bind(id),
+        db.prepare("DELETE FROM sellers WHERE id = ?").bind(id),
+    ]);
+}
+
+async function adminListSellerPayouts(env) {
+    await ensureOrderSchema(env);
+    const db = getOrderDb(env);
+    const rows = await getAllResults(db.prepare("SELECT sp.id, sp.seller_id, sp.amount, sp.method, sp.recipient_detail, sp.status, sp.created_at, sp.updated_at, s.store_name FROM seller_payouts sp LEFT JOIN sellers s ON s.id = sp.seller_id ORDER BY sp.created_at DESC LIMIT 50").bind());
+    return rows.map((r) => ({
+        id: r.id,
+        sellerId: r.seller_id,
+        storeName: r.store_name || r.seller_id,
+        amount: Number(r.amount),
+        method: r.method,
+        recipientDetail: r.recipient_detail,
+        status: r.status,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at || "",
+    }));
+}
+
+async function adminApproveSellerPayout(env, body) {
+    await ensureOrderSchema(env);
+    const id = Number(body.id);
+    const newStatus = String(body.status || "").trim();
+    if (!id || !["paid", "rejected"].includes(newStatus)) throw new Error("Invalid payout status");
+    const db = getOrderDb(env);
+    const payout = await db.prepare("SELECT id, seller_id, amount, status FROM seller_payouts WHERE id = ?").bind(id).first();
+    if (!payout) throw new Error("Payout not found");
+    if (payout.status !== "requested") throw new Error("Payout already processed");
+
+    const now = new Date().toISOString();
+    if (newStatus === "paid") {
+        await db.batch([
+            db.prepare("UPDATE seller_payouts SET status = 'paid', updated_at = ? WHERE id = ?").bind(now, id),
+            db.prepare("UPDATE sellers SET balance = balance - ? WHERE id = ?").bind(payout.amount, payout.seller_id),
+        ]);
+    } else {
+        await db.prepare("UPDATE seller_payouts SET status = 'rejected', updated_at = ? WHERE id = ?").bind(now, id).run();
+    }
+
+    return { id, status: newStatus };
+}
+
+async function adminListPendingProducts(env) {
+    await ensureCatalogSchema(env);
+    const db = getCatalogDb(env);
+    const rows = await getAllResults(db.prepare("SELECT id, data, category, seller_id, created_at, updated_at FROM products WHERE seller_id IS NOT NULL AND approved = 0 ORDER BY created_at DESC").bind());
+    return rows.map((r) => ({
+        id: r.id,
+        data: (() => { try { return JSON.parse(r.data); } catch { return {}; } })(),
+        category: r.category || "",
+        sellerId: r.seller_id,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+    }));
+}
+
+async function adminApproveProduct(env, body) {
+    await ensureCatalogSchema(env);
+    const productId = String(body.id || "").trim();
+    const approve = body.approve !== false;
+    if (!productId) throw new Error("Product ID is required");
+    const db = getCatalogDb(env);
+    const product = await db.prepare("SELECT id, seller_id FROM products WHERE id = ?").bind(productId).first();
+    if (!product) throw new Error("Product not found");
+    if (!product.seller_id) throw new Error("Cannot approve store-owned products");
+    if (approve) {
+        await db.prepare("UPDATE products SET approved = 1, updated_at = ? WHERE id = ?").bind(new Date().toISOString(), productId).run();
+    } else {
+        await db.prepare("DELETE FROM products WHERE id = ? AND seller_id IS NOT NULL").bind(productId).run();
+    }
+    return { id: productId, approved: approve };
+}
+
 async function handleAdminAction(body, request, env, corsHeaders) {
     requireAdmin(request, env);
     await ensureOrderSchema(env);
@@ -2108,6 +2496,48 @@ async function handleAdminAction(body, request, env, corsHeaders) {
         return jsonResponse({ ok: true, payout: await approveAdminPayout(env, body) }, 200, corsHeaders);
     }
 
+    if (body.action === "admin-list-sellers") {
+        return jsonResponse({ ok: true, sellers: await listAdminSellers(env) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-create-seller") {
+        return jsonResponse({ ok: true, seller: await createAdminSeller(env, body) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-toggle-seller") {
+        return jsonResponse({ ok: true, seller: await toggleAdminSeller(env, body) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-approve-seller") {
+        return jsonResponse({ ok: true, seller: await approveAdminSeller(env, body) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-change-seller-password") {
+        await changeAdminSellerPassword(env, body);
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-delete-seller") {
+        await deleteAdminSeller(env, body);
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-list-seller-payouts") {
+        return jsonResponse({ ok: true, payouts: await adminListSellerPayouts(env) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-approve-seller-payout") {
+        return jsonResponse({ ok: true, payout: await adminApproveSellerPayout(env, body) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-list-pending-products") {
+        return jsonResponse({ ok: true, products: await adminListPendingProducts(env) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-approve-product") {
+        return jsonResponse({ ok: true, result: await adminApproveProduct(env, body) }, 200, corsHeaders);
+    }
+
     return jsonResponse({ error: "Unknown admin action" }, 400, corsHeaders);
 }
 
@@ -2152,8 +2582,8 @@ async function handleAdminSaveData(body, request, env, corsHeaders) {
         Object.entries(body.products).forEach(([id, product]) => {
             statements.push(
                 db
-                    .prepare("INSERT INTO products (id, data, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
-                    .bind(id, JSON.stringify(product), product.category || "Digital", now, now),
+                    .prepare("INSERT INTO products (id, data, category, seller_id, approved, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                    .bind(id, JSON.stringify(product), product.category || "Digital", product.seller_id || null, product.seller_id ? 1 : 0, now, now),
             );
         });
     }
@@ -2309,24 +2739,33 @@ function parseTelegramAction(data) {
 
 async function handleTelegramDeliveryReply(message, env) {
     const chatId = message?.chat?.id;
-    if (String(chatId || "") !== String(env.TELEGRAM_ADMIN_CHAT_ID || "")) return;
+    if (String(chatId || "") !== String(env.TELEGRAM_ADMIN_CHAT_ID || "")) return false;
 
-    const replyText = String(message.reply_to_message?.text || "");
-    if (!replyText.includes("Delivery codes for")) return;
-
-    const match = replyText.match(/HK-\d{6}/i);
-    if (!match) return;
+    const key = String(chatId);
+    const entry = pendingDeliveryOrders.get(key);
+    if (!entry) return false;
 
     const deliveryText = String(message.text || "").trim();
     if (!deliveryText) {
         await sendTelegramMessage(env, chatId, `${ICONS.warning} Send text delivery details or 0.`);
-        return;
+        return true;
     }
 
-    const orderId = normalizeOrderId(match[0]);
-    await saveAdminOrderDelivery(env, { orderId, deliveryText });
-    const savedText = deliveryText === "0" ? "Delivery details cleared" : "Delivery details saved";
-    await sendTelegramMessage(env, chatId, `${ICONS.verify} ${savedText} for ${telegramCode(orderId)}.`);
+    const { orderId, messageId: orderMsgId } = entry;
+    pendingDeliveryOrders.delete(key);
+
+    try {
+        await saveAdminOrderDelivery(env, { orderId, deliveryText });
+        const record = await getOrderById(env, orderId);
+        const order = await getSavedOrderForNotification(env, record);
+        await editTelegramMessage(env, chatId, orderMsgId, formatAdminMessage(order), getAdminOrderKeyboard(order));
+        await deleteTelegramMessage(env, chatId, message.message_id).catch((err) =>
+            console.warn("Telegram delete reply failed", err),
+        );
+    } catch (error) {
+        await sendTelegramMessage(env, chatId, `${ICONS.warning} Delivery save failed: ${error.message}`);
+    }
+    return true;
 }
 
 async function handleTelegramWebhook(body, request, env, corsHeaders) {
@@ -2336,9 +2775,16 @@ async function handleTelegramWebhook(body, request, env, corsHeaders) {
     const callbackQuery = body.callback_query;
     if (!callbackQuery) {
         if (body.message) {
-            await handleTelegramDeliveryReply(body.message, env).catch((error) =>
-                console.warn("Telegram delivery reply failed", error),
-            );
+            const wasDeliveryReply = await handleTelegramDeliveryReply(body.message, env).catch((error) => {
+                console.warn("Telegram delivery reply failed", error);
+                return false;
+            });
+            const msgChatId = body.message.chat?.id;
+            if (!wasDeliveryReply && String(msgChatId || "") === String(env.TELEGRAM_ADMIN_CHAT_ID || "")) {
+                await sendTelegramMessage(env, msgChatId, "Use the inline buttons on order notifications to manage orders. Tap 'Add delivery keys' then type the delivery text.").catch((err) =>
+                    console.warn("Telegram help message failed", err),
+                );
+            }
         }
         return jsonResponse({ ok: true }, 200, corsHeaders);
     }
@@ -2367,21 +2813,8 @@ async function handleTelegramWebhook(body, request, env, corsHeaders) {
             const record = await getOrderById(env, action.orderId);
             if (!record) throw new Error("Order was not found");
 
-            await answerTelegramCallback(env, callbackQuery.id, `Reply with delivery details for ${action.orderId}`);
-            await sendTelegramMessage(
-                env,
-                chatId,
-                [
-                    `${ICONS.key} Delivery codes for ${telegramCode(action.orderId)}`,
-                    "Reply to this message with delivery text.",
-                    "Use Note: CODE for customer copy buttons.",
-                    "Send 0 if no code should be delivered.",
-                ].join("\n"),
-                {
-                    force_reply: true,
-                    selective: true,
-                },
-            );
+            pendingDeliveryOrders.set(String(chatId), { orderId: action.orderId, messageId });
+            await answerTelegramCallback(env, callbackQuery.id, "Reply with delivery text.");
         } catch (error) {
             await answerTelegramCallback(env, callbackQuery.id, error.message || "Could not start delivery flow", true).catch((answerError) =>
                 console.warn("Telegram callback answer failed", answerError),
@@ -2411,9 +2844,12 @@ async function handleTelegramWebhook(body, request, env, corsHeaders) {
         await answerTelegramCallback(env, callbackQuery.id, `${action.orderId}: ${statusLabel}`);
 
         if (chatId && messageId) {
-            await editTelegramMessage(env, chatId, messageId, formatAdminMessage(order), getAdminOrderKeyboard(order)).catch((error) =>
-                console.warn("Telegram message edit failed", error),
-            );
+            await editTelegramMessage(env, chatId, messageId, formatAdminMessage(order), getAdminOrderKeyboard(order)).catch((error) => {
+                console.warn("Telegram message edit failed", error);
+                sendTelegramMessage(env, chatId, formatAdminMessage(order), getAdminOrderKeyboard(order)).catch((err) =>
+                    console.warn("Telegram fallback message also failed", err),
+                );
+            });
         }
     } catch (error) {
         await answerTelegramCallback(env, callbackQuery.id, error.message || "Could not update order", true).catch((answerError) =>
@@ -2459,6 +2895,10 @@ async function calculateAndSaveCommissions(env, record) {
     const now = new Date().toISOString();
 
     for (const item of items) {
+        if (item.seller_id) {
+            console.log(`[commission] Order ${record.id}: item "${item.product_id}" belongs to seller "${item.seller_id}", skipping affiliate commission`);
+            continue;
+        }
         const product = allProducts[item.product_id];
         if (!product) {
             console.log(`[commission] Order ${record.id}: item product_id="${item.product_id}" not found in products`);
@@ -2525,6 +2965,318 @@ async function getAffiliateByToken(env, token) {
     const session = await db.prepare("SELECT ref_code FROM affiliate_sessions WHERE token = ?").bind(token).first();
     if (!session) return null;
     return db.prepare("SELECT ref_code, name, phone, total_earnings, active FROM affiliates WHERE ref_code = ?").bind(session.ref_code).first();
+}
+
+async function getSellerByToken(env, token) {
+    if (!token) return null;
+    const db = getOrderDb(env);
+    const session = await db.prepare("SELECT seller_id FROM seller_sessions WHERE token = ?").bind(token).first();
+    if (!session) return null;
+    return db.prepare("SELECT id, store_name, email, phone, commission_percent, balance, active, approved FROM sellers WHERE id = ?").bind(session.seller_id).first();
+}
+
+async function handleSellerAction(body, request, env, corsHeaders) {
+    const action = body.action;
+
+    if (action === "seller-login") {
+        const sellerId = String(body.sellerId || "").trim().toLowerCase();
+        const password = String(body.password || "").trim();
+        if (!sellerId || !password) {
+            return jsonResponse({ error: "Enter seller ID and password" }, 400, corsHeaders);
+        }
+        const db = getOrderDb(env);
+        const seller = await db.prepare("SELECT id, store_name, email, phone, password_hash, commission_percent, balance, active, approved FROM sellers WHERE id = ?").bind(sellerId).first();
+        if (!seller) {
+            return jsonResponse({ error: "Seller not found" }, 404, corsHeaders);
+        }
+        if (!seller.active) {
+            return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+        }
+        if (!seller.approved) {
+            return jsonResponse({ error: "Seller account is not yet approved" }, 403, corsHeaders);
+        }
+        const encoder = new TextEncoder();
+        const passwordBuffer = encoder.encode(password);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", passwordBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+        if (hashHex !== seller.password_hash) {
+            return jsonResponse({ error: "Invalid password" }, 401, corsHeaders);
+        }
+        const tokenBytes = new Uint8Array(32);
+        crypto.getRandomValues(tokenBytes);
+        const token = Array.from(tokenBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+        const now = new Date().toISOString();
+        await db.prepare("INSERT INTO seller_sessions (token, seller_id, created_at) VALUES (?, ?, ?)").bind(token, seller.id, now).run();
+        return jsonResponse({ ok: true, token, seller: { id: seller.id, storeName: seller.store_name, email: seller.email || "", phone: seller.phone, commissionPercent: Number(seller.commission_percent), balance: Number(seller.balance) } }, 200, corsHeaders);
+    }
+
+    if (action === "seller-logout") {
+        const token = String(body.token || "").trim();
+        if (token) {
+            await getOrderDb(env).prepare("DELETE FROM seller_sessions WHERE token = ?").bind(token).run();
+        }
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (action === "seller-stats") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+
+        const db = getOrderDb(env);
+        const pdb = getCatalogDb(env);
+
+        const [sellerOrders, payouts, products] = await Promise.all([
+            getAllResults(db.prepare("SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity, oi.unit_price, oi.line_total, oi.seller_status, o.created_at FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id = ? ORDER BY o.created_at DESC LIMIT 100").bind(seller.id)),
+            getAllResults(db.prepare("SELECT id, amount, method, recipient_detail, status, created_at, updated_at FROM seller_payouts WHERE seller_id = ? ORDER BY created_at DESC LIMIT 50").bind(seller.id)),
+            getAllResults(pdb.prepare("SELECT id, data, category, approved, created_at FROM products WHERE seller_id = ? ORDER BY created_at DESC").bind(seller.id)),
+        ]);
+
+        const totalSales = sellerOrders.reduce((sum, o) => sum + Number(o.line_total), 0);
+        const totalOrders = new Set(sellerOrders.map((o) => o.order_id)).size;
+        const deliveredItems = sellerOrders.filter((o) => o.seller_status === "delivered").length;
+        const pendingItems = sellerOrders.filter((o) => o.seller_status === "pending").length;
+        const totalPayouts = payouts.filter((p) => p.status === "paid").reduce((sum, p) => sum + Number(p.amount), 0);
+        const pendingProducts = products.filter((p) => !p.approved).length;
+
+        return jsonResponse({
+            ok: true,
+            seller: {
+                id: seller.id,
+                storeName: seller.store_name,
+                email: seller.email || "",
+                phone: seller.phone,
+                commissionPercent: Number(seller.commission_percent),
+                balance: Number(seller.balance),
+            },
+            stats: {
+                totalOrders,
+                totalSales,
+                deliveredItems,
+                pendingItems,
+                totalPayouts,
+                pendingProducts,
+            },
+            orders: sellerOrders.map((o) => ({
+                id: o.id,
+                orderId: o.order_id,
+                productId: o.product_id,
+                productName: o.product_name,
+                quantity: o.quantity,
+                unitPrice: Number(o.unit_price),
+                lineTotal: Number(o.line_total),
+                status: o.seller_status,
+                createdAt: o.created_at,
+            })),
+            payouts: payouts.map((p) => ({
+                id: p.id,
+                amount: Number(p.amount),
+                method: p.method,
+                recipientDetail: p.recipient_detail,
+                status: p.status,
+                createdAt: p.created_at,
+                updatedAt: p.updated_at || "",
+            })),
+            products: products.map((p) => ({
+                id: p.id,
+                data: (() => { try { return JSON.parse(p.data); } catch { return {}; } })(),
+                category: p.category || "",
+                approved: !!p.approved,
+                createdAt: p.created_at,
+            })),
+        }, 200, corsHeaders);
+    }
+
+    if (action === "seller-list-products") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+
+        const pdb = getCatalogDb(env);
+        const rows = await getAllResults(pdb.prepare("SELECT id, data, category, approved, created_at, updated_at FROM products WHERE seller_id = ? ORDER BY created_at DESC").bind(seller.id));
+        const products = rows.map((r) => ({
+            id: r.id,
+            data: (() => { try { return JSON.parse(r.data); } catch { return {}; } })(),
+            category: r.category || "",
+            approved: !!r.approved,
+            createdAt: r.created_at,
+            updatedAt: r.updated_at,
+        }));
+        return jsonResponse({ ok: true, products }, 200, corsHeaders);
+    }
+
+    if (action === "seller-create-product") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+
+        await ensureCatalogSchema(env);
+        const name = String(body.name || "").trim();
+        const price = Number(body.price);
+        const category = String(body.category || "").trim();
+        const description = String(body.description || "").trim();
+        const photo = String(body.photo || "assets/hyperlogo.png").trim();
+        const icon = String(body.icon || "bi-box").trim();
+
+        if (!name || !Number.isFinite(price) || price <= 0) {
+            return jsonResponse({ error: "Product name and a valid price are required" }, 400, corsHeaders);
+        }
+
+        const pdb = getCatalogDb(env);
+        const productId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") + "-" + Date.now().toString(36);
+
+        const productData = { name, price, description, photo, icon, variations: [] };
+        const now = new Date().toISOString();
+
+        await pdb.prepare(
+            "INSERT INTO products (id, data, category, seller_id, approved, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)"
+        ).bind(productId, JSON.stringify(productData), category, seller.id, now, now).run();
+
+        return jsonResponse({ ok: true, product: { id: productId, data: productData, category, approved: false, createdAt: now } }, 200, corsHeaders);
+    }
+
+    if (action === "seller-update-product") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+
+        const productId = String(body.productId || "").trim();
+        if (!productId) return jsonResponse({ error: "Product ID is required" }, 400, corsHeaders);
+
+        const pdb = getCatalogDb(env);
+        const existing = await pdb.prepare("SELECT id, data, seller_id FROM products WHERE id = ?").bind(productId).first();
+        if (!existing) return jsonResponse({ error: "Product not found" }, 404, corsHeaders);
+        if (existing.seller_id !== seller.id) return jsonResponse({ error: "Not your product" }, 403, corsHeaders);
+
+        let currentData = {};
+        try { currentData = JSON.parse(existing.data); } catch { /* ignore */ }
+
+        if (body.name !== undefined) currentData.name = String(body.name).trim();
+        if (body.price !== undefined) currentData.price = Number(body.price);
+        if (body.description !== undefined) currentData.description = String(body.description).trim();
+        if (body.photo !== undefined) currentData.photo = String(body.photo).trim();
+        if (body.icon !== undefined) currentData.icon = String(body.icon).trim();
+        if (body.variations !== undefined) currentData.variations = body.variations;
+
+        const category = body.category !== undefined ? String(body.category).trim() : (existing.category || "");
+        const now = new Date().toISOString();
+
+        await pdb.prepare(
+            "UPDATE products SET data = ?, category = ?, updated_at = ? WHERE id = ?"
+        ).bind(JSON.stringify(currentData), category, now, productId).run();
+
+        return jsonResponse({ ok: true, product: { id: productId, data: currentData, category, approved: !!existing.approved, updatedAt: now } }, 200, corsHeaders);
+    }
+
+    if (action === "seller-delete-product") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+
+        const productId = String(body.productId || "").trim();
+        if (!productId) return jsonResponse({ error: "Product ID is required" }, 400, corsHeaders);
+
+        const pdb = getCatalogDb(env);
+        const existing = await pdb.prepare("SELECT id, seller_id FROM products WHERE id = ?").bind(productId).first();
+        if (!existing) return jsonResponse({ error: "Product not found" }, 404, corsHeaders);
+        if (existing.seller_id !== seller.id) return jsonResponse({ error: "Not your product" }, 403, corsHeaders);
+
+        await pdb.prepare("DELETE FROM products WHERE id = ? AND seller_id = ?").bind(productId, seller.id).run();
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (action === "seller-list-orders") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+
+        const db = getOrderDb(env);
+        const rows = await getAllResults(db.prepare(
+            "SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.option_label, oi.quantity, oi.unit_price, oi.line_total, oi.seller_status, o.customer_phone, o.created_at FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.seller_id = ? AND o.payment_status = 'paid' ORDER BY o.created_at DESC LIMIT 100"
+        ).bind(seller.id));
+
+        return jsonResponse({
+            ok: true,
+            orders: rows.map((r) => ({
+                id: r.id,
+                orderId: r.order_id,
+                productId: r.product_id,
+                productName: r.product_name,
+                optionLabel: r.option_label || "",
+                quantity: r.quantity,
+                unitPrice: Number(r.unit_price),
+                lineTotal: Number(r.line_total),
+                status: r.seller_status,
+                customerPhone: r.customer_phone,
+                createdAt: r.created_at,
+            })),
+        }, 200, corsHeaders);
+    }
+
+    if (action === "seller-deliver-item") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+
+        const itemId = Number(body.itemId);
+        if (!itemId) return jsonResponse({ error: "Item ID is required" }, 400, corsHeaders);
+
+        const db = getOrderDb(env);
+        const item = await db.prepare("SELECT id, seller_id, seller_status FROM order_items WHERE id = ?").bind(itemId).first();
+        if (!item) return jsonResponse({ error: "Item not found" }, 404, corsHeaders);
+        if (item.seller_id !== seller.id) return jsonResponse({ error: "Not your item" }, 403, corsHeaders);
+        if (item.seller_status === "delivered") return jsonResponse({ error: "Already delivered" }, 400, corsHeaders);
+
+        const now = new Date().toISOString();
+        await db.prepare("UPDATE order_items SET seller_status = 'delivered' WHERE id = ? AND seller_id = ?").bind(itemId, seller.id).run();
+
+        const commissionPercent = Number(seller.commission_percent) || 0;
+        const itemTotal = Number(item.line_total || 0);
+        const sellerEarning = Number((itemTotal * (100 - commissionPercent) / 100).toFixed(3));
+        if (sellerEarning > 0) {
+            await db.prepare("UPDATE sellers SET balance = balance + ? WHERE id = ?").bind(sellerEarning, seller.id).run();
+        }
+
+        return jsonResponse({ ok: true, earning: sellerEarning }, 200, corsHeaders);
+    }
+
+    if (action === "seller-request-payout") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+
+        const amount = Number(body.amount);
+        const method = String(body.method || "").trim() || "d17";
+        const recipientDetail = String(body.recipientDetail || seller.phone || "").trim();
+
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return jsonResponse({ error: "Enter a valid amount" }, 400, corsHeaders);
+        }
+
+        const available = Number(seller.balance);
+        if (amount > available) {
+            return jsonResponse({ error: `Insufficient balance. Available: ${available.toFixed(3)} TND` }, 400, corsHeaders);
+        }
+
+        const db = getOrderDb(env);
+        const now = new Date().toISOString();
+        await db.prepare(
+            "INSERT INTO seller_payouts (seller_id, amount, method, recipient_detail, status, created_at) VALUES (?, ?, ?, ?, 'requested', ?)"
+        ).bind(seller.id, amount, method, recipientDetail, now).run();
+
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    return jsonResponse({ error: "Unknown seller action" }, 400, corsHeaders);
 }
 
 async function handleAffiliateAction(body, request, env, corsHeaders) {
@@ -2687,6 +3439,10 @@ async function handleOrder(request, env, corsHeaders) {
         return handleAffiliateAction(body, request, env, corsHeaders);
     }
 
+    if (String(body.action || "").startsWith("seller-")) {
+        return handleSellerAction(body, request, env, corsHeaders);
+    }
+
     if (body.action === "order-status") {
         return handleOrderStatus(body, env, corsHeaders);
     }
@@ -2708,28 +3464,16 @@ async function handleOrder(request, env, corsHeaders) {
 
     const existingSavedOrder = await getOrderByCheckoutRequestId(env, checkoutRequestId);
     if (existingSavedOrder) {
-        if (!existingSavedOrder.telegram_notified_at) {
-            if (!env.TELEGRAM_ADMIN_CHAT_ID) {
-                const error = new Error("Telegram admin chat ID is not configured");
-                error.statusCode = 500;
-                throw error;
+        if (!existingSavedOrder.telegram_notified_at && env.TELEGRAM_ADMIN_CHAT_ID) {
+            try {
+                const savedOrderForNotification = await getSavedOrderForNotification(env, existingSavedOrder);
+                await sendTelegramMessage(env, env.TELEGRAM_ADMIN_CHAT_ID, formatAdminMessage(savedOrderForNotification), getAdminOrderKeyboard(savedOrderForNotification));
+                await markTelegramNotified(env, existingSavedOrder.id);
+            } catch (err) {
+                console.warn("Telegram notification for existing order failed", err);
             }
-            const savedOrderForNotification = await getSavedOrderForNotification(env, existingSavedOrder);
-            await sendTelegramMessage(
-                env,
-                env.TELEGRAM_ADMIN_CHAT_ID,
-                formatAdminMessage(savedOrderForNotification),
-                getAdminOrderKeyboard(savedOrderForNotification),
-            );
-            await markTelegramNotified(env, existingSavedOrder.id);
         }
         return jsonResponse(getResponsePayloadFromRecord(existingSavedOrder), 200, corsHeaders);
-    }
-
-    if (!env.TELEGRAM_ADMIN_CHAT_ID) {
-        const error = new Error("Telegram admin chat ID is not configured");
-        error.statusCode = 500;
-        throw error;
     }
 
     await ensureCatalogSchema(env);
@@ -2749,15 +3493,14 @@ async function handleOrder(request, env, corsHeaders) {
     processedOrders.set(checkoutRequestId, { createdAt: Date.now(), pending: true });
     const savedOrder = await saveOrderToDatabase(env, checkoutRequestId, order);
     if (savedOrder.duplicate) {
-        if (savedOrder.record && !savedOrder.record.telegram_notified_at) {
-            const savedOrderForNotification = await getSavedOrderForNotification(env, savedOrder.record);
-            await sendTelegramMessage(
-                env,
-                env.TELEGRAM_ADMIN_CHAT_ID,
-                formatAdminMessage(savedOrderForNotification),
-                getAdminOrderKeyboard(savedOrderForNotification),
-            );
-            await markTelegramNotified(env, savedOrder.record.id);
+        if (savedOrder.record && env.TELEGRAM_ADMIN_CHAT_ID) {
+            try {
+                const savedOrderForNotification = await getSavedOrderForNotification(env, savedOrder.record);
+                await sendTelegramMessage(env, env.TELEGRAM_ADMIN_CHAT_ID, formatAdminMessage(savedOrderForNotification), getAdminOrderKeyboard(savedOrderForNotification));
+                await markTelegramNotified(env, savedOrder.record.id);
+            } catch (err) {
+                console.warn("Telegram notification for duplicate order failed", err);
+            }
         }
         processedOrders.set(checkoutRequestId, {
             createdAt: Date.now(),
@@ -2767,12 +3510,13 @@ async function handleOrder(request, env, corsHeaders) {
         return jsonResponse(savedOrder.response, 200, corsHeaders);
     }
 
-    try {
-        await sendTelegramMessage(env, env.TELEGRAM_ADMIN_CHAT_ID, formatAdminMessage(order), getAdminOrderKeyboard(order));
-        await markTelegramNotified(env, order.id);
-    } catch (error) {
-        processedOrders.delete(checkoutRequestId);
-        throw error;
+    if (env.TELEGRAM_ADMIN_CHAT_ID) {
+        try {
+            await sendTelegramMessage(env, env.TELEGRAM_ADMIN_CHAT_ID, formatAdminMessage(order), getAdminOrderKeyboard(order));
+            await markTelegramNotified(env, order.id);
+        } catch (err) {
+            console.warn("Telegram admin notification failed", err);
+        }
     }
 
     processedOrders.set(checkoutRequestId, {
