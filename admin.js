@@ -1978,9 +1978,10 @@ async function loadAdminAffiliates() {
         }
         listEl.innerHTML = `
             <div class="table-responsive">
-                <table class="table table-sm table-hover">
+                <table class="table table-sm table-hover admin-affiliates-table">
                     <thead>
                         <tr>
+                            <th style="width:32px"></th>
                             <th>Code</th>
                             <th>Name</th>
                             <th>Phone</th>
@@ -1992,11 +1993,16 @@ async function loadAdminAffiliates() {
                     </thead>
                     <tbody>
                         ${affiliates.map((aff) => `
-                            <tr>
+                            <tr data-affiliate-ref="${escapeHtml(aff.refCode)}">
+                                <td>
+                                    <button class="btn btn-sm btn-outline-secondary border-0" type="button" data-expand-affiliate="${escapeHtml(aff.refCode)}" title="View details">
+                                        <i class="bi bi-chevron-right"></i>
+                                    </button>
+                                </td>
                                 <td><code>${escapeHtml(aff.refCode)}</code></td>
                                 <td>${escapeHtml(aff.name)}</td>
                                 <td>${escapeHtml(aff.phone)}</td>
-                                <td>${money(aff.totalEarnings)}</td>
+                                <td class="fw-semibold">${money(aff.totalEarnings)}</td>
                                 <td><span class="badge ${aff.active ? "text-bg-success" : "text-bg-secondary"}">${aff.active ? "Active" : "Inactive"}</span></td>
                                 <td>${formatAdminDateTime(aff.createdAt)}</td>
                                 <td>
@@ -2004,6 +2010,16 @@ async function loadAdminAffiliates() {
                                         <button class="btn btn-sm ${aff.active ? "btn-outline-secondary" : "btn-outline-success"}" type="button" data-toggle-affiliate="${escapeHtml(aff.refCode)}">${aff.active ? "Deactivate" : "Activate"}</button>
                                         <button class="btn btn-sm btn-outline-info" type="button" data-change-pass-affiliate="${escapeHtml(aff.refCode)}">Pass</button>
                                         <button class="btn btn-sm btn-outline-danger" type="button" data-delete-affiliate="${escapeHtml(aff.refCode)}">Del</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr class="affiliate-detail-row" data-detail-ref="${escapeHtml(aff.refCode)}" style="display:none">
+                                <td colspan="8">
+                                    <div class="affiliate-detail-content p-3">
+                                        <div class="text-center py-4">
+                                            <div class="spinner-border spinner-border-sm text-secondary me-2" role="status"></div>
+                                            <span class="text-secondary">Loading details...</span>
+                                        </div>
                                     </div>
                                 </td>
                             </tr>
@@ -2016,6 +2032,130 @@ async function loadAdminAffiliates() {
         const listEl = document.getElementById("adminAffiliatesList");
         if (listEl) {
             listEl.innerHTML = `<div class="empty-state py-4"><p class="text-danger mb-0">${escapeHtml(error.message || "Could not load affiliates")}</p></div>`;
+        }
+    }
+}
+
+async function toggleAdminAffiliateDetail(refCode) {
+    const detailRow = document.querySelector(`.affiliate-detail-row[data-detail-ref="${CSS.escape(refCode)}"]`);
+    const expandBtn = document.querySelector(`[data-expand-affiliate="${CSS.escape(refCode)}"]`);
+    if (!detailRow) return;
+
+    const isVisible = detailRow.style.display !== "none";
+    if (isVisible) {
+        detailRow.style.display = "none";
+        if (expandBtn) expandBtn.querySelector("i").className = "bi bi-chevron-right";
+        return;
+    }
+
+    detailRow.style.display = "";
+    if (expandBtn) expandBtn.querySelector("i").className = "bi bi-chevron-down";
+
+    try {
+        const result = await adminRequest({ action: "admin-affiliate-detail", refCode });
+        const aff = result.affiliate;
+        const stats = result.stats;
+        const commissions = result.commissions || [];
+        const payouts = result.payouts || [];
+
+        const content = detailRow.querySelector(".affiliate-detail-content");
+        content.innerHTML = `
+            <div class="row g-2 mb-3">
+                <div class="col-6 col-md-3">
+                    <div class="border rounded p-2 p-md-3 text-center h-100">
+                        <p class="h4 fw-bold mb-0">${stats.totalOrders}</p>
+                        <p class="small text-secondary mb-0">Orders referred</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="border rounded p-2 p-md-3 text-center h-100">
+                        <p class="h4 fw-bold mb-0 text-success">${money(stats.totalCommissions)}</p>
+                        <p class="small text-secondary mb-0">Total earned</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="border rounded p-2 p-md-3 text-center h-100">
+                        <p class="h4 fw-bold mb-0 text-warning">${money(stats.pendingCommissions)}</p>
+                        <p class="small text-secondary mb-0">Pending</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="border rounded p-2 p-md-3 text-center h-100">
+                        <p class="h4 fw-bold mb-0 text-info">${money(stats.paidCommissions)}</p>
+                        <p class="small text-secondary mb-0">Paid out</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <p class="fw-semibold mb-2 small text-secondary text-uppercase">Commissions</p>
+                    ${commissions.length === 0 ? `
+                        <p class="text-secondary small mb-0">No commissions yet.</p>
+                    ` : `
+                        <div class="table-responsive" style="max-height:240px;overflow-y:auto">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Order</th>
+                                        <th>Product</th>
+                                        <th>Amount</th>
+                                        <th>Status</th>
+                                        <th>Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${commissions.map((c) => `
+                                        <tr>
+                                            <td><code class="small">${escapeHtml(c.orderId.slice(0, 8))}</code></td>
+                                            <td class="small">${escapeHtml(c.productId || "-")}</td>
+                                            <td class="fw-semibold">${money(c.amount)}</td>
+                                            <td><span class="badge ${c.status === "paid" ? "text-bg-success" : "text-bg-warning"}">${escapeHtml(c.status)}</span></td>
+                                            <td class="small text-secondary">${formatAdminDateTime(c.createdAt)}</td>
+                                        </tr>
+                                    `).join("")}
+                                </tbody>
+                            </table>
+                        </div>
+                    `}
+                </div>
+                <div class="col-md-6">
+                    <p class="fw-semibold mb-2 small text-secondary text-uppercase">Payouts</p>
+                    ${payouts.length === 0 ? `
+                        <p class="text-secondary small mb-0">No payouts yet.</p>
+                    ` : `
+                        <div class="table-responsive" style="max-height:240px;overflow-y:auto">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Amount</th>
+                                        <th>Method</th>
+                                        <th>Recipient</th>
+                                        <th>Status</th>
+                                        <th>Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${payouts.map((p) => `
+                                        <tr>
+                                            <td class="fw-semibold">${money(p.amount)}</td>
+                                            <td class="small">${escapeHtml(p.method)}</td>
+                                            <td class="small font-monospace">${escapeHtml(p.recipientDetail)}</td>
+                                            <td><span class="badge ${p.status === "paid" ? "text-bg-success" : p.status === "rejected" ? "text-bg-danger" : "text-bg-warning"}">${escapeHtml(p.status)}</span></td>
+                                            <td class="small text-secondary">${formatAdminDateTime(p.createdAt)}</td>
+                                        </tr>
+                                    `).join("")}
+                                </tbody>
+                            </table>
+                        </div>
+                    `}
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        const content = detailRow.querySelector(".affiliate-detail-content");
+        if (content) {
+            content.innerHTML = `<p class="text-danger mb-0">${escapeHtml(error.message || "Could not load details")}</p>`;
         }
     }
 }
@@ -2770,6 +2910,13 @@ function bindEvents() {
             } catch (error) {
                 showToast(error.message || "Could not change password");
             }
+            return;
+        }
+        const expandBtn = event.target.closest("[data-expand-affiliate]");
+        if (expandBtn) {
+            const refCode = expandBtn.dataset.expandAffiliate;
+            event.stopPropagation();
+            await toggleAdminAffiliateDetail(refCode);
             return;
         }
     });

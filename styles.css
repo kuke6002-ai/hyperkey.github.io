@@ -6409,6 +6409,39 @@ body {
     margin-bottom: 0;
 }
 
+.admin-affiliates-table [data-expand-affiliate] {
+    transition: transform 0.2s;
+}
+.admin-affiliates-table [data-expand-affiliate]:hover {
+    background: var(--gv-hover-bg, rgba(128,128,128,0.1));
+}
+.affiliate-detail-row > td {
+    padding: 0 !important;
+    border: none;
+}
+.affiliate-detail-content {
+    background: var(--gv-panel-alt, rgba(128,128,128,0.04));
+    border-top: 1px solid var(--gv-border);
+}
+.affiliate-detail-content .table th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-secondary);
+    font-weight: 600;
+    border-bottom-width: 1px;
+}
+.affiliate-detail-content .table td {
+    font-size: 0.8125rem;
+    vertical-align: middle;
+}
+.affiliate-detail-content .border.rounded {
+    background: var(--gv-panel);
+}
+[data-bs-theme="light"] .affiliate-detail-content {
+    background: rgba(0,0,0,0.02);
+}
+
 /* ── Affiliate page ──────────────────────────── */
 
 /* Stat cards */

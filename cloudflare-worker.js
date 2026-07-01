@@ -1927,6 +1927,60 @@ async function deleteAdminAffiliate(env, body) {
     ]);
 }
 
+async function getAdminAffiliateDetail(env, body) {
+    await ensureOrderSchema(env);
+    const refCode = String(body.refCode || "").trim().toLowerCase();
+    if (!refCode) throw new Error("Affiliate code is required");
+    const db = getOrderDb(env);
+
+    const affiliate = await db.prepare("SELECT ref_code, name, phone, total_earnings, active, created_at FROM affiliates WHERE ref_code = ?").bind(refCode).first();
+    if (!affiliate) throw new Error("Affiliate not found");
+
+    const [commissions, payouts] = await Promise.all([
+        getAllResults(db.prepare("SELECT id, order_id, product_id, commission_amount, status, created_at, paid_at FROM referral_commissions WHERE ref_code = ? ORDER BY created_at DESC LIMIT 100").bind(refCode)),
+        getAllResults(db.prepare("SELECT id, amount, method, recipient_detail, status, created_at, updated_at FROM affiliate_payouts WHERE ref_code = ? ORDER BY created_at DESC LIMIT 50").bind(refCode)),
+    ]);
+
+    const totalCommissions = commissions.reduce((sum, c) => sum + Number(c.commission_amount), 0);
+    const pendingCommissions = commissions.filter((c) => c.status === "pending").reduce((sum, c) => sum + Number(c.commission_amount), 0);
+    const totalOrders = new Set(commissions.map((c) => c.order_id)).size;
+
+    return {
+        affiliate: {
+            refCode: affiliate.ref_code,
+            name: affiliate.name,
+            phone: affiliate.phone,
+            totalEarnings: Number(affiliate.total_earnings),
+            active: !!affiliate.active,
+            createdAt: affiliate.created_at,
+        },
+        stats: {
+            totalOrders,
+            totalCommissions,
+            pendingCommissions,
+            paidCommissions: totalCommissions - pendingCommissions,
+        },
+        commissions: commissions.map((c) => ({
+            id: c.id,
+            orderId: c.order_id,
+            productId: c.product_id || "",
+            amount: Number(c.commission_amount),
+            status: c.status,
+            createdAt: c.created_at,
+            paidAt: c.paid_at || "",
+        })),
+        payouts: payouts.map((p) => ({
+            id: p.id,
+            amount: Number(p.amount),
+            method: p.method,
+            recipientDetail: p.recipient_detail,
+            status: p.status,
+            createdAt: p.created_at,
+            updatedAt: p.updated_at || "",
+        })),
+    };
+}
+
 async function changeAdminAffiliatePassword(env, body) {
     await ensureOrderSchema(env);
     const refCode = String(body.refCode || "").trim().toLowerCase();
@@ -2040,6 +2094,10 @@ async function handleAdminAction(body, request, env, corsHeaders) {
     if (body.action === "admin-change-affiliate-password") {
         await changeAdminAffiliatePassword(env, body);
         return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-affiliate-detail") {
+        return jsonResponse({ ok: true, ...await getAdminAffiliateDetail(env, body) }, 200, corsHeaders);
     }
 
     if (body.action === "admin-list-payouts") {
