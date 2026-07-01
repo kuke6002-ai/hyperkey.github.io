@@ -6,14 +6,14 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css" />
-<link rel="stylesheet" href="styles.css?v=20260626-2" />
+<link rel="stylesheet" href="styles.css?v=20260701-2" />
     </head>
 
     <body>
         <header class="sticky-top">
-            <nav class="navbar navbar-expand-lg bg-white border-bottom">
+            <nav class="navbar navbar-expand-lg">
                 <div class="container">
-                    <a class="navbar-brand fw-black" href="index.html"><span class="brand-mark"><img src="assets/hyperlogo.png" alt="HyperKey Store logo" /></span>HyperKey Store</a>
+                    <a class="navbar-brand fw-bold" href="index.html"><span class="brand-mark"><img src="assets/hyperlogo.png" alt="HyperKey Store logo" /></span>HyperKey Store</a>
                     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar" aria-controls="mainNavbar" aria-expanded="false" aria-label="Toggle navigation">
                         <span class="navbar-toggler-icon"></span>
                     </button>
@@ -22,7 +22,7 @@
                             <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
                             <li class="nav-item"><a class="nav-link" href="products.html">Products</a></li>
                             <li class="nav-item"><a class="nav-link" href="cart.html">Cart</a></li>
-                            <li class="nav-item"><a class="nav-link active" aria-current="page" href="checkout.html">Checkout</a></li>
+                            <li class="nav-item"><a class="nav-link active" aria-current="page" href="payment.html">Payment</a></li>
                         </ul>
                         <a class="btn btn-dark position-relative" href="cart.html" aria-label="Cart">
                             <i class="bi bi-bag"></i>
@@ -36,7 +36,7 @@
         <main>
             <section class="page-heading">
                 <div class="container py-5">
-                    <h1 class="fw-black mb-2">Payment</h1>
+                    <h1 class="fw-bold mb-2">Payment</h1>
                     <p class="text-secondary mb-0">Complete the manual payment step and submit your proof for review.</p>
                 </div>
             </section>
@@ -47,7 +47,7 @@
                         <div class="col-lg-8">
                             <form class="checkout-form content-panel" id="paymentForm">
                                 <p class="eyebrow mb-2" id="paymentMethodTitle">Payment method</p>
-                                <h2 class="h4 fw-black mb-3">Payment details</h2>
+                                <h2 class="h4 fw-bold mb-3">Payment details</h2>
                                 <p class="text-secondary mb-4" id="paymentInstructions">Loading payment instructions...</p>
 
                                 <div class="payment-total-grid mb-4">
@@ -63,11 +63,11 @@
 
                                 <div class="mb-4 d-none" id="paymentRecipientDetails"></div>
                                 <div class="mb-4" id="paymentProofFields"></div>
-                                <div class="payment-guide d-none mb-4" id="paymentGuide"></div>
 
                                 <button class="btn btn-primary btn-lg w-100" id="submitPaymentButton" type="submit">
                                     <span class="payment-button-text">Submit order for review</span>
                                 </button>
+                                <div class="payment-guide d-none mb-4" id="paymentGuide"></div>
                                 <div class="customer-trust-card mt-4">
                                     <p class="eyebrow mb-3">Trust & delivery</p>
                                     <div class="customer-trust-grid">
@@ -100,7 +100,7 @@
 
                         <div class="col-lg-4">
                             <aside class="summary-card">
-                                <h2 class="h4 fw-black mb-4">Order summary</h2>
+                                <h2 class="h4 fw-bold mb-4">Order summary</h2>
                                 <div id="paymentOrderSummary"></div>
                                 <div class="summary-line total mt-3">
                                     <span>Amount to send</span>
@@ -120,9 +120,10 @@
             <div class="container py-4">
                 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
                     <p class="mb-0 text-white-50">HyperKey Store payment review.</p>
-                    <div class="d-flex gap-3">
+                    <div class="d-flex flex-wrap gap-3">
                         <a href="checkout.html">Back to checkout</a>
                         <a href="payment-guide.html">How to order</a>
+                        <a href="affiliate-info.html">Affiliate</a>
                     </div>
                 </div>
             </div>
@@ -130,7 +131,7 @@
 
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
         <script src="config.js?v=20260614-1"></script>
-        <script src="app.js?v=20260626-2"></script>
+        <script src="app.js?v=20260630-2"></script>
     </body>
 </html>
 

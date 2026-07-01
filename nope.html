@@ -6,7 +6,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css" />
-<link rel="stylesheet" href="styles.css?v=20260626-2" />
+<link rel="stylesheet" href="styles.css?v=20260701-2" />
     </head>
 
     <body>
@@ -15,7 +15,7 @@
                 <div class="admin-lock-logo">
                     <img src="assets/hyperlogo.png" alt="HyperKey Store" />
                 </div>
-                <h1 class="h5 fw-black mb-1">Admin Panel</h1>
+                <h1 class="h5 fw-bold mb-1">Admin Panel</h1>
                 <p class="text-secondary mb-3">Enter your admin token to continue.</p>
                 <form id="adminUnlockForm">
                     <input class="form-control mb-2" id="adminLockToken" type="password" autocomplete="off" placeholder="Admin token" required />
@@ -29,9 +29,9 @@
 
         <div id="adminContent" style="display: none;">
         <header class="sticky-top">
-            <nav class="navbar bg-white border-bottom admin-navbar">
+            <nav class="navbar admin-navbar">
                 <div class="container-fluid admin-header-fluid px-2 px-lg-3 px-xxl-4">
-                    <a class="navbar-brand fw-black" href="index.html">
+                    <a class="navbar-brand fw-bold" href="index.html">
                         <span class="brand-mark"><img src="assets/hyperlogo.png" alt="HyperKey Store logo" /></span>
                         HyperKey Store
                     </a>
@@ -56,8 +56,7 @@
                 <section class="content-panel admin-panel admin-page-title admin-page-title-compact mb-3">
                     <div>
                         <p class="eyebrow mb-1">HyperKey admin</p>
-                        <h1 class="h4 fw-black mb-1">Store operations</h1>
-                        <p class="text-secondary mb-0">Manage products, orders, payments, categories, imports, and global settings.</p>
+                        <h1 class="h4 fw-bold mb-0">Store operations</h1>
                     </div>
                 </section>
 
@@ -92,6 +91,16 @@
                             <i class="bi bi-sliders me-1"></i>Settings
                         </button>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="affiliatesTab" data-bs-toggle="pill" data-bs-target="#affiliatesPane" type="button" role="tab" aria-controls="affiliatesPane" aria-selected="false">
+                            <i class="bi bi-people me-1"></i>Affiliates
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="payoutsTab" data-bs-toggle="pill" data-bs-target="#payoutsPane" type="button" role="tab" aria-controls="payoutsPane" aria-selected="false">
+                            <i class="bi bi-cash-coin me-1"></i>Payouts
+                        </button>
+                    </li>
                 </ul>
 
                 <div class="tab-content admin-tab-content" id="adminWorkspaceTabContent">
@@ -99,7 +108,7 @@
                         <div class="admin-pane-heading">
                             <div>
                                 <p class="eyebrow mb-1">Products</p>
-                                <h2 class="h4 fw-black mb-0">Product management</h2>
+                                <h2 class="h4 fw-bold mb-0">Product management</h2>
                             </div>
                             <button class="btn btn-primary" type="button" id="newProductButton">
                                 <i class="bi bi-plus-lg me-1"></i>New product
@@ -117,7 +126,7 @@
                                 <div class="admin-sidebar-heading">
                                     <div>
                                         <p class="eyebrow mb-1">Catalog</p>
-                                        <h3 class="h6 fw-black mb-0">Product list</h3>
+                                        <h3 class="h6 fw-bold mb-0">Product list</h3>
                                     </div>
                                     <small id="productListCount">0 products</small>
                                 </div>
@@ -150,16 +159,17 @@
                                     <div class="admin-editor-header">
                                         <div>
                                             <p class="eyebrow mb-1">Editor</p>
-                                            <h2 class="h4 fw-black mb-0" id="editorTitle">New product</h2>
+                                            <h2 class="h4 fw-bold mb-0" id="editorTitle">New product</h2>
                                         </div>
                                         <div class="admin-editor-actions">
+                                            <button class="btn btn-outline-dark btn-sm" type="button" id="togglePreviewButton"><i class="bi bi-eye me-1"></i>Preview</button>
                                         </div>
                                     </div>
 
                                     <details class="admin-form-section admin-editor-details" data-editor-section="basic" open>
                                         <summary>
                                             <div class="admin-section-heading">
-                                                <h3 class="h5 fw-black mb-0">Basic info</h3>
+                                                <h3 class="h5 fw-bold mb-0">Basic info</h3>
                                             </div>
                                             <i class="bi bi-chevron-down"></i>
                                         </summary>
@@ -186,7 +196,7 @@
                                     <details class="admin-form-section admin-editor-details" data-editor-section="pricing">
                                         <summary>
                                             <div class="admin-section-heading">
-                                                <h3 class="h5 fw-black mb-0">Pricing</h3>
+                                                <h3 class="h5 fw-bold mb-0">Pricing</h3>
                                             </div>
                                             <i class="bi bi-chevron-down"></i>
                                         </summary>
@@ -195,13 +205,13 @@
                                                 <label class="form-label" for="productPrice">Base price TND</label>
                                                 <input class="form-control" id="productPrice" type="number" min="0" step="0.001" required />
                                             </div>
-                                        </div>
+                        </div>
                                     </details>
 
                                     <details class="admin-form-section admin-editor-details" data-editor-section="display">
                                         <summary>
                                             <div class="admin-section-heading">
-                                                <h3 class="h5 fw-black mb-0">Display / image</h3>
+                                                <h3 class="h5 fw-bold mb-0">Display / image</h3>
                                             </div>
                                             <i class="bi bi-chevron-down"></i>
                                         </summary>
@@ -227,7 +237,7 @@
                                     <details class="admin-form-section admin-editor-details" data-editor-section="availability">
                                         <summary>
                                             <div class="admin-section-heading">
-                                                <h3 class="h5 fw-black mb-0">Availability</h3>
+                                                <h3 class="h5 fw-bold mb-0">Availability</h3>
                                             </div>
                                             <i class="bi bi-chevron-down"></i>
                                         </summary>
@@ -264,7 +274,7 @@
                                     <details class="admin-form-section admin-editor-details" data-editor-section="variations">
                                         <summary>
                                             <div class="admin-section-heading">
-                                                <h3 class="h5 fw-black mb-0">Variations</h3>
+                                                <h3 class="h5 fw-bold mb-0">Variations</h3>
                                             </div>
                                             <i class="bi bi-chevron-down"></i>
                                         </summary>
@@ -296,11 +306,11 @@
                                     </div>
                                 </form>
                             </section>
-                            <aside class="content-panel admin-panel admin-preview-column" id="adminPreviewColumn">
+                            <aside class="content-panel admin-panel admin-preview-column" id="adminPreviewColumn" style="display:none;">
                                 <div class="admin-sidebar-heading">
                                     <div>
                                         <p class="eyebrow mb-1">Preview</p>
-                                        <h3 class="h6 fw-black mb-0">Product card</h3>
+                                        <h3 class="h6 fw-bold mb-0">Product card</h3>
                                     </div>
                                 </div>
                                 <div class="admin-preview-body" id="adminPreviewBody"></div>
@@ -313,21 +323,21 @@
                             <div class="admin-pane-heading">
                                 <div>
                                     <p class="eyebrow mb-1">Orders</p>
-                                    <h2 class="h4 fw-black mb-0">Operational dashboard</h2>
+                                    <h2 class="h4 fw-bold mb-0">Operational dashboard</h2>
                                 </div>
                                 <div class="admin-order-toolbar">
                                     <button class="btn btn-primary" type="button" id="loadOrdersButton"><i class="bi bi-arrow-clockwise me-1"></i>Load orders</button>
                                 </div>
                             </div>
 
-                            <div class="admin-order-status-tabs mb-3" id="adminOrderStatusFilters" role="group" aria-label="Filter orders by workflow status">
-                                <button class="btn btn-primary active" type="button" data-order-workflow-filter="">All</button>
-                                <button class="btn btn-outline-dark" type="button" data-order-workflow-filter="pending">Pending</button>
-                                <button class="btn btn-outline-dark" type="button" data-order-workflow-filter="paid">Paid</button>
-                                <button class="btn btn-outline-dark" type="button" data-order-workflow-filter="delivering">Delivering</button>
-                                <button class="btn btn-outline-dark" type="button" data-order-workflow-filter="completed">Completed</button>
-                                <button class="btn btn-outline-dark" type="button" data-order-workflow-filter="cancelled">Cancelled</button>
-                            </div>
+                            <select class="form-select mb-3" id="adminOrderStatusFilters" aria-label="Filter orders by status" style="max-width:260px">
+                                <option value="">All statuses</option>
+                                <option value="pending">Pending</option>
+                                <option value="paid">Paid</option>
+                                <option value="delivering">Delivering</option>
+                                <option value="completed">Completed</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
 
                             <div class="admin-order-filters mb-4">
                                 <div>
@@ -343,9 +353,7 @@
                                     <input class="form-control" id="adminOrderDateTo" type="date" />
                                 </div>
                             </div>
-                            <div class="alert alert-warning mb-4" role="alert">
-                                Pending and manual-review orders are highlighted. Payment references and TT card codes are sensitive.
-                            </div>
+                                                        
                             <div class="admin-orders-list" id="adminOrdersList">
                                 <div class="empty-state py-4">
                                     <p class="text-secondary mb-0">Click "Load orders" to fetch recent orders.</p>
@@ -358,7 +366,7 @@
                         <div class="admin-pane-heading">
                             <div>
                                 <p class="eyebrow mb-1">Payments</p>
-                                <h2 class="h4 fw-black mb-0">Manual payment providers</h2>
+                                <h2 class="h4 fw-bold mb-0">Manual payment providers</h2>
                             </div>
                         </div>
                         <div class="admin-provider-grid">
@@ -474,17 +482,12 @@
                                 </div>
                             </details>
 
-                            <article class="content-panel admin-panel admin-provider-card">
-                                <div class="admin-provider-static">
-                                    <p class="eyebrow mb-2">Delivery channel</p>
-                                    <h3 class="h5 fw-black mb-2"><i class="bi bi-whatsapp me-1"></i>WhatsApp delivery</h3>
-                                    <p class="text-secondary mb-3">Customer order lookup and support links use WhatsApp for delivery communication.</p>
-                                    <div class="admin-help-card">
-                                        <strong>Support contact</strong>
-                                        <span>Configured in app.js as the public support WhatsApp link.</span>
-                                    </div>
-                                </div>
-                            </article>
+
+                        </div>
+                        <div class="d-flex justify-content-end mt-4">
+                            <button class="btn btn-outline-success" type="button" id="savePaymentsButton">
+                                <i class="bi bi-cloud-upload me-1"></i>Save payment settings
+                            </button>
                         </div>
                     </section>
 
@@ -492,14 +495,13 @@
                         <div class="admin-pane-heading">
                             <div>
                                 <p class="eyebrow mb-1">Categories</p>
-                                <h2 class="h4 fw-black mb-0">Product groups</h2>
+                                <h2 class="h4 fw-bold mb-0">Product groups</h2>
                             </div>
                             <button class="btn btn-primary" type="button" id="addCategoryButton">
                                 <i class="bi bi-plus-lg me-1"></i>New category
                             </button>
                         </div>
                         <div class="content-panel admin-panel">
-                            <p class="text-secondary mb-3">Create, edit, sort, and remove category cards shown on product pages.</p>
                             <div class="admin-category-list" id="categoryEditorList"></div>
                         </div>
                     </section>
@@ -508,14 +510,12 @@
                         <div class="admin-pane-heading">
                             <div>
                                 <p class="eyebrow mb-1">Import / Export</p>
-                                <h2 class="h4 fw-black mb-0">Product data tools</h2>
+                                <h2 class="h4 fw-bold mb-0">Product data tools</h2>
                             </div>
                         </div>
                         <div class="admin-import-grid">
                             <article class="content-panel admin-panel admin-file-box">
-                                <h3 class="h5 fw-black mb-2">Import products</h3>
-                                <p class="text-secondary">Importing can overwrite existing products. Download a backup first.</p>
-                                <div class="alert alert-warning" role="alert">Review your file before importing. Existing product IDs will be replaced.</div>
+                                <h3 class="h5 fw-bold mb-2">Import products</h3>
                                 <label class="form-label" for="jsonImport">Products JSON</label>
                                 <input class="form-control mb-3" id="jsonImport" type="file" accept="application/json,.json" />
                                 <label class="form-label" for="csvImport">Products CSV</label>
@@ -526,8 +526,7 @@
                                 </div>
                             </article>
                             <article class="content-panel admin-panel admin-file-box">
-                                <h3 class="h5 fw-black mb-2">Export products</h3>
-                                <p class="text-secondary">Download product data before making large catalog changes.</p>
+                                <h3 class="h5 fw-bold mb-2">Export products</h3>
                                 <div class="admin-file-actions">
                                     <button class="btn btn-outline-dark" type="button" id="copyJsonButton"><i class="bi bi-clipboard me-1"></i>Copy JSON</button>
                                     <button class="btn btn-outline-dark" type="button" id="copyJsonButtonSecondary"><i class="bi bi-clipboard-check me-1"></i>Copy generated JSON</button>
@@ -554,12 +553,12 @@
                         <div class="admin-pane-heading">
                             <div>
                                 <p class="eyebrow mb-1">Settings</p>
-                                <h2 class="h4 fw-black mb-0">Global store configuration</h2>
+                                <h2 class="h4 fw-bold mb-0">Global store configuration</h2>
                             </div>
                         </div>
                         <div class="admin-settings-grid">
                             <article class="content-panel admin-panel">
-                                <h3 class="h5 fw-black mb-3">Store details</h3>
+                                <h3 class="h5 fw-bold mb-3">Store details</h3>
                                 <div class="row g-3">
                                     <div class="col-md-6">
                                         <label class="form-label" for="storeNameSetting">Store name</label>
@@ -580,8 +579,7 @@
                                 </div>
                             </article>
                             <article class="content-panel admin-panel">
-                                <h3 class="h5 fw-black mb-3">Customer status messages</h3>
-                                <p class="text-secondary mb-3">These messages appear on the Check Order page after customers search their order.</p>
+                                <h3 class="h5 fw-bold mb-3">Customer status messages</h3>
                                 <div class="row g-3">
                                     <div class="col-md-6">
                                         <label class="form-label" for="statusPaymentReviewTitle">Payment review title</label>
@@ -633,9 +631,18 @@
                                     </div>
                                 </div>
                             </article>
+                            <article class="content-panel admin-panel">
+                                <h4 class="h5 fw-bold mb-3">Affiliate Settings</h4>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label" for="affMinWithdrawal">Minimum withdrawal (TND)</label>
+                                        <input class="form-control" id="affMinWithdrawal" data-settings-field="affiliate.minimumWithdrawal" type="number" step="0.001" min="0" placeholder="10" />
+                                        <div class="form-text">Minimum amount an affiliate can request for payout.</div>
+                                    </div>
+                                </div>
+                            </article>
                             <article class="content-panel admin-panel admin-file-box">
-                                <h3 class="h5 fw-black mb-2">Settings JSON</h3>
-                                <p class="text-secondary">Use this for payment settings backups and deployment.</p>
+                                <h3 class="h5 fw-bold mb-2">Settings JSON</h3>
                                 <label class="form-label" for="settingsImport">Choose settings.json</label>
                                 <input class="form-control" id="settingsImport" type="file" accept="application/json,.json" />
                                 <div class="admin-file-actions">
@@ -652,6 +659,67 @@
                             </article>
                         </div>
                     </section>
+
+                    <section class="tab-pane fade" id="affiliatesPane" role="tabpanel" aria-labelledby="affiliatesTab" tabindex="0">
+                        <div class="admin-pane-heading">
+                            <div>
+                                <p class="eyebrow mb-1">Affiliates</p>
+                                <h2 class="h4 fw-bold mb-0">Referral partners</h2>
+                            </div>
+                            <button class="btn btn-primary" type="button" id="addAffiliateButton">
+                                <i class="bi bi-plus-lg me-1"></i>New affiliate
+                            </button>
+                        </div>
+                        <div class="content-panel admin-panel mb-3" id="addAffiliateForm" style="display: none;">
+                            <h3 class="h5 fw-bold mb-3">Create affiliate</h3>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label" for="affiliateName">Name</label>
+                                    <input class="form-control" id="affiliateName" type="text" placeholder="Affiliate name" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label" for="affiliatePhone">Phone</label>
+                                    <input class="form-control" id="affiliatePhone" type="tel" placeholder="Phone number" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label" for="affiliatePassword">Password</label>
+                                    <input class="form-control" id="affiliatePassword" type="text" placeholder="Min 4 characters" />
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2 mt-3">
+                                <button class="btn btn-primary" type="button" id="saveAffiliateButton">
+                                    <i class="bi bi-check2 me-1"></i>Save affiliate
+                                </button>
+                                <button class="btn btn-outline-dark" type="button" id="cancelAffiliateButton">Cancel</button>
+                            </div>
+                        </div>
+                        <div class="content-panel admin-panel">
+                            <div class="admin-affiliates-list" id="adminAffiliatesList">
+                                <div class="empty-state py-4">
+                                    <p class="text-secondary mb-0">No affiliates yet.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="tab-pane fade" id="payoutsPane" role="tabpanel" aria-labelledby="payoutsTab" tabindex="0">
+                        <div class="admin-pane-heading">
+                            <div>
+                                <p class="eyebrow mb-1">Payouts</p>
+                                <h2 class="h4 fw-bold mb-0">Affiliate payout requests</h2>
+                            </div>
+                            <button class="btn btn-primary" type="button" id="loadPayoutsButton">
+                                <i class="bi bi-arrow-clockwise me-1"></i>Load payouts
+                            </button>
+                        </div>
+                        <div class="content-panel admin-panel">
+                            <div class="admin-payouts-list" id="adminPayoutsList">
+                                <div class="empty-state py-4">
+                                    <p class="text-secondary mb-0">Click "Load payouts" to fetch payout requests.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </div>
         </main>
@@ -661,7 +729,7 @@
             <div class="offcanvas-header">
                 <div>
                     <p class="eyebrow mb-1">Catalog</p>
-                    <h2 class="h5 fw-black mb-0" id="mobileProductCatalogTitle">Products</h2>
+                    <h2 class="h5 fw-bold mb-0" id="mobileProductCatalogTitle">Products</h2>
                 </div>
                 <button class="btn btn-outline-dark btn-sm" type="button" data-bs-dismiss="offcanvas" aria-label="Close products catalog">
                     <i class="bi bi-x-lg"></i>
@@ -701,7 +769,7 @@
 
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
         <script src="config.js?v=20260614-1"></script>
-        <script src="admin.js?v=20260622-1"></script>
+        <script src="admin.js?v=20260701-3"></script>
     </body>
 </html>
 

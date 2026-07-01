@@ -1,0 +1,21 @@
+name = "hyperkey-store"
+main = "cloudflare-worker.js"
+compatibility_date = "2025-04-01"
+
+# D1 Databases
+[[d1_databases]]
+binding = "DB"
+database_name = "hyperkey-orders"
+database_id = ""
+
+[[d1_databases]]
+binding = "product_db"
+database_name = "hyperkey-catalog"
+database_id = ""
+
+# Environment Variables
+[vars]
+TELEGRAM_BOT_TOKEN = ""
+TELEGRAM_ADMIN_CHAT_ID = ""
+TELEGRAM_WEBHOOK_SECRET = ""
+ADMIN_API_TOKEN = ""

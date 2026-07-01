@@ -1,10 +1,3 @@
--- ================================================================
--- Order Database (env.DB)
--- Tables: orders, affiliates, referral_commissions, affiliate_payouts,
---         affiliate_sessions, order_items, payment_proofs,
---         order_deliveries, order_customer_inputs
--- ================================================================
-
 CREATE TABLE IF NOT EXISTS orders (
     id TEXT PRIMARY KEY,
     checkout_request_id TEXT UNIQUE NOT NULL,
@@ -109,48 +102,6 @@ CREATE TABLE IF NOT EXISTS order_customer_inputs (
     FOREIGN KEY (order_id) REFERENCES orders(id)
 );
 
--- ================================================================
--- Catalog Database (env.product_db)
--- Tables: categories, products, store_config, settings
--- ================================================================
-
-CREATE TABLE IF NOT EXISTS categories (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    label TEXT,
-    page TEXT,
-    photo TEXT DEFAULT 'assets/hyperlogo.png',
-    icon TEXT DEFAULT 'bi-box',
-    teaser TEXT,
-    heading TEXT,
-    description TEXT,
-    visible INTEGER DEFAULT 1,
-    sort_order INTEGER DEFAULT 0,
-    commission_percent REAL NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS products (
-    id TEXT PRIMARY KEY,
-    data TEXT NOT NULL,
-    category TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS store_config (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-
--- ================================================================
--- Indexes (Order DB)
--- ================================================================
-
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status);
 CREATE INDEX IF NOT EXISTS idx_orders_delivery_status ON orders(delivery_status);
@@ -162,9 +113,3 @@ CREATE INDEX IF NOT EXISTS idx_order_customer_inputs_order_id ON order_customer_
 CREATE INDEX IF NOT EXISTS idx_referral_commissions_order_id ON referral_commissions(order_id);
 CREATE INDEX IF NOT EXISTS idx_referral_commissions_ref_code ON referral_commissions(ref_code);
 CREATE INDEX IF NOT EXISTS idx_affiliate_payouts_ref_code ON affiliate_payouts(ref_code);
-
--- ================================================================
--- Indexes (Catalog DB)
--- ================================================================
-
-CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);

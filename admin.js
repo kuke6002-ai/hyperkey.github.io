@@ -1,16 +1,4 @@
-﻿const ART_STYLES = [
-    "steam-art",
-    "xbox-art",
-    "playstation-art",
-    "topup-art",
-    "vbucks-art",
-    "valorant-art",
-    "gamekey-art",
-    "account-art",
-    "roblox-art",
-];
-
-const DEFAULT_PAYMENT_SETTINGS = {
+﻿const DEFAULT_PAYMENT_SETTINGS = {
     store: {
         name: "HyperKey Store",
         logo: "assets/hyperlogo.png",
@@ -96,6 +84,9 @@ const DEFAULT_PAYMENT_SETTINGS = {
             feePercent: 20,
             codeLength: 15,
         },
+    },
+    affiliate: {
+        minimumWithdrawal: 10,
     },
 };
 
@@ -258,6 +249,13 @@ function mergePaymentSettings(settings = {}) {
         };
     });
 
+    if (settings.affiliate && typeof settings.affiliate === "object") {
+        merged.affiliate = {
+            ...merged.affiliate,
+            ...settings.affiliate,
+        };
+    }
+
     return merged;
 }
 
@@ -303,7 +301,6 @@ function setUnsavedChanges(isDirty) {
     indicator.innerHTML = `<span></span>${state.hasUnsavedChanges ? "Unsaved changes" : "Saved"}`;
 }
 
-function updateEditorSectionBadges() {}
 function markProductDirty() {
     setUnsavedChanges(true);
 }
@@ -320,8 +317,6 @@ function syncMobileEditorSections() {
     });
     if (sections[0]) sections[0].open = true;
 }
-
-function syncResponsiveAdminLayout() {}
 
 function closeMobileProductCatalog() {
     const catalog = document.getElementById("mobileProductCatalogSheet");
@@ -496,6 +491,11 @@ function renderCategoryEditor() {
                             <div class="col-12">
                                 <label class="form-label">Description</label>
                                 <textarea class="form-control form-control-sm" rows="2" data-category-field="description">${escapeHtml(category.description || "")}</textarea>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Commission %</label>
+                                <input class="form-control form-control-sm" type="number" min="0" max="100" step="0.1" data-category-field="commissionPercent" value="${Number(category.commissionPercent) || 0}" />
+                                <small class="text-secondary">Affiliate commission on products in this category.</small>
                             </div>
                         </div>
                         </div>
@@ -764,7 +764,6 @@ function fillForm() {
     renderVariations();
     renderPreview();
     updateImagePreview();
-    updateEditorSectionBadges();
     syncMobileEditorSections();
     setUnsavedChanges(false);
 }
@@ -807,7 +806,6 @@ function renderVariations() {
         .map((variation) => `<option value="${escapeHtml(variation.id || "")}">${escapeHtml(variation.label || variation.name || variation.id || "Option")}</option>`)
         .join("")}`;
     defaultVariation.value = selectedProduct?.defaultVariation || state.draftVariations[0]?.id || "";
-    updateEditorSectionBadges();
 }
 
 function readFormProduct() {
@@ -930,7 +928,6 @@ function createNewProduct() {
     fillForm();
     document.getElementById("productId").value = "";
     document.getElementById("productName").focus();
-    updateEditorSectionBadges();
     setUnsavedChanges(true);
 }
 
@@ -983,6 +980,7 @@ function addCategory() {
         teaser: "Digital products",
         heading: name,
         description: `Browse ${name.toLowerCase()} products.`,
+        commissionPercent: 0,
     });
     renderCategoryEditor();
     renderCategoryOptions();
@@ -995,7 +993,7 @@ function updateCategory(index, field, value) {
     if (!category) return;
 
     const previousName = category.name;
-    category[field] = field === "visible" ? Boolean(value) : value;
+    category[field] = field === "visible" ? Boolean(value) : field === "commissionPercent" ? Number(value) || 0 : value;
 
     if (field === "name") {
         Object.values(getProducts()).forEach((product) => {
@@ -1064,6 +1062,7 @@ function validateCategories() {
         category.teaser = String(category.teaser || "").trim();
         category.heading = String(category.heading || category.label || name).trim();
         category.description = String(category.description || `Browse ${name.toLowerCase()} products.`).trim();
+        category.commissionPercent = Number(category.commissionPercent) || 0;
     });
 }
 
@@ -1251,6 +1250,7 @@ function fillSettingsForm() {
     const d17 = settings.payment.d17;
     const flouci = settings.payment.flouci;
     const ttCard = settings.payment["tt-card"];
+    const affiliateSettings = settings.affiliate || {};
 
     const fields = {
         storeNameSetting: store.name,
@@ -1288,6 +1288,7 @@ function fillSettingsForm() {
         ttCardValue: ttCard.cardValue,
         ttCardFeePercent: ttCard.feePercent,
         ttCardCodeLength: ttCard.codeLength,
+        affMinWithdrawal: affiliateSettings.minimumWithdrawal,
     };
 
     Object.entries(fields).forEach(([id, value]) => {
@@ -1372,6 +1373,9 @@ function readSettingsForm() {
                 feePercent: numberValue("ttCardFeePercent", DEFAULT_PAYMENT_SETTINGS.payment["tt-card"].feePercent),
                 codeLength: numberValue("ttCardCodeLength", DEFAULT_PAYMENT_SETTINGS.payment["tt-card"].codeLength),
             },
+        },
+        affiliate: {
+            minimumWithdrawal: numberValue("affMinWithdrawal", DEFAULT_PAYMENT_SETTINGS.affiliate.minimumWithdrawal),
         },
     };
 }
@@ -1750,12 +1754,14 @@ async function syncDatabaseToApi() {
     } catch (error) {
         throw new Error(error.message || "Could not save current product");
     }
+    validateCategories();
     const data = {
         action: "admin-save-data",
         products: getProducts(),
         categories: getCategories().map((cat) => ({
             ...cat,
             visible: cat.visible !== false,
+            commissionPercent: Number(cat.commissionPercent) || 0,
         })),
         currency: state.database.currency || "TND",
         routes: state.database.routes || {},
@@ -1948,11 +1954,159 @@ function getFilteredOrders() {
             ...(order.deliveries || []).map((delivery) => `${delivery.text || ""} ${(delivery.lines || []).map((line) => `${line.note} ${line.code}`).join(" ")}`),
             ...(order.customerInputs || []).map((input) => `${input.label} ${input.productName} ${input.value}`),
             ...getAdminCustomerInputRequirements(order).map((input) => `${input.label} ${input.productName}`),
+            order.referredBy || "",
         ]
             .join(" ")
             .toLowerCase();
         return haystack.includes(search);
     });
+}
+
+async function loadAdminAffiliates() {
+    const list = document.getElementById("adminAffiliatesList");
+    if (list) {
+        list.innerHTML = `<div class="empty-state py-4"><p class="text-secondary mb-0">Loading affiliates...</p></div>`;
+    }
+    try {
+        const result = await adminRequest({ action: "admin-list-affiliates" });
+        const affiliates = result.affiliates || [];
+        const listEl = document.getElementById("adminAffiliatesList");
+        if (!listEl) return;
+        if (!affiliates.length) {
+            listEl.innerHTML = `<div class="empty-state py-4"><p class="text-secondary mb-0">No affiliates yet.</p></div>`;
+            return;
+        }
+        listEl.innerHTML = `
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Name</th>
+                            <th>Phone</th>
+                            <th>Total earnings</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${affiliates.map((aff) => `
+                            <tr>
+                                <td><code>${escapeHtml(aff.refCode)}</code></td>
+                                <td>${escapeHtml(aff.name)}</td>
+                                <td>${escapeHtml(aff.phone)}</td>
+                                <td>${money(aff.totalEarnings)}</td>
+                                <td><span class="badge ${aff.active ? "text-bg-success" : "text-bg-secondary"}">${aff.active ? "Active" : "Inactive"}</span></td>
+                                <td>${formatAdminDateTime(aff.createdAt)}</td>
+                                <td>
+                                    <div class="d-flex gap-1 flex-wrap">
+                                        <button class="btn btn-sm ${aff.active ? "btn-outline-secondary" : "btn-outline-success"}" type="button" data-toggle-affiliate="${escapeHtml(aff.refCode)}">${aff.active ? "Deactivate" : "Activate"}</button>
+                                        <button class="btn btn-sm btn-outline-info" type="button" data-change-pass-affiliate="${escapeHtml(aff.refCode)}">Pass</button>
+                                        <button class="btn btn-sm btn-outline-danger" type="button" data-delete-affiliate="${escapeHtml(aff.refCode)}">Del</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join("")}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    } catch (error) {
+        const listEl = document.getElementById("adminAffiliatesList");
+        if (listEl) {
+            listEl.innerHTML = `<div class="empty-state py-4"><p class="text-danger mb-0">${escapeHtml(error.message || "Could not load affiliates")}</p></div>`;
+        }
+    }
+}
+
+async function createAdminAffiliate(name, phone, password) {
+    const result = await adminRequest({
+        action: "admin-create-affiliate",
+        name,
+        phone,
+        password,
+    });
+    return result.affiliate;
+}
+
+async function toggleAdminAffiliate(refCode) {
+    await adminRequest({ action: "admin-toggle-affiliate", refCode });
+    await loadAdminAffiliates();
+}
+
+async function deleteAdminAffiliateFn(refCode) {
+    if (!window.confirm(`Delete affiliate "${refCode}" and all their commissions/payouts?`)) return;
+    await adminRequest({ action: "admin-delete-affiliate", refCode });
+    await loadAdminAffiliates();
+}
+
+async function changeAdminAffiliatePasswordFn(refCode, password) {
+    await adminRequest({ action: "admin-change-affiliate-password", refCode, password });
+}
+
+async function loadAdminPayouts() {
+    const list = document.getElementById("adminPayoutsList");
+    if (list) {
+        list.innerHTML = `<div class="empty-state py-4"><p class="text-secondary mb-0">Loading payouts...</p></div>`;
+    }
+    try {
+        const result = await adminRequest({ action: "admin-list-payouts" });
+        const payouts = result.payouts || [];
+        const listEl = document.getElementById("adminPayoutsList");
+        if (!listEl) return;
+        if (!payouts.length) {
+            listEl.innerHTML = `<div class="empty-state py-4"><p class="text-secondary mb-0">No payout requests yet.</p></div>`;
+            return;
+        }
+        listEl.innerHTML = `
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Affiliate</th>
+                            <th>Amount</th>
+                            <th>Method</th>
+                            <th>Recipient</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${payouts.map((p) => `
+                            <tr>
+                                <td>#${p.id}</td>
+                                <td><code>${escapeHtml(p.refCode)}</code></td>
+                                <td>${money(p.amount)}</td>
+                                <td>${escapeHtml(p.method)}</td>
+                                <td>${escapeHtml(p.recipientDetail)}</td>
+                                <td><span class="badge ${p.status === "paid" ? "text-bg-success" : p.status === "rejected" ? "text-bg-danger" : "text-bg-warning"}">${escapeHtml(p.status)}</span></td>
+                                <td>${formatAdminDateTime(p.createdAt)}</td>
+                                <td>${p.status === "requested" ? `
+                                    <div class="d-flex gap-1">
+                                        <button class="btn btn-sm btn-success" type="button" data-approve-payout="${p.id}" data-payout-status="paid"><i class="bi bi-check2"></i></button>
+                                        <button class="btn btn-sm btn-danger" type="button" data-approve-payout="${p.id}" data-payout-status="rejected"><i class="bi bi-x-lg"></i></button>
+                                    </div>
+                                ` : `<small class="text-secondary">${escapeHtml(p.status)}</small>`}</td>
+                            </tr>
+                        `).join("")}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    } catch (error) {
+        const listEl = document.getElementById("adminPayoutsList");
+        if (listEl) {
+            listEl.innerHTML = `<div class="empty-state py-4"><p class="text-danger mb-0">${escapeHtml(error.message || "Could not load payouts")}</p></div>`;
+        }
+    }
+}
+
+async function approveAdminPayout(id, status) {
+    await adminRequest({ action: "admin-approve-payout", id, status });
+    await loadAdminPayouts();
 }
 
 function renderAdminOrders() {
@@ -1990,6 +2144,7 @@ function renderAdminOrders() {
                                 <span><i class="bi bi-whatsapp"></i><bdi class="phone-ltr">${escapeHtml(order.customerPhoneDisplay)}</bdi></span>
                                 <span><i class="bi bi-credit-card"></i>${escapeHtml(order.paymentMethodLabel)}</span>
                                 <strong>${formatPlainTndAmount(order.amountDue)}</strong>
+                                ${order.referredBy ? `<span><i class="bi bi-megaphone"></i>Referred by: ${escapeHtml(order.referredBy)}</span>` : ""}
                             </div>
                         </div>
                         <div class="admin-order-actions">
@@ -2229,9 +2384,17 @@ function bindEvents() {
     document.getElementById("addCategoryButton")?.addEventListener("click", addCategory);
     document.getElementById("resetFormButton")?.addEventListener("click", fillForm);
     document.getElementById("syncDatabaseButton")?.addEventListener("click", () => {
-        syncDatabaseToApi()
-            .then(() => showToast("Saved products and categories to database"))
+        Promise.all([
+            syncDatabaseToApi(),
+            syncSettingsToApi().catch(() => {}),
+        ])
+            .then(() => showToast("Saved products, categories, and settings to database"))
             .catch((error) => showToast(error.message || "Could not save to database"));
+    });
+    document.getElementById("savePaymentsButton")?.addEventListener("click", () => {
+        syncSettingsToApi()
+            .then(() => showToast("Saved payment settings to database"))
+            .catch((error) => showToast(error.message || "Could not save payment settings"));
     });
     document.getElementById("syncSettingsButton")?.addEventListener("click", () => {
         syncSettingsToApi()
@@ -2327,16 +2490,19 @@ function bindEvents() {
         renderAdminOrders();
     });
 
-    document.getElementById("adminOrderStatusFilters")?.addEventListener("click", (event) => {
-        const button = event.target.closest("[data-order-workflow-filter]");
-        if (!button) return;
-        state.orderFilters.workflow = button.dataset.orderWorkflowFilter || "";
-        document.querySelectorAll("[data-order-workflow-filter]").forEach((filterButton) => {
-            filterButton.classList.toggle("active", filterButton === button);
-            filterButton.classList.toggle("btn-primary", filterButton === button);
-            filterButton.classList.toggle("btn-outline-dark", filterButton !== button);
-        });
+    document.getElementById("adminOrderStatusFilters")?.addEventListener("change", (event) => {
+        state.orderFilters.workflow = event.target.value || "";
         renderAdminOrders();
+    });
+
+    document.getElementById("togglePreviewButton")?.addEventListener("click", () => {
+        const column = document.getElementById("adminPreviewColumn");
+        if (!column) return;
+        const hidden = column.style.display === "none";
+        column.style.display = hidden ? "" : "none";
+        document.getElementById("togglePreviewButton").innerHTML = hidden
+            ? '<i class="bi bi-eye-slash me-1"></i>Hide preview'
+            : '<i class="bi bi-eye me-1"></i>Preview';
     });
 
     document.querySelectorAll("#paymentsPane input, #paymentsPane textarea").forEach((input) => {
@@ -2397,13 +2563,16 @@ function bindEvents() {
         removeVariation(Number(button.dataset.removeVariation));
     });
 
-    document.getElementById("categoryEditorList")?.addEventListener("input", (event) => {
+    function handleCategoryFieldChange(event) {
         const input = event.target.closest("[data-category-field]");
         if (!input) return;
         const row = input.closest("[data-category-index]");
         const value = input.type === "checkbox" ? input.checked : input.value;
         updateCategory(Number(row.dataset.categoryIndex), input.dataset.categoryField, value);
-    });
+    }
+
+    document.getElementById("categoryEditorList")?.addEventListener("input", handleCategoryFieldChange);
+    document.getElementById("categoryEditorList")?.addEventListener("change", handleCategoryFieldChange);
 
     document.getElementById("categoryEditorList")?.addEventListener("click", (event) => {
         const moveButton = event.target.closest("[data-move-category]");
@@ -2434,10 +2603,14 @@ function bindEvents() {
     document.querySelectorAll("#adminWorkspaceTabs [data-bs-toggle='pill']").forEach((tab) => {
         tab.addEventListener("shown.bs.tab", () => {
             tab.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+            const target = tab.getAttribute("data-bs-target");
+            if (target === "#affiliatesPane") {
+                loadAdminAffiliates().catch((error) => showToast(error.message || "Could not load affiliates"));
+            } else if (target === "#payoutsPane") {
+                loadAdminPayouts().catch((error) => showToast(error.message || "Could not load payouts"));
+            }
         });
     });
-
-    window.addEventListener("resize", syncResponsiveAdminLayout);
 
     document.getElementById("adminOrdersList")?.addEventListener("click", (event) => {
         const quickActionButton = event.target.closest("[data-quick-order-action]");
@@ -2525,12 +2698,100 @@ function bindEvents() {
         }
     });
 
+    document.getElementById("addAffiliateButton")?.addEventListener("click", () => {
+        const form = document.getElementById("addAffiliateForm");
+        if (form) form.style.display = "";
+    });
+
+    document.getElementById("cancelAffiliateButton")?.addEventListener("click", () => {
+        const form = document.getElementById("addAffiliateForm");
+        if (form) form.style.display = "none";
+    });
+
+    document.getElementById("saveAffiliateButton")?.addEventListener("click", async () => {
+        const name = document.getElementById("affiliateName")?.value.trim();
+        const phone = document.getElementById("affiliatePhone")?.value.trim();
+        const password = document.getElementById("affiliatePassword")?.value.trim();
+        if (!name || !phone || !password) {
+            showToast("Fill all fields");
+            return;
+        }
+        try {
+            const affiliate = await createAdminAffiliate(name, phone, password);
+            showToast(`Affiliate created: ${affiliate.refCode}`);
+            document.getElementById("affiliateName").value = "";
+            document.getElementById("affiliatePhone").value = "";
+            document.getElementById("affiliatePassword").value = "";
+            document.getElementById("addAffiliateForm").style.display = "none";
+            await loadAdminAffiliates();
+        } catch (error) {
+            showToast(error.message || "Could not create affiliate");
+        }
+    });
+
+    document.getElementById("loadPayoutsButton")?.addEventListener("click", () => {
+        loadAdminPayouts().catch((error) => showToast(error.message || "Could not load payouts"));
+    });
+
+    document.getElementById("adminAffiliatesList")?.addEventListener("click", async (event) => {
+        const toggleBtn = event.target.closest("[data-toggle-affiliate]");
+        if (toggleBtn) {
+            const refCode = toggleBtn.dataset.toggleAffiliate;
+            try {
+                await toggleAdminAffiliate(refCode);
+                showToast(`Toggled affiliate: ${refCode}`);
+            } catch (error) {
+                showToast(error.message || "Could not toggle affiliate");
+            }
+            return;
+        }
+        const deleteBtn = event.target.closest("[data-delete-affiliate]");
+        if (deleteBtn) {
+            const refCode = deleteBtn.dataset.deleteAffiliate;
+            try {
+                await deleteAdminAffiliateFn(refCode);
+                showToast(`Deleted affiliate: ${refCode}`);
+            } catch (error) {
+                showToast(error.message || "Could not delete affiliate");
+            }
+            return;
+        }
+        const passBtn = event.target.closest("[data-change-pass-affiliate]");
+        if (passBtn) {
+            const refCode = passBtn.dataset.changePassAffiliate;
+            const password = window.prompt(`Enter new password for "${refCode}" (min 4 chars):`);
+            if (!password || password.length < 4) {
+                showToast("Password must be at least 4 characters");
+                return;
+            }
+            try {
+                await changeAdminAffiliatePasswordFn(refCode, password);
+                showToast(`Password changed for: ${refCode}`);
+            } catch (error) {
+                showToast(error.message || "Could not change password");
+            }
+            return;
+        }
+    });
+
+    document.getElementById("adminPayoutsList")?.addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-approve-payout]");
+        if (!button) return;
+        const id = Number(button.dataset.approvePayout);
+        const status = button.dataset.payoutStatus;
+        try {
+            await approveAdminPayout(id, status);
+            showToast(`Payout #${id} ${status}`);
+        } catch (error) {
+            showToast(error.message || "Could not update payout");
+        }
+    });
+
 }
 
 bindEvents();
 
 function initAdminPanel() {
-    syncResponsiveAdminLayout();
     loadDatabase();
     loadSettings();
 }

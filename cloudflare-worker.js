@@ -4,6 +4,25 @@ const processedOrders = new Map();
 let customerInputTableReady = false;
 let orderSchemaReady = false;
 
+const loginAttempts = new Map();
+function checkLoginRateLimit(key) {
+    const now = Date.now();
+    const windowMs = 10_000;
+    const maxAttempts = 5;
+    const entry = loginAttempts.get(key);
+    if (entry) {
+        if (now - entry.start > windowMs) {
+            loginAttempts.set(key, { start: now, count: 1 });
+            return true;
+        }
+        if (entry.count >= maxAttempts) return false;
+        entry.count++;
+        return true;
+    }
+    loginAttempts.set(key, { start: now, count: 1 });
+    return true;
+}
+
 const DEFAULT_PAYMENT_SETTINGS = {
     store: {
         name: "HyperKey Store",
@@ -63,6 +82,9 @@ const DEFAULT_PAYMENT_SETTINGS = {
             codeLength: 15,
         },
     },
+    affiliate: {
+        minimumWithdrawal: 10,
+    },
 };
 
 const ICONS = {
@@ -77,6 +99,7 @@ const ICONS = {
     delivery: "\uD83D\uDE9A",
     key: "\uD83D\uDD11",
     game: "\uD83C\uDFAE",
+    link: "\uD83D\uDD17",
 };
 
 function jsonResponse(body, status = 200, corsHeaders = {}) {
@@ -136,7 +159,72 @@ async function ensureOrderSchema(env) {
         }
     }
 
+    await ensureAffiliateSchema(env);
+
     orderSchemaReady = true;
+}
+
+async function ensureAffiliateSchema(env) {
+    const db = getOrderDb(env);
+    const affiliateMigrations = [
+        "ALTER TABLE orders ADD COLUMN referred_by TEXT",
+    ];
+
+    for (const migration of affiliateMigrations) {
+        try {
+            await db.prepare(migration).run();
+        } catch (error) {
+            const message = String(error?.message || "");
+            if (!/duplicate column|already exists/i.test(message)) throw error;
+        }
+    }
+
+    const tableMigrations = [
+        `CREATE TABLE IF NOT EXISTS affiliates (
+            ref_code TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            total_earnings REAL NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS referral_commissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id TEXT NOT NULL,
+            ref_code TEXT NOT NULL,
+            product_id TEXT,
+            commission_amount REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            paid_at TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS affiliate_payouts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ref_code TEXT NOT NULL,
+            amount REAL NOT NULL,
+            method TEXT NOT NULL,
+            recipient_detail TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'requested',
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS affiliate_sessions (
+            token TEXT PRIMARY KEY,
+            ref_code TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )`,
+    ];
+
+    for (const migration of tableMigrations) {
+        try {
+            await db.prepare(migration).run();
+        } catch (error) {
+            const message = String(error?.message || "");
+            if (/already exists/i.test(message)) continue;
+            throw error;
+        }
+    }
 }
 
 function requireAdmin(request, env) {
@@ -204,6 +292,13 @@ function mergePaymentSettings(settings = {}) {
         };
     });
 
+    if (settings.affiliate && typeof settings.affiliate === "object") {
+        merged.affiliate = {
+            ...merged.affiliate,
+            ...settings.affiliate,
+        };
+    }
+
     return merged;
 }
 
@@ -225,7 +320,8 @@ async function ensureCatalogSchema(env) {
             heading TEXT,
             description TEXT,
             visible INTEGER DEFAULT 1,
-            sort_order INTEGER DEFAULT 0
+            sort_order INTEGER DEFAULT 0,
+            commission_percent REAL NOT NULL DEFAULT 0
         )`),
         db.prepare(`CREATE TABLE IF NOT EXISTS products (
             id TEXT PRIMARY KEY,
@@ -246,6 +342,13 @@ async function ensureCatalogSchema(env) {
     ];
 
     await db.batch(statements);
+
+    try {
+        await db.prepare("ALTER TABLE categories ADD COLUMN commission_percent REAL NOT NULL DEFAULT 0").run();
+    } catch (error) {
+        if (!/duplicate column|already exists/i.test(String(error?.message || ""))) throw error;
+    }
+
     catalogSchemaReady = true;
 }
 
@@ -281,6 +384,7 @@ async function readAllCategories(env) {
         description: row.description,
         photo: row.photo,
         visible: row.visible !== 0,
+        commissionPercent: Number(row.commission_percent) || 0,
     }));
 }
 
@@ -646,6 +750,8 @@ function buildOrder(body, database, settings) {
         lines,
         total,
         amountDue: paymentDetails.amountDue,
+        referredBy: typeof body.referredBy === "string" ? body.referredBy.trim().toLowerCase() : "",
+        database,
     };
 }
 
@@ -694,7 +800,8 @@ async function getOrderByCheckoutRequestId(env, checkoutRequestId) {
                 payment_status_reason,
                 delivery_status_reason,
                 updated_at,
-                telegram_notified_at
+                telegram_notified_at,
+                referred_by
             FROM orders
             WHERE checkout_request_id = ?`,
         )
@@ -725,7 +832,8 @@ async function getOrderByIdAndPhone(env, orderId, customerPhone) {
                 delivery_status,
                 payment_status_reason,
                 delivery_status_reason,
-                updated_at
+                updated_at,
+                referred_by
             FROM orders
             WHERE id = ? AND customer_phone IN (?, ?, ?)`,
         )
@@ -753,7 +861,8 @@ async function getOrderById(env, orderId) {
                 payment_status_reason,
                 delivery_status_reason,
                 updated_at,
-                telegram_notified_at
+                telegram_notified_at,
+                referred_by
             FROM orders
             WHERE id = ?`,
         )
@@ -1062,6 +1171,7 @@ async function getSavedOrderForNotification(env, record) {
         })),
         total: Number(record.product_total),
         amountDue: Number(record.amount_due),
+        referredBy: record.referred_by || "",
     };
 }
 
@@ -1104,6 +1214,7 @@ async function getOrderStatusPayload(env, record) {
             })),
             deliveries: record.payment_status === "verified" ? formatDeliveryPayload(deliveries) : [],
             customerInputs,
+            referredBy: record.referred_by || "",
         },
     };
 }
@@ -1141,6 +1252,7 @@ async function getAdminOrderPayload(env, record) {
         deliveryStatusLabel: getDeliveryStatusLabel(record.delivery_status),
         deliveryStatusReason: record.delivery_status_reason || "",
         telegramNotifiedAt: record.telegram_notified_at,
+        referredBy: record.referred_by || "",
         items: items.map((item) => ({
             productId: item.product_id,
             variationId: item.variation_id || "",
@@ -1179,7 +1291,8 @@ async function listAdminOrders(env, limit = 50) {
                     payment_status_reason,
                     delivery_status_reason,
                     updated_at,
-                    telegram_notified_at
+                    telegram_notified_at,
+                    referred_by
                 FROM orders
                 ORDER BY created_at DESC
                 LIMIT ?`,
@@ -1229,6 +1342,11 @@ async function updateAdminOrder(env, body) {
 
     const record = await getOrderById(env, orderId);
     if (!record) throw new Error("Order was not found");
+
+    if (body.deliveryStatus === "delivered" && record.referred_by) {
+        await calculateAndSaveCommissions(env, record);
+    }
+
     return getAdminOrderPayload(env, record);
 }
 
@@ -1287,6 +1405,7 @@ async function deleteAdminOrder(env, body) {
             db.prepare("DELETE FROM order_customer_inputs WHERE order_id = ?").bind(orderId),
             db.prepare("DELETE FROM payment_proofs WHERE order_id = ?").bind(orderId),
             db.prepare("DELETE FROM order_items WHERE order_id = ?").bind(orderId),
+            db.prepare("DELETE FROM referral_commissions WHERE order_id = ?").bind(orderId),
             db.prepare("DELETE FROM orders WHERE id = ?").bind(orderId),
         ]);
     } catch (error) {
@@ -1346,8 +1465,9 @@ async function saveOrderToDatabase(env, checkoutRequestId, order) {
                     delivery_status,
                     payment_status_reason,
                     delivery_status_reason,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    updated_at,
+                    referred_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .bind(
                 order.id,
@@ -1365,6 +1485,7 @@ async function saveOrderToDatabase(env, checkoutRequestId, order) {
                 "",
                 "",
                 order.createdAt,
+                order.referredBy || null,
             );
 
         const itemStatements = order.lines.map((line) =>
@@ -1483,6 +1604,7 @@ function formatAdminMessage(order) {
         `${ICONS.cart} New order \u2014 ${escapeHtml(order.id)}`,
         "",
         `${ICONS.phone} WhatsApp: ${escapeHtml(formatTunisianPhone(order.customerPhone))}`,
+        `${ICONS.link} Referred by: ${order.referredBy ? escapeHtml(order.referredBy) : "Direct"}`,
         "",
         products,
         "",
@@ -1731,6 +1853,136 @@ async function handleCustomerInput(body, env, corsHeaders) {
     return jsonResponse({ ok: true, message: "Information sent for delivery." }, 200, corsHeaders);
 }
 
+async function listAdminAffiliates(env) {
+    await ensureOrderSchema(env);
+    const db = getOrderDb(env);
+    const rows = await getAllResults(db.prepare("SELECT ref_code, name, phone, total_earnings, active, created_at FROM affiliates ORDER BY created_at DESC").bind());
+    return rows.map((r) => ({
+        refCode: r.ref_code,
+        name: r.name,
+        phone: r.phone,
+        totalEarnings: Number(r.total_earnings),
+        active: !!r.active,
+        createdAt: r.created_at,
+    }));
+}
+
+async function createAdminAffiliate(env, body) {
+    await ensureOrderSchema(env);
+    const name = String(body.name || "").trim();
+    const phone = String(body.phone || "").trim().replace(/\D/g, "");
+    const password = String(body.password || "").trim();
+    if (!name) throw new Error("Affiliate name is required");
+    if (!phone) throw new Error("Affiliate phone is required");
+    if (!password || password.length < 4) throw new Error("Password must be at least 4 characters");
+
+    const encoder = new TextEncoder();
+    const passwordBuffer = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", passwordBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    let refCode = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!refCode) throw new Error("Could not generate affiliate code from name");
+
+    const db = getOrderDb(env);
+    let existing = await db.prepare("SELECT ref_code FROM affiliates WHERE ref_code = ?").bind(refCode).first();
+    let suffix = 2;
+    const originalCode = refCode;
+    while (existing) {
+        refCode = `${originalCode}-${suffix}`;
+        suffix++;
+        existing = await db.prepare("SELECT ref_code FROM affiliates WHERE ref_code = ?").bind(refCode).first();
+    }
+
+    const now = new Date().toISOString();
+    await db.prepare(
+        "INSERT INTO affiliates (ref_code, name, phone, password_hash, total_earnings, active, created_at) VALUES (?, ?, ?, ?, 0, 1, ?)"
+    ).bind(refCode, name, phone, hashHex, now).run();
+
+    return { refCode, name, phone };
+}
+
+async function toggleAdminAffiliate(env, body) {
+    await ensureOrderSchema(env);
+    const refCode = String(body.refCode || "").trim().toLowerCase();
+    if (!refCode) throw new Error("Affiliate code is required");
+    const db = getOrderDb(env);
+    const affiliate = await db.prepare("SELECT active FROM affiliates WHERE ref_code = ?").bind(refCode).first();
+    if (!affiliate) throw new Error("Affiliate not found");
+    const newActive = affiliate.active ? 0 : 1;
+    await db.prepare("UPDATE affiliates SET active = ? WHERE ref_code = ?").bind(newActive, refCode).run();
+    return { refCode, active: !!newActive };
+}
+
+async function deleteAdminAffiliate(env, body) {
+    await ensureOrderSchema(env);
+    const refCode = String(body.refCode || "").trim().toLowerCase();
+    if (!refCode) throw new Error("Affiliate code is required");
+    const db = getOrderDb(env);
+    await db.batch([
+        db.prepare("DELETE FROM referral_commissions WHERE ref_code = ?").bind(refCode),
+        db.prepare("DELETE FROM affiliate_payouts WHERE ref_code = ?").bind(refCode),
+        db.prepare("DELETE FROM affiliates WHERE ref_code = ?").bind(refCode),
+    ]);
+}
+
+async function changeAdminAffiliatePassword(env, body) {
+    await ensureOrderSchema(env);
+    const refCode = String(body.refCode || "").trim().toLowerCase();
+    const password = String(body.password || "").trim();
+    if (!refCode) throw new Error("Affiliate code is required");
+    if (!password || password.length < 4) throw new Error("Password must be at least 4 characters");
+    const encoder = new TextEncoder();
+    const passwordBuffer = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", passwordBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    const db = getOrderDb(env);
+    const result = await db.prepare("UPDATE affiliates SET password_hash = ? WHERE ref_code = ?").bind(hashHex, refCode).run();
+    if (!result.meta?.changes) throw new Error("Affiliate not found");
+}
+
+async function listAdminPayouts(env) {
+    await ensureOrderSchema(env);
+    const db = getOrderDb(env);
+    const rows = await getAllResults(db.prepare("SELECT id, ref_code, amount, method, recipient_detail, status, created_at, updated_at FROM affiliate_payouts ORDER BY created_at DESC LIMIT 50").bind());
+    return rows.map((r) => ({
+        id: r.id,
+        refCode: r.ref_code,
+        amount: Number(r.amount),
+        method: r.method,
+        recipientDetail: r.recipient_detail,
+        status: r.status,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at || "",
+    }));
+}
+
+async function approveAdminPayout(env, body) {
+    await ensureOrderSchema(env);
+    const id = Number(body.id);
+    const newStatus = String(body.status || "").trim();
+    if (!id || !["paid", "rejected"].includes(newStatus)) throw new Error("Invalid payout status");
+    const db = getOrderDb(env);
+    const payout = await db.prepare("SELECT id, ref_code, amount, status FROM affiliate_payouts WHERE id = ?").bind(id).first();
+    if (!payout) throw new Error("Payout not found");
+    if (payout.status !== "requested") throw new Error("Payout already processed");
+
+    const now = new Date().toISOString();
+    if (newStatus === "paid") {
+        await db.batch([
+            db.prepare("UPDATE affiliate_payouts SET status = 'paid', updated_at = ? WHERE id = ?").bind(now, id),
+            db.prepare("UPDATE referral_commissions SET status = 'paid', paid_at = ? WHERE ref_code = ? AND status = 'pending'").bind(now, payout.ref_code),
+        ]);
+    } else {
+        await db.prepare("UPDATE affiliate_payouts SET status = 'rejected', updated_at = ? WHERE id = ?").bind(now, id).run();
+        await db.prepare("UPDATE affiliates SET total_earnings = total_earnings - ? WHERE ref_code = ?").bind(payout.amount, payout.ref_code).run();
+    }
+
+    return { id, status: newStatus };
+}
+
 async function handleAdminAction(body, request, env, corsHeaders) {
     requireAdmin(request, env);
     await ensureOrderSchema(env);
@@ -1768,6 +2020,36 @@ async function handleAdminAction(body, request, env, corsHeaders) {
         return jsonResponse({ ok: true }, 200, corsHeaders);
     }
 
+    if (body.action === "admin-list-affiliates") {
+        return jsonResponse({ ok: true, affiliates: await listAdminAffiliates(env) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-create-affiliate") {
+        return jsonResponse({ ok: true, affiliate: await createAdminAffiliate(env, body) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-toggle-affiliate") {
+        return jsonResponse({ ok: true, affiliate: await toggleAdminAffiliate(env, body) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-delete-affiliate") {
+        await deleteAdminAffiliate(env, body);
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-change-affiliate-password") {
+        await changeAdminAffiliatePassword(env, body);
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-list-payouts") {
+        return jsonResponse({ ok: true, payouts: await listAdminPayouts(env) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-approve-payout") {
+        return jsonResponse({ ok: true, payout: await approveAdminPayout(env, body) }, 200, corsHeaders);
+    }
+
     return jsonResponse({ error: "Unknown admin action" }, 400, corsHeaders);
 }
 
@@ -1781,11 +2063,13 @@ async function handleAdminSaveData(body, request, env, corsHeaders) {
     if (body.categories && Array.isArray(body.categories)) {
         statements.push(db.prepare("DELETE FROM categories").bind());
         body.categories.forEach((cat, index) => {
+            const commissionPercent = Number(cat.commissionPercent) || 0;
+            console.log(`[admin-save] Category "${cat.name}" commissionPercent=${commissionPercent} (raw: "${cat.commissionPercent}")`);
             statements.push(
                 db
                     .prepare(
-                        `INSERT INTO categories (id, name, label, page, photo, icon, teaser, heading, description, visible, sort_order)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        `INSERT INTO categories (id, name, label, page, photo, icon, teaser, heading, description, visible, sort_order, commission_percent)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     )
                     .bind(
                         cat.id || `cat-${index}`,
@@ -1799,6 +2083,7 @@ async function handleAdminSaveData(body, request, env, corsHeaders) {
                         cat.description || "",
                         cat.visible !== false ? 1 : 0,
                         index,
+                        commissionPercent,
                     ),
             );
         });
@@ -1831,7 +2116,20 @@ async function handleAdminSaveData(body, request, env, corsHeaders) {
         );
     }
 
-    if (statements.length) await db.batch(statements);
+    if (!statements.length) return { ok: true };
+
+    const batchResults = await db.batch(statements);
+
+    const errors = batchResults
+        .map((r, i) => (r.error ? `Statement ${i}: ${r.error}` : null))
+        .filter(Boolean);
+    if (errors.length) {
+        const errorMsg = errors.join("; ");
+        console.error("[admin-save] D1 batch errors:", errorMsg);
+        return { ok: false, error: errorMsg };
+    }
+
+    console.log(`[admin-save] Successfully saved ${statements.length} statements (${body.categories?.length || 0} categories, ${body.products ? Object.keys(body.products).length : 0} products)`);
     return { ok: true };
 }
 
@@ -1841,10 +2139,14 @@ async function handleAdminSaveSettings(body, request, env, corsHeaders) {
     const db = getCatalogDb(env);
 
     if (body.settings && typeof body.settings === "object") {
-        await db
+        const result = await db
             .prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
             .bind("payment_settings", JSON.stringify(body.settings))
             .run();
+        if (!result.success) {
+            console.error("D1 run error:", result.error);
+            return { ok: false, error: result.error || "Failed to save settings" };
+        }
     }
 
     return { ok: true };
@@ -2064,6 +2366,253 @@ async function handleTelegramWebhook(body, request, env, corsHeaders) {
     return jsonResponse({ ok: true }, 200, corsHeaders);
 }
 
+async function calculateAndSaveCommissions(env, record) {
+    if (!record.referred_by) {
+        console.log(`[commission] Order ${record.id}: no referred_by, skipping`);
+        return;
+    }
+    const db = getOrderDb(env);
+    const items = await getOrderItems(env, record.id);
+    if (!items.length) {
+        console.log(`[commission] Order ${record.id}: no items, skipping`);
+        return;
+    }
+
+    await ensureAffiliateSchema(env);
+
+    const affiliate = await db.prepare("SELECT ref_code, total_earnings FROM affiliates WHERE ref_code = ? AND active = 1").bind(record.referred_by).first();
+    if (!affiliate) {
+        console.log(`[commission] Order ${record.id}: affiliate "${record.referred_by}" not found or inactive`);
+        return;
+    }
+    console.log(`[commission] Order ${record.id}: found active affiliate "${record.referred_by}" (earnings: ${affiliate.total_earnings})`);
+
+    const [allProducts, allCategories] = await Promise.all([
+        readAllProducts(env),
+        readAllCategories(env),
+    ]);
+    const catMap = {};
+    for (const cat of allCategories) {
+        catMap[cat.name] = cat.commissionPercent;
+    }
+    console.log(`[commission] catMap:`, JSON.stringify(catMap));
+
+    const commissions = [];
+    const now = new Date().toISOString();
+
+    for (const item of items) {
+        const product = allProducts[item.product_id];
+        if (!product) {
+            console.log(`[commission] Order ${record.id}: item product_id="${item.product_id}" not found in products`);
+            continue;
+        }
+        const commissionPercent = catMap[product.category] || 0;
+        console.log(`[commission] Order ${record.id}: item="${item.product_id}" product.category="${product.category}" commissionPercent=${commissionPercent} line_total=${item.line_total}`);
+        if (commissionPercent <= 0) {
+            console.log(`[commission] Order ${record.id}: skipping item "${item.product_id}" — commissionPercent is 0`);
+            continue;
+        }
+        const lineTotal = Number(item.line_total);
+        const amount = (lineTotal * commissionPercent) / 100;
+        if (amount <= 0) {
+            console.log(`[commission] Order ${record.id}: skipping item "${item.product_id}" — calculated amount is 0`);
+            continue;
+        }
+        commissions.push({
+            order_id: record.id,
+            ref_code: record.referred_by,
+            product_id: item.product_id,
+            commission_amount: amount,
+            created_at: now,
+        });
+        console.log(`[commission] Order ${record.id}: will create commission for "${item.product_id}" amount=${amount}`);
+    }
+
+    if (!commissions.length) {
+        console.log(`[commission] Order ${record.id}: no commissions to create (all skipped)`);
+        return;
+    }
+
+    const insertStmt = db.prepare(
+        `INSERT INTO referral_commissions (order_id, ref_code, product_id, commission_amount, status, created_at)
+         VALUES (?, ?, ?, ?, 'pending', ?)`
+    );
+
+    const earningsSum = commissions.reduce((sum, c) => sum + c.commission_amount, 0);
+    console.log(`[commission] Order ${record.id}: creating ${commissions.length} commission(s), total earnings increase: ${earningsSum}`);
+    const updateEarningsStmt = db.prepare(
+        "UPDATE affiliates SET total_earnings = total_earnings + ? WHERE ref_code = ?"
+    );
+
+    const batchResults = await db.batch([
+        ...commissions.map((c) =>
+            insertStmt.bind(c.order_id, c.ref_code, c.product_id, c.commission_amount, c.created_at)
+        ),
+        updateEarningsStmt.bind(earningsSum, record.referred_by),
+    ]);
+
+    const errors = batchResults
+        .map((r, i) => (r.error ? `Statement ${i}: ${r.error}` : null))
+        .filter(Boolean);
+    if (errors.length) {
+        console.error("[commission] D1 batch errors in calculateAndSaveCommissions:", errors.join("; "));
+    } else {
+        console.log(`[commission] Order ${record.id}: batch write successful (${commissions.length + 1} statements)`);
+    }
+}
+
+async function getAffiliateByToken(env, token) {
+    if (!token) return null;
+    const db = getOrderDb(env);
+    const session = await db.prepare("SELECT ref_code FROM affiliate_sessions WHERE token = ?").bind(token).first();
+    if (!session) return null;
+    return db.prepare("SELECT ref_code, name, phone, total_earnings, active FROM affiliates WHERE ref_code = ?").bind(session.ref_code).first();
+}
+
+async function handleAffiliateAction(body, request, env, corsHeaders) {
+    await ensureOrderSchema(env);
+
+    const action = body.action;
+
+    if (action === "affiliate-login") {
+        const refCode = String(body.refCode || "").trim().toLowerCase();
+        const password = String(body.password || "").trim();
+        if (!refCode || !password) {
+            return jsonResponse({ error: "Enter affiliate code and password" }, 400, corsHeaders);
+        }
+        const clientIp = request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "unknown";
+        if (!checkLoginRateLimit("aff-login-" + clientIp)) {
+            return jsonResponse({ error: "Too many login attempts. Try again later." }, 429, corsHeaders);
+        }
+        const db = getOrderDb(env);
+        const affiliate = await db.prepare("SELECT ref_code, name, phone, password_hash, total_earnings, active FROM affiliates WHERE ref_code = ?").bind(refCode).first();
+        if (!affiliate) {
+            return jsonResponse({ error: "Affiliate not found" }, 404, corsHeaders);
+        }
+        if (!affiliate.active) {
+            return jsonResponse({ error: "Affiliate account is inactive" }, 403, corsHeaders);
+        }
+        const encoder = new TextEncoder();
+        const passwordBuffer = encoder.encode(password);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", passwordBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+        if (hashHex !== affiliate.password_hash) {
+            return jsonResponse({ error: "Invalid password" }, 401, corsHeaders);
+        }
+        const tokenBytes = new Uint8Array(32);
+        crypto.getRandomValues(tokenBytes);
+        const token = Array.from(tokenBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+        const now = new Date().toISOString();
+        await db.prepare("INSERT INTO affiliate_sessions (token, ref_code, created_at) VALUES (?, ?, ?)").bind(token, affiliate.ref_code, now).run();
+        return jsonResponse({ ok: true, token, affiliate: { refCode: affiliate.ref_code, name: affiliate.name, phone: affiliate.phone, totalEarnings: affiliate.total_earnings } }, 200, corsHeaders);
+    }
+
+    if (action === "affiliate-logout") {
+        const token = String(body.token || "").trim();
+        if (token) {
+            await getOrderDb(env).prepare("DELETE FROM affiliate_sessions WHERE token = ?").bind(token).run();
+        }
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (action === "affiliate-stats") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const affiliate = await getAffiliateByToken(env, token);
+        if (!affiliate) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!affiliate.active) return jsonResponse({ error: "Affiliate account is inactive" }, 403, corsHeaders);
+        const db = getOrderDb(env);
+
+        const [commissions, payouts] = await Promise.all([
+            getAllResults(db.prepare("SELECT id, order_id, product_id, commission_amount, status, created_at, paid_at FROM referral_commissions WHERE ref_code = ? ORDER BY created_at DESC LIMIT 50").bind(affiliate.ref_code)),
+            getAllResults(db.prepare("SELECT id, amount, method, recipient_detail, status, created_at, updated_at FROM affiliate_payouts WHERE ref_code = ? ORDER BY created_at DESC LIMIT 20").bind(affiliate.ref_code)),
+        ]);
+
+        const totalCommissions = commissions.reduce((sum, c) => sum + Number(c.commission_amount), 0);
+        const pendingCommissions = commissions.filter((c) => c.status === "pending").reduce((sum, c) => sum + Number(c.commission_amount), 0);
+        const totalOrders = new Set(commissions.map((c) => c.order_id)).size;
+
+        const paymentSettings = await readPaymentSettings(env);
+        const minimumWithdrawal = paymentSettings.affiliate?.minimumWithdrawal ?? 10;
+
+        return jsonResponse({
+            ok: true,
+            affiliate: {
+                refCode: affiliate.ref_code,
+                name: affiliate.name,
+                phone: affiliate.phone,
+                totalEarnings: affiliate.total_earnings,
+            },
+            stats: {
+                totalOrders,
+                totalCommissions,
+                pendingCommissions,
+                paidCommissions: totalCommissions - pendingCommissions,
+            },
+            minimumWithdrawal,
+            commissions: commissions.map((c) => ({
+                id: c.id,
+                orderId: c.order_id,
+                productId: c.product_id || "",
+                amount: Number(c.commission_amount),
+                status: c.status,
+                createdAt: c.created_at,
+                paidAt: c.paid_at || "",
+            })),
+            payouts: payouts.map((p) => ({
+                id: p.id,
+                amount: Number(p.amount),
+                method: p.method,
+                recipientDetail: p.recipient_detail,
+                status: p.status,
+                createdAt: p.created_at,
+                updatedAt: p.updated_at || "",
+            })),
+        }, 200, corsHeaders);
+    }
+
+    if (action === "affiliate-request-payout") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const affiliate = await getAffiliateByToken(env, token);
+        if (!affiliate) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!affiliate.active) return jsonResponse({ error: "Affiliate account is inactive" }, 403, corsHeaders);
+        const db = getOrderDb(env);
+
+        const amount = Number(body.amount);
+        const method = String(body.method || "").trim() || "d17";
+        const recipientDetail = String(body.recipientDetail || affiliate.phone || "").trim();
+
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return jsonResponse({ error: "Enter a valid amount" }, 400, corsHeaders);
+        }
+
+        const paymentSettings = await readPaymentSettings(env);
+        const minimumWithdrawal = paymentSettings.affiliate?.minimumWithdrawal ?? 10;
+        if (amount < minimumWithdrawal) {
+            return jsonResponse({ error: `Minimum withdrawal is TND ${Number(minimumWithdrawal).toFixed(3)}` }, 400, corsHeaders);
+        }
+
+        const pendingCommissions = await getAllResults(
+            db.prepare("SELECT SUM(commission_amount) as total FROM referral_commissions WHERE ref_code = ? AND status = 'pending'").bind(affiliate.ref_code)
+        );
+        const available = Number(pendingCommissions[0]?.total || 0);
+        if (amount > available) {
+            return jsonResponse({ error: `Insufficient pending commissions. Available: ${available.toFixed(3)} TND` }, 400, corsHeaders);
+        }
+
+        const now = new Date().toISOString();
+        await db.prepare(
+            "INSERT INTO affiliate_payouts (ref_code, amount, method, recipient_detail, status, created_at) VALUES (?, ?, ?, ?, 'requested', ?)"
+        ).bind(affiliate.ref_code, amount, method, recipientDetail, now).run();
+
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    return jsonResponse({ error: "Unknown affiliate action" }, 400, corsHeaders);
+}
+
 async function handleOrder(request, env, corsHeaders) {
     cleanupProcessedOrders();
 
@@ -2074,6 +2623,10 @@ async function handleOrder(request, env, corsHeaders) {
 
     if (String(body.action || "").startsWith("admin-")) {
         return handleAdminAction(body, request, env, corsHeaders);
+    }
+
+    if (String(body.action || "").startsWith("affiliate-")) {
+        return handleAffiliateAction(body, request, env, corsHeaders);
     }
 
     if (body.action === "order-status") {

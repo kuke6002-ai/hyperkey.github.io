@@ -15,6 +15,7 @@ const ORDER_API_URL = window.GAMEVAULT_ORDER_API_URL || "";
 const CATALOG_API_URL = ORDER_API_URL ? `${ORDER_API_URL.replace(/\/+$/, "")}/api` : "";
 const SUPPORT_WHATSAPP_NUMBER = "21655159280";
 const CART_VARIATION_SEPARATOR = "::";
+const REFERRAL_KEY = "hyperkey-ref";
 const SUPPORTED_LANGUAGES = ["en", "fr", "ar"];
 const HOME_CATEGORY_PREVIEW_LIMIT = 4;
 const HOME_FEATURED_PRODUCT_LIMIT = 4;
@@ -366,6 +367,28 @@ function clone(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
+function captureReferralFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get("ref");
+    if (ref && ref.trim()) {
+        sessionStorage.setItem(REFERRAL_KEY, ref.trim().toLowerCase());
+    }
+}
+
+function getReferralCode() {
+    return sessionStorage.getItem(REFERRAL_KEY) || "";
+}
+
+function showReferralBadge() {
+    const badge = document.getElementById("referralBadge");
+    const display = document.getElementById("referralCodeDisplay");
+    const code = getReferralCode();
+    if (badge && display && code) {
+        display.textContent = code;
+        badge.classList.remove("d-none");
+    }
+}
+
 function mergePaymentSettings(settings = {}) {
     const merged = clone(DEFAULT_PAYMENT_SETTINGS);
     if (settings.store && typeof settings.store === "object") {
@@ -395,6 +418,14 @@ function mergePaymentSettings(settings = {}) {
             ...config,
         };
     });
+
+    if (settings.affiliate && typeof settings.affiliate === "object") {
+        merged.affiliate = {
+            ...merged.affiliate,
+            ...settings.affiliate,
+        };
+    }
+
     return merged;
 }
 
@@ -1195,6 +1226,7 @@ function setupCheckoutForm() {
             items: getCheckoutItems(validCart),
             customerPhone,
             paymentMethod,
+            referredBy: getReferralCode(),
         });
 
         setAlert("checkoutSuccess", "Checkout saved. Opening payment page...");
@@ -1410,6 +1442,7 @@ async function submitPaymentOrder(session) {
                 paymentMethod: session.paymentMethod,
                 paymentProof: readPaymentProof(session.paymentMethod),
                 customerPhone: session.customerPhone,
+                referredBy: session.referredBy || getReferralCode(),
             }),
         });
     } catch (networkError) {
@@ -2304,9 +2337,8 @@ function updateProductDetailSelection(productId, variationId = "") {
         const option = getVariation(product, button.dataset.productOption);
         const optionAvailable = isProductInStock(product) && isVariationInStock(option);
         const isActive = variation && button.dataset.productOption === variation.id;
-        button.classList.toggle("btn-dark", isActive);
-        button.classList.toggle("btn-outline-dark", !isActive);
-        button.classList.toggle("disabled", !optionAvailable);
+        button.classList.toggle("active", isActive);
+        button.classList.toggle("opacity-50", !optionAvailable);
         button.disabled = !optionAvailable;
         button.setAttribute("aria-pressed", String(isActive));
         button.setAttribute("aria-disabled", String(!optionAvailable));
@@ -2456,7 +2488,7 @@ function setupProductDetailPage() {
         productVariationOptions.innerHTML = variations
             .map((variation) => `
                 <button
-                    class="btn btn-outline-dark"
+                    class="product-variation-chip"
                     type="button"
                     data-product-option="${escapeHtml(variation.id)}"
                     aria-pressed="false"
@@ -2513,31 +2545,6 @@ function setupOrderStatusLinks() {
         item.className = "nav-item";
         item.innerHTML = `<a class="nav-link ${isStatusPage ? "active" : ""}" ${isStatusPage ? 'aria-current="page"' : ""} href="order-status.html">Check Order</a>`;
         nav.append(item);
-    });
-
-    document.querySelectorAll(".site-footer .d-flex").forEach((footer) => {
-        if (footer.querySelector('a[href="order-status.html"]')) return;
-        const link = document.createElement("a");
-        link.href = "order-status.html";
-        link.textContent = "Check order status";
-        footer.append(link);
-    });
-}
-
-function setupFooterUtilityLinks() {
-    document.querySelectorAll(".site-footer .d-flex").forEach((footer) => {
-        [
-            ["payment-guide.html", "How to order"],
-            ["faq.html", "FAQ"],
-            ["terms.html", "Terms"],
-            ["privacy.html", "Privacy"],
-        ].forEach(([href, label]) => {
-            if (footer.querySelector(`a[href="${href}"]`)) return;
-            const link = document.createElement("a");
-            link.href = href;
-            link.textContent = label;
-            footer.append(link);
-        });
     });
 }
 
@@ -2603,12 +2610,13 @@ document.addEventListener("click", (event) => {
 });
 
 async function initSite() {
+    captureReferralFromUrl();
     await loadTranslationData();
     setupOrderStatusLinks();
-    setupFooterUtilityLinks();
     setupLanguageToggle();
     setupThemeToggle();
     setupSupportWhatsApp();
+    showReferralBadge();
     await loadProductDatabase();
     updateCartCount();
     renderProductsPage();
