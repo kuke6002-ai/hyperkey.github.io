@@ -5,8 +5,10 @@ let gMinWithdrawal = 0;
 /* ── Utilities ────────────────────────────── */
 
 function getAfSession() {
-    try { return JSON.parse(sessionStorage.getItem(AF_SESSION_KEY)) || null; }
-    catch { return null; }
+    try {
+        const result = JSON.parse(sessionStorage.getItem(AF_SESSION_KEY));
+        return result && result.token ? result : null;
+    } catch { return null; }
 }
 
 function saveAfSession(data) {

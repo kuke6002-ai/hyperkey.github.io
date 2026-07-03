@@ -168,3 +168,10 @@ CREATE INDEX IF NOT EXISTS idx_affiliate_payouts_ref_code ON affiliate_payouts(r
 -- ================================================================
 
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
+
+CREATE TABLE IF NOT EXISTS marketplace_products (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);

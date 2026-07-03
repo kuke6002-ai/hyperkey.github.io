@@ -4,6 +4,7 @@
 // Add variations with: variations: [{ id: "small", label: "Small", price: 10 }]
 // The selected variation price will update on product.html and in the cart.
 const PRODUCTS = {};
+const MARKETPLACE_PRODUCTS = {};
 
 const CART_KEY = "hyperkey-cart";
 const CHECKOUT_SESSION_KEY = "hyperkey-checkout-session";
@@ -137,7 +138,10 @@ function refreshArtClasses() {
     ART_CLASSES.splice(
         0,
         ART_CLASSES.length,
-        ...new Set(Object.values(PRODUCTS).map((product) => product.art).filter(Boolean)),
+        ...new Set([
+            ...Object.values(PRODUCTS).map((product) => product.art),
+            ...Object.values(MARKETPLACE_PRODUCTS).map((product) => product.art),
+        ].filter(Boolean)),
     );
 }
 
@@ -322,6 +326,10 @@ async function loadProductDatabase() {
                 if (database.routes && typeof database.routes === "object") {
                     Object.keys(PRODUCT_ROUTES).forEach((id) => delete PRODUCT_ROUTES[id]);
                     Object.assign(PRODUCT_ROUTES, database.routes);
+                }
+                if (database.marketplaceProducts && typeof database.marketplaceProducts === "object") {
+                    Object.keys(MARKETPLACE_PRODUCTS).forEach((id) => delete MARKETPLACE_PRODUCTS[id]);
+                    Object.assign(MARKETPLACE_PRODUCTS, database.marketplaceProducts);
                 }
                 refreshArtClasses();
                 loaded = true;
@@ -642,7 +650,8 @@ function parseCartKey(cartKey) {
 
 function getCartLine(cartKey) {
     const { productId, variationId } = parseCartKey(cartKey);
-    const product = PRODUCTS[productId];
+    let product = PRODUCTS[productId];
+    if (!product) product = MARKETPLACE_PRODUCTS[productId];
     if (!product) return null;
 
     const variation = getVariation(product, variationId);
@@ -785,6 +794,79 @@ function renderProductsPage(searchTerm = "") {
         </div>
     `;
     translatePage();
+}
+
+function getMarketplaceProducts() {
+    return Object.entries(MARKETPLACE_PRODUCTS).filter(([, product]) => product.visible !== false);
+}
+
+function marketplaceCardTemplate(id, product) {
+    const art = product.art || "gamekey-art";
+    const image = typeof product.image === "string" ? product.image.trim() : "";
+    const hasVariations = Array.isArray(product.variations) && product.variations.length > 0;
+    const defaultVar = hasVariations
+        ? (product.variations.find((v) => v.visible !== false && v.inStock !== false) || product.variations[0])
+        : null;
+    const displayPrice = defaultVar?.price ?? product.price ?? 0;
+    const priceLabel = hasVariations ? `From ${formatMoney(displayPrice)}` : formatMoney(displayPrice);
+    const inStock = product.inStock !== false;
+    const shortDesc = product.shortDescription || "";
+
+    return `
+        <div class="col-6 col-md-6 col-xl-3">
+            <article class="card product-card h-100">
+                <a class="product-art ${art}" href="product.html?product=${encodeURIComponent(id)}" aria-label="View ${escapeHtml(product.name)}">
+                    ${image ? `<img class="product-image" src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" loading="lazy" />` : '<i class="bi bi-shop"></i>'}
+                </a>
+                <div class="card-body d-flex flex-column">
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        ${shortDesc ? `<span class="badge text-bg-dark">${escapeHtml(shortDesc)}</span>` : ""}
+                        <span class="badge ${inStock ? "text-bg-success" : "text-bg-secondary"}">${t(inStock ? "Available" : "Out of stock")}</span>
+                    </div>
+                    <h2 class="h5">
+                        <a class="product-title-link" href="product.html?product=${encodeURIComponent(id)}">${escapeHtml(product.name)}</a>
+                    </h2>
+                    ${product.soldBy ? `<p class="small text-secondary mb-1"><i class="bi bi-person me-1"></i>${t("Sold by")}: ${escapeHtml(product.soldBy)}</p>` : ""}
+                    <p class="text-secondary flex-grow-1 small">${escapeHtml(shortDesc || product.description || "") || "&nbsp;"}</p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <strong class="price">${priceLabel}</strong>
+                        <button class="btn btn-primary btn-sm" data-add-to-cart="${escapeHtml(id)}" ${inStock ? "" : "disabled"}>${t(inStock ? "Add" : "Unavailable")}</button>
+                    </div>
+                </div>
+            </article>
+        </div>
+    `;
+}
+
+function renderMarketplacePage(searchTerm = "") {
+    const container = document.getElementById("marketplaceProducts");
+    if (!container) return;
+
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const products = getMarketplaceProducts().filter(([id, product]) => {
+        const haystack = `${id} ${product.name || ""} ${product.soldBy || ""} ${product.shortDescription || ""} ${product.description || ""}`.toLowerCase();
+        return haystack.includes(normalizedSearch);
+    });
+
+    container.innerHTML = products.length
+        ? products.map(([id, product]) => marketplaceCardTemplate(id, product)).join("")
+        : `
+            <div class="col-12">
+                <div class="content-panel text-center py-5">
+                    <h2 class="h4 fw-black">${t("No products found")}</h2>
+                    <p class="text-secondary mb-0">${t("Try a different search term.")}</p>
+                </div>
+            </div>
+        `;
+    translatePage();
+}
+
+function setupMarketplaceSearch() {
+    const searchInput = document.getElementById("marketplaceSearch");
+    if (!searchInput) return;
+    searchInput.addEventListener("input", () => {
+        renderMarketplacePage(searchInput.value);
+    });
 }
 
 function setupProductSearch() {
@@ -998,7 +1080,7 @@ function showCartAddPopup() {
 }
 
 function addToCart(id, variationId = "") {
-    const product = PRODUCTS[id];
+    const product = PRODUCTS[id] || MARKETPLACE_PRODUCTS[id];
     if (!product) return;
     if (!isProductInStock(product)) {
         showToast("This product is currently out of stock.");
@@ -2296,7 +2378,7 @@ function setupOrderReceivedPage() {
 }
 
 function updateProductDetailSelection(productId, variationId = "") {
-    const product = PRODUCTS[productId];
+    const product = PRODUCTS[productId] || MARKETPLACE_PRODUCTS[productId];
     if (!product) return;
 
     const variation = getVariation(product, variationId) || getDefaultVariation(product);
@@ -2422,17 +2504,24 @@ function setupProductDetailPage() {
     const productDetailDescription = document.getElementById("productDetailDescription");
     const productStockAlert = document.getElementById("productStockAlert");
     const breadcrumbProductName = document.getElementById("breadcrumbProductName");
+    const breadcrumbParent = document.getElementById("breadcrumbParent");
+    const productSoldBy = document.getElementById("productSoldBy");
+    const productSoldByText = document.getElementById("productSoldByText");
     const productVariationSection = document.getElementById("productVariationSection");
     const productVariationOptions = document.getElementById("productVariationOptions");
     const cartButtons = document.querySelectorAll("[data-selected-product-target]");
+    const productInfoList = document.getElementById("productInfoList");
+    const productRating = document.getElementById("productRating");
+    const productDeliveryText = document.getElementById("productDeliveryText");
 
     if (!productPrice || !productShowcase) return;
 
     const params = new URLSearchParams(window.location.search);
     const requestedProductId = params.get("product") || "";
     const route = PRODUCT_ROUTES[requestedProductId] || { productId: requestedProductId };
-    const activeProductId = PRODUCTS[route.productId] ? route.productId : (Object.keys(PRODUCTS)[0] || "");
-    const product = PRODUCTS[activeProductId];
+    const isMarketplace = MARKETPLACE_PRODUCTS[route.productId];
+    const activeProductId = isMarketplace ? route.productId : (PRODUCTS[route.productId] ? route.productId : (Object.keys(PRODUCTS)[0] || ""));
+    const product = isMarketplace ? MARKETPLACE_PRODUCTS[activeProductId] : PRODUCTS[activeProductId];
     if (!product) return;
     const variations = getProductVariations(product);
     const selectedVariation =
@@ -2442,7 +2531,7 @@ function setupProductDetailPage() {
     const productArt = product.art || "gamekey-art";
     const productIconClass = product.icon || "bi-box";
     const productImageSrc = getProductImage(product);
-    const productCategoryText = getProductCategory(product);
+    const productCategoryText = isMarketplace ? (product.shortDescription || "Marketplace") : getProductCategory(product);
     const inStock = isProductInStock(product);
 
     if (productIcon) {
@@ -2465,6 +2554,28 @@ function setupProductDetailPage() {
         productBadge.classList.toggle("text-bg-dark", inStock);
         productBadge.classList.toggle("text-bg-secondary", !inStock);
     }
+
+    // Sold by display
+    if (productSoldBy && productSoldByText) {
+        if (isMarketplace && product.soldBy) {
+            productSoldByText.textContent = `${t("Sold by")}: ${product.soldBy}`;
+            productSoldBy.classList.remove("d-none");
+        } else {
+            productSoldBy.classList.add("d-none");
+        }
+    }
+
+    // Breadcrumb
+    if (breadcrumbParent) {
+        if (isMarketplace) {
+            breadcrumbParent.textContent = t("Marketplace");
+            breadcrumbParent.href = "marketplace.html";
+        } else {
+            breadcrumbParent.textContent = t("Products");
+            breadcrumbParent.href = "products.html";
+        }
+    }
+
     if (productStockAlert) {
         productStockAlert.classList.toggle("d-none", inStock);
         productStockAlert.innerHTML = inStock
@@ -2477,6 +2588,38 @@ function setupProductDetailPage() {
     }
     if (productIntro) productIntro.textContent = getProductIntro(product);
     if (productDetailDescription) productDetailDescription.textContent = getProductDetail(product);
+
+    if (productInfoList) {
+        if (isMarketplace) {
+            productInfoList.innerHTML = [
+                t("Shipped by the seller after order confirmation."),
+                t("Delivery times vary by seller."),
+                t("Contact the seller for any issues."),
+            ]
+                .map((text) => `<div><i class="bi bi-check-circle"></i> ${text}</div>`)
+                .join("");
+        } else {
+            productInfoList.innerHTML = [
+                t("Fast delivery with WhatsApp support."),
+                t("Compatible with supported wallet regions."),
+                t("Clear redemption and usage details included."),
+            ]
+                .map((text) => `<div><i class="bi bi-check-circle"></i> ${text}</div>`)
+                .join("");
+        }
+    }
+
+    if (productRating) {
+        productRating.innerHTML = `<i class="bi bi-star-fill"></i> ${product.rating || "4.9"} ${t("reviews")}`;
+    }
+
+    if (productDeliveryText) {
+        if (isMarketplace) {
+            productDeliveryText.textContent = t("Delivery is handled by the seller. Contact them for estimated delivery times.");
+        } else {
+            productDeliveryText.textContent = t("Most codes arrive in less than two minutes. Some orders may need manual review for account security.");
+        }
+    }
 
     productShowcase.classList.remove(...ART_CLASSES);
     productShowcase.classList.add(productArt);
@@ -2594,13 +2737,14 @@ document.addEventListener("click", (event) => {
 
     const addButton = event.target.closest("[data-add-to-cart]");
     if (addButton) {
-        const product = PRODUCTS[addButton.dataset.addToCart];
-        if (!isProductInStock(product)) {
+        const productId = addButton.dataset.addToCart;
+        const product = PRODUCTS[productId] || MARKETPLACE_PRODUCTS[productId];
+        if (!product || !isProductInStock(product)) {
             event.preventDefault();
             showToast("This product is currently out of stock.");
             return;
         }
-        addToCart(addButton.dataset.addToCart, addButton.dataset.productVariation || "");
+        addToCart(productId, addButton.dataset.productVariation || "");
     }
 
     const qtyButton = event.target.closest("[data-change-qty]");
@@ -2621,6 +2765,8 @@ async function initSite() {
     updateCartCount();
     renderProductsPage();
     setupProductSearch();
+    renderMarketplacePage();
+    setupMarketplaceSearch();
     renderHomeCategories();
     renderFeaturedProducts();
     await renderFaqPage();

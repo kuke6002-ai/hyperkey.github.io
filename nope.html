@@ -92,6 +92,11 @@
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="marketplaceTab" data-bs-toggle="pill" data-bs-target="#marketplacePane" type="button" role="tab" aria-controls="marketplacePane" aria-selected="false">
+                            <i class="bi bi-shop me-1"></i>Marketplace
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
                         <button class="nav-link" id="affiliatesTab" data-bs-toggle="pill" data-bs-target="#affiliatesPane" type="button" role="tab" aria-controls="affiliatesPane" aria-selected="false">
                             <i class="bi bi-people me-1"></i>Affiliates
                         </button>
@@ -155,7 +160,7 @@
                             </aside>
 
                             <section class="admin-editor-column">
-                                <form class="content-panel admin-panel admin-product-editor" id="productForm">
+                                <form class="content-panel admin-panel admin-product-editor" id="productForm" novalidate>
                                     <div class="admin-editor-header">
                                         <div>
                                             <p class="eyebrow mb-1">Editor</p>
@@ -660,6 +665,210 @@
                         </div>
                     </section>
 
+                    <section class="tab-pane fade" id="marketplacePane" role="tabpanel" aria-labelledby="marketplaceTab" tabindex="0">
+                        <div class="admin-pane-heading">
+                            <div>
+                                <p class="eyebrow mb-1">Marketplace</p>
+                                <h2 class="h4 fw-bold mb-0">Marketplace products</h2>
+                            </div>
+                            <button class="btn btn-primary" type="button" id="newMarketplaceProductButton">
+                                <i class="bi bi-plus-lg me-1"></i>New product
+                            </button>
+                        </div>
+
+                        <div class="admin-mobile-product-toolbar">
+                            <button class="btn btn-outline-dark admin-mobile-catalog-trigger" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileMarketplaceCatalogSheet" aria-controls="mobileMarketplaceCatalogSheet">
+                                <i class="bi bi-shop me-2"></i><span id="mobileMarketplaceCatalogCount">Products (0)</span>
+                            </button>
+                        </div>
+
+                        <div class="admin-products-layout">
+                            <aside class="content-panel admin-panel admin-product-sidebar">
+                                <div class="admin-sidebar-heading">
+                                    <div>
+                                        <p class="eyebrow mb-1">Catalog</p>
+                                        <h3 class="h6 fw-bold mb-0">Product list</h3>
+                                    </div>
+                                    <small id="marketplaceListCount">0 products</small>
+                                </div>
+                                <div class="admin-mobile-product-picker mb-3">
+                                    <label class="form-label" for="mobileMarketplaceSelect">Choose product</label>
+                                    <select class="form-select" id="mobileMarketplaceSelect"></select>
+                                </div>
+                                <div class="admin-sidebar-filters">
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                        <input class="form-control" id="marketplaceSearch" type="search" placeholder="Search products" />
+                                    </div>
+                                    <select class="form-select" id="marketplaceStatusFilter" aria-label="Filter marketplace products by status">
+                                        <option value="">All status</option>
+                                        <option value="visible">Visible</option>
+                                        <option value="hidden">Hidden</option>
+                                        <option value="in-stock">Available</option>
+                                        <option value="out-of-stock">Out of stock</option>
+                                        <option value="needs-input">Needs customer info</option>
+                                    </select>
+                                </div>
+                                <div class="admin-list admin-list-tall mt-3" id="marketplaceProductList"></div>
+                            </aside>
+
+                            <section class="admin-editor-column">
+                                <form class="content-panel admin-panel admin-product-editor" id="marketplaceProductForm" novalidate>
+                                    <div class="admin-editor-header">
+                                        <div>
+                                            <p class="eyebrow mb-1">Editor</p>
+                                            <h2 class="h4 fw-bold mb-0" id="marketplaceEditorTitle">New marketplace product</h2>
+                                        </div>
+                                        <div class="admin-editor-actions">
+                                            <button class="btn btn-outline-dark btn-sm" type="button" id="toggleMarketplacePreviewButton"><i class="bi bi-eye me-1"></i>Preview</button>
+                                        </div>
+                                    </div>
+
+                                    <details class="admin-form-section admin-editor-details" data-editor-section="basic" open>
+                                        <summary>
+                                            <div class="admin-section-heading">
+                                                <h3 class="h5 fw-bold mb-0">Basic info</h3>
+                                            </div>
+                                            <i class="bi bi-chevron-down"></i>
+                                        </summary>
+                                        <div class="admin-form-section-body row g-3">
+                                            <div class="col-md-5">
+                                                <label class="form-label" for="marketplaceProductId">Product ID</label>
+                                                <input class="form-control" id="marketplaceProductId" type="text" required />
+                                            </div>
+                                            <div class="col-md-7">
+                                                <label class="form-label" for="marketplaceProductName">Name</label>
+                                                <input class="form-control" id="marketplaceProductName" type="text" required />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="marketplaceProductSoldBy">Sold by</label>
+                                                <input class="form-control" id="marketplaceProductSoldBy" type="text" placeholder="Seller name" />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="marketplaceProductShortDesc">Short description</label>
+                                                <input class="form-control" id="marketplaceProductShortDesc" type="text" placeholder="Shown on product card" />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="marketplaceProductPrice">Base price TND</label>
+                                                <input class="form-control" id="marketplaceProductPrice" type="number" min="0" step="0.001" required />
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label" for="marketplaceProductDescription">Description</label>
+                                                <textarea class="form-control" id="marketplaceProductDescription" rows="3"></textarea>
+                                            </div>
+                                        </div>
+                                    </details>
+
+                                    <details class="admin-form-section admin-editor-details" data-editor-section="display">
+                                        <summary>
+                                            <div class="admin-section-heading">
+                                                <h3 class="h5 fw-bold mb-0">Display / image</h3>
+                                            </div>
+                                            <i class="bi bi-chevron-down"></i>
+                                        </summary>
+                                        <div class="admin-form-section-body row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="marketplaceProductImage">Photo path</label>
+                                                <input class="form-control" id="marketplaceProductImage" type="text" placeholder="assets/product-photo.png" />
+                                                <div class="admin-image-preview mt-2" id="marketplaceAdminImagePreview" style="display: none;">
+                                                    <img id="marketplaceAdminImagePreviewImg" class="img-thumbnail" alt="Product photo preview" style="max-height: 120px;" />
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="marketplaceProductPhotoFile">Photo file</label>
+                                                <input class="form-control" id="marketplaceProductPhotoFile" type="file" accept="image/*" />
+                                                <button class="btn btn-outline-primary btn-sm mt-2" type="button" id="marketplaceUploadToGitHubButton">
+                                                    <i class="bi bi-cloud-upload me-1"></i>Upload to GitHub
+                                                </button>
+                                                <div class="mt-1" id="marketplaceUploadStatus" style="font-size: 0.85rem;"></div>
+                                            </div>
+                                        </div>
+                                    </details>
+
+                                    <details class="admin-form-section admin-editor-details" data-editor-section="availability">
+                                        <summary>
+                                            <div class="admin-section-heading">
+                                                <h3 class="h5 fw-bold mb-0">Availability</h3>
+                                            </div>
+                                            <i class="bi bi-chevron-down"></i>
+                                        </summary>
+                                        <div class="admin-form-section-body row g-3">
+                                            <div class="col-md-6">
+                                                <div class="form-check form-switch admin-switch">
+                                                    <input class="form-check-input" id="marketplaceProductVisible" type="checkbox" />
+                                                    <label class="form-check-label" for="marketplaceProductVisible">Show in store</label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="form-check form-switch admin-switch">
+                                                    <input class="form-check-input" id="marketplaceProductInStock" type="checkbox" />
+                                                    <label class="form-check-label" for="marketplaceProductInStock">Available to buy</label>
+                                                </div>
+                                            </div>
+                                            <div class="col-12">
+                                                <div class="admin-setting-group product-customer-input">
+                                                    <div class="form-check form-switch admin-switch mb-3">
+                                                        <input class="form-check-input" id="marketplaceProductCustomerInputEnabled" type="checkbox" />
+                                                        <label class="form-check-label" for="marketplaceProductCustomerInputEnabled">Ask customer for delivery info after payment</label>
+                                                    </div>
+                                                    <label class="form-label">Customer input labels</label>
+                                                    <div id="marketplaceProductCustomerInputs" class="d-flex flex-column gap-2 mb-2"></div>
+                                                    <div class="d-flex gap-2 admin-inline-control">
+                                                        <input class="form-control" id="marketplaceProductCustomerNewInput" type="text" placeholder="Player ID" maxlength="80" />
+                                                        <button class="btn btn-outline-dark" type="button" id="addMarketplaceCustomerInputButton">Add</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </details>
+
+                                    <details class="admin-form-section admin-editor-details" data-editor-section="variations">
+                                        <summary>
+                                            <div class="admin-section-heading">
+                                                <h3 class="h5 fw-bold mb-0">Variations</h3>
+                                            </div>
+                                            <i class="bi bi-chevron-down"></i>
+                                        </summary>
+                                        <div class="admin-form-section-body">
+                                            <div class="d-grid d-sm-flex justify-content-sm-end mb-3">
+                                                <button class="btn btn-outline-dark btn-sm" type="button" id="addMarketplaceVariationButton">
+                                                    <i class="bi bi-plus-lg me-1"></i>Add option
+                                                </button>
+                                            </div>
+                                            <div class="row g-3 mb-3">
+                                                <div class="col-md-6">
+                                                    <label class="form-label" for="marketplaceDefaultVariation">Default variation</label>
+                                                    <select class="form-select" id="marketplaceDefaultVariation"></select>
+                                                </div>
+                                            </div>
+                                            <div class="admin-variation-list" id="marketplaceVariationList"></div>
+                                        </div>
+                                    </details>
+
+                                    <div class="admin-save-bar">
+                                        <div class="admin-unsaved-indicator" id="marketplaceUnsavedIndicator">
+                                            <span></span>Saved
+                                        </div>
+                                        <button class="btn btn-outline-dark" type="button" id="resetMarketplaceFormButton">Reset changes</button>
+                                        <button class="btn btn-primary" type="submit"><i class="bi bi-check2 me-2"></i>Save changes</button>
+                                        <button class="btn btn-outline-danger" type="button" id="deleteMarketplaceProductButton">
+                                            <i class="bi bi-trash me-1"></i>Delete product
+                                        </button>
+                                    </div>
+                                </form>
+                            </section>
+                            <aside class="content-panel admin-panel admin-preview-column" id="marketplacePreviewColumn" style="display:none;">
+                                <div class="admin-sidebar-heading">
+                                    <div>
+                                        <p class="eyebrow mb-1">Preview</p>
+                                        <h3 class="h6 fw-bold mb-0">Product card</h3>
+                                    </div>
+                                </div>
+                                <div class="admin-preview-body" id="marketplacePreviewBody"></div>
+                            </aside>
+                        </div>
+                    </section>
+
                     <section class="tab-pane fade" id="affiliatesPane" role="tabpanel" aria-labelledby="affiliatesTab" tabindex="0">
                         <div class="admin-pane-heading">
                             <div>
@@ -758,6 +967,36 @@
             </div>
         </div>
 
+        <div class="offcanvas offcanvas-start admin-mobile-catalog-sheet" tabindex="-1" id="mobileMarketplaceCatalogSheet" aria-labelledby="mobileMarketplaceCatalogTitle">
+            <div class="offcanvas-header">
+                <div>
+                    <p class="eyebrow mb-1">Catalog</p>
+                    <h2 class="h5 fw-bold mb-0" id="mobileMarketplaceCatalogTitle">Marketplace products</h2>
+                </div>
+                <button class="btn btn-outline-dark btn-sm" type="button" data-bs-dismiss="offcanvas" aria-label="Close marketplace catalog">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="offcanvas-body">
+                <div class="admin-mobile-catalog-controls">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input class="form-control" id="mobileMarketplaceCatalogSearch" type="search" placeholder="Search products" />
+                    </div>
+                    <select class="form-select" id="mobileMarketplaceStatusFilter" aria-label="Filter mobile products by status">
+                        <option value="">All status</option>
+                        <option value="visible">Visible</option>
+                        <option value="hidden">Hidden</option>
+                        <option value="in-stock">Available</option>
+                        <option value="out-of-stock">Out of stock</option>
+                        <option value="needs-input">Needs customer info</option>
+                    </select>
+                </div>
+                <div class="admin-mobile-catalog-meta" id="mobileMarketplaceResultCount">0 products</div>
+                <div class="admin-mobile-product-list" id="mobileMarketplaceList"></div>
+            </div>
+        </div>
+
         <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1080">
             <div class="toast align-items-center text-bg-dark border-0" id="adminToast" role="status" aria-live="polite" aria-atomic="true">
                 <div class="d-flex">
@@ -769,7 +1008,7 @@
 
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
         <script src="config.js?v=20260614-1"></script>
-        <script src="admin.js?v=20260701-3"></script>
+        <script src="admin.js?v=20260701-7"></script>
     </body>
 </html>
 

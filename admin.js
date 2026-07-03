@@ -364,6 +364,7 @@ function setDatabase(database) {
         categories: Array.isArray(migrated.categories) ? migrated.categories : [],
         routes: migrated.routes && typeof migrated.routes === "object" ? migrated.routes : {},
         products: migrated.products && typeof migrated.products === "object" ? migrated.products : {},
+        marketplaceProducts: migrated.marketplaceProducts && typeof migrated.marketplaceProducts === "object" ? migrated.marketplaceProducts : {},
     };
 
     const firstProduct = Object.keys(state.database.products)[0] || "";
@@ -423,6 +424,7 @@ function renderAll() {
     renderProductList();
     fillForm();
     updateJsonOutput();
+    renderMarketplaceAll();
 }
 
 function renderCategoryEditor() {
@@ -1726,7 +1728,7 @@ function renderOrderItems(items) {
         .map(
             (item) => `
                 <div class="admin-order-line">
-                    <span>${escapeHtml(item.quantity > 1 ? `${item.quantity} x ` : "")}${escapeHtml(item.productName)}</span>
+                    <span>${escapeHtml(item.quantity > 1 ? `${item.quantity} x ` : "")}${escapeHtml(item.productName)}${item.soldBy ? ` <small class="text-secondary">(Sold by: ${escapeHtml(item.soldBy)})</small>` : ""}</span>
                     <strong>${formatPlainTndAmount(item.lineTotal)}</strong>
                 </div>
             `,
@@ -1758,6 +1760,7 @@ async function syncDatabaseToApi() {
     const data = {
         action: "admin-save-data",
         products: getProducts(),
+        marketplaceProducts: getMarketplaceProducts(),
         categories: getCategories().map((cat) => ({
             ...cat,
             visible: cat.visible !== false,
@@ -1949,7 +1952,7 @@ function getFilteredOrders() {
             order.deliveryStatusLabel,
             order.paymentStatusReason,
             order.deliveryStatusReason,
-            ...(order.items || []).map((item) => item.productName),
+            ...(order.items || []).flatMap((item) => [item.productName, item.soldBy || ""]),
             ...(order.proofs || []).map((proof) => `${proof.label} ${proof.value}`),
             ...(order.deliveries || []).map((delivery) => `${delivery.text || ""} ${(delivery.lines || []).map((line) => `${line.note} ${line.code}`).join(" ")}`),
             ...(order.customerInputs || []).map((input) => `${input.label} ${input.productName} ${input.value}`),
@@ -2507,6 +2510,556 @@ async function saveAdminOrderDelivery(orderId) {
     showToast("Delivery details saved");
 }
 
+// ===== Marketplace admin functions =====
+
+const marketplaceState = {
+    selectedId: "",
+    originalId: "",
+    draftVariations: [],
+    draftCustomerInputs: [],
+    previewImages: {},
+    filters: {
+        search: "",
+        status: "",
+    },
+    hasUnsavedChanges: false,
+};
+
+function getMarketplaceProducts() {
+    return state.database.marketplaceProducts || {};
+}
+
+function getMarketplaceProductEntries() {
+    return Object.entries(getMarketplaceProducts()).sort(([, a], [, b]) => String(a.name || "").localeCompare(String(b.name || "")));
+}
+
+function getSelectedMarketplaceProduct() {
+    return getMarketplaceProducts()[marketplaceState.selectedId] || null;
+}
+
+function renderMarketplaceProductList() {
+    const list = document.getElementById("marketplaceProductList");
+    const entries = getFilteredMarketplaceProductEntries();
+    const totalEntries = getMarketplaceProductEntries().length;
+    const mobileCount = document.getElementById("mobileMarketplaceCatalogCount");
+    if (mobileCount) mobileCount.textContent = `Products (${totalEntries})`;
+    const count = document.getElementById("marketplaceListCount");
+    if (count) count.textContent = `${entries.length} product${entries.length === 1 ? "" : "s"}`;
+    const picker = document.getElementById("mobileMarketplaceSelect");
+    if (picker) {
+        picker.innerHTML = entries.length
+            ? entries.map(([id, product]) => `<option value="${escapeHtml(id)}">${escapeHtml(product.name || id)}</option>`).join("")
+            : `<option value="">No products yet</option>`;
+        picker.value = marketplaceState.selectedId || entries[0]?.[0] || "";
+    }
+
+    renderMobileMarketplaceList(entries);
+    if (!list) return;
+
+    list.innerHTML = entries.length
+        ? entries.map(([id, product]) => {
+            const isActive = id === marketplaceState.selectedId;
+            const hidden = product.visible === false;
+            const outOfStock = product.inStock === false;
+            const variationCount = Array.isArray(product.variations) ? product.variations.length : 0;
+            const needsInput = product.customerInput?.enabled === true;
+            return `
+                <button class="admin-product-item ${isActive ? "active" : ""}" type="button" data-select-marketplace-product="${escapeHtml(id)}">
+                    <span>
+                        <strong>${escapeHtml(product.name || id)}</strong>
+                        <small>${escapeHtml(id)}</small>
+                    </span>
+                    <span class="admin-item-meta">
+                        ${variationCount ? `<em>${variationCount} options</em>` : `<em>${money(product.price, state.database.currency)}</em>`}
+                        ${product.soldBy ? `<i class="bi bi-person" title="Sold by: ${escapeHtml(product.soldBy)}"></i>` : ""}
+                        ${needsInput ? '<i class="bi bi-input-cursor-text" title="Customer input required"></i>' : ""}
+                        ${outOfStock ? '<i class="bi bi-slash-circle" title="Out of stock"></i>' : '<i class="bi bi-check-circle" title="Available"></i>'}
+                        ${hidden ? '<i class="bi bi-eye-slash" title="Hidden"></i>' : '<i class="bi bi-eye" title="Visible"></i>'}
+                    </span>
+                </button>
+            `;
+        }).join("")
+        : `<div class="empty-state py-4"><p class="text-secondary mb-0">No products found.</p></div>`;
+}
+
+function renderMobileMarketplaceList(entries) {
+    const list = document.getElementById("mobileMarketplaceList");
+    const resultCount = document.getElementById("mobileMarketplaceResultCount");
+    if (!list) return;
+    if (resultCount) resultCount.textContent = `${entries.length} product${entries.length === 1 ? "" : "s"} shown`;
+    list.innerHTML = entries.length
+        ? entries.map(([id, product]) => {
+            const variationCount = Array.isArray(product.variations) ? product.variations.length : 0;
+            const hidden = product.visible === false;
+            const outOfStock = product.inStock === false;
+            return `
+                <div class="admin-mobile-product-row ${id === marketplaceState.selectedId ? "active" : ""}">
+                    <button class="admin-mobile-product-main" type="button" data-select-marketplace-product="${escapeHtml(id)}">
+                        <span>
+                            <strong>${escapeHtml(product.name || id)}</strong>
+                            <small>${product.soldBy ? escapeHtml(product.soldBy) : "Marketplace"}</small>
+                        </span>
+                        <span class="admin-mobile-product-meta">
+                            <em>${variationCount ? `${variationCount} option${variationCount === 1 ? "" : "s"}` : "No options"}</em>
+                            <b class="admin-mobile-product-status ${hidden ? "status-hidden" : outOfStock ? "status-draft" : "status-published"}">${hidden ? "Hidden" : outOfStock ? "Draft" : "Published"}</b>
+                        </span>
+                    </button>
+                </div>
+            `;
+        }).join("")
+        : `<div class="empty-state py-4"><p class="text-secondary mb-0">No products found.</p></div>`;
+}
+
+function getFilteredMarketplaceProductEntries() {
+    return getMarketplaceProductEntries().filter(([id, product]) => {
+        const haystack = `${id} ${product.name || ""} ${product.soldBy || ""} ${product.shortDescription || ""}`.toLowerCase();
+        if (!haystack.includes(marketplaceState.filters.search)) return false;
+        if (marketplaceState.filters.status === "visible" && product.visible === false) return false;
+        if (marketplaceState.filters.status === "hidden" && product.visible !== false) return false;
+        if (marketplaceState.filters.status === "in-stock" && product.inStock === false) return false;
+        if (marketplaceState.filters.status === "out-of-stock" && product.inStock !== false) return false;
+        if (marketplaceState.filters.status === "needs-input" && product.customerInput?.enabled !== true) return false;
+        return true;
+    });
+}
+
+function selectMarketplaceProduct(id) {
+    marketplaceState.selectedId = id;
+    marketplaceState.originalId = id;
+    const product = getSelectedMarketplaceProduct();
+    marketplaceState.draftVariations = Array.isArray(product?.variations) ? clone(product.variations) : [];
+    const picker = document.getElementById("mobileMarketplaceSelect");
+    if (picker) picker.value = id;
+}
+
+function fillMarketplaceForm() {
+    const product = getSelectedMarketplaceProduct();
+    const isNew = !product;
+    document.getElementById("marketplaceEditorTitle").textContent = isNew ? "New marketplace product" : product.name || marketplaceState.selectedId;
+
+    const idEl = document.getElementById("marketplaceProductId");
+    const nameEl = document.getElementById("marketplaceProductName");
+    const soldByEl = document.getElementById("marketplaceProductSoldBy");
+    const shortDescEl = document.getElementById("marketplaceProductShortDesc");
+    const priceEl = document.getElementById("marketplaceProductPrice");
+    const imageEl = document.getElementById("marketplaceProductImage");
+    const photoFileEl = document.getElementById("marketplaceProductPhotoFile");
+    const descEl = document.getElementById("marketplaceProductDescription");
+    const visibleEl = document.getElementById("marketplaceProductVisible");
+    const inStockEl = document.getElementById("marketplaceProductInStock");
+    const customerInputEnabledEl = document.getElementById("marketplaceProductCustomerInputEnabled");
+
+    if (idEl) idEl.value = marketplaceState.selectedId || "";
+    if (nameEl) nameEl.value = product?.name || "";
+    if (soldByEl) soldByEl.value = product?.soldBy || "";
+    if (shortDescEl) shortDescEl.value = product?.shortDescription || "";
+    if (priceEl) priceEl.value = Number(product?.price ?? 0);
+    if (imageEl) imageEl.value = product?.image || "assets/hyperlogo.png";
+    if (photoFileEl) photoFileEl.value = "";
+    if (descEl) descEl.value = product?.description || "";
+    if (visibleEl) visibleEl.checked = product?.visible !== false;
+    if (inStockEl) inStockEl.checked = product?.inStock !== false;
+    if (customerInputEnabledEl) customerInputEnabledEl.checked = product?.customerInput?.enabled === true;
+
+    marketplaceState.draftCustomerInputs = [];
+    if (product?.customerInput) {
+        if (Array.isArray(product.customerInput.labels)) marketplaceState.draftCustomerInputs = clone(product.customerInput.labels);
+        else if (product.customerInput.label) marketplaceState.draftCustomerInputs = [product.customerInput.label];
+    }
+    renderMarketplaceCustomerInputs();
+    renderMarketplaceVariations();
+    renderMarketplacePreview();
+    updateMarketplaceImagePreview();
+
+    const indicator = document.getElementById("marketplaceUnsavedIndicator");
+    marketplaceState.hasUnsavedChanges = false;
+    if (indicator) {
+        indicator.classList.remove("is-dirty");
+        indicator.innerHTML = `<span></span>Saved`;
+    }
+}
+
+function renderMarketplaceCustomerInputs() {
+    const container = document.getElementById("marketplaceProductCustomerInputs");
+    if (!container) return;
+    container.innerHTML = marketplaceState.draftCustomerInputs.length
+        ? marketplaceState.draftCustomerInputs.map((label, index) => `
+            <div class="d-flex gap-2" data-mp-customer-input-index="${index}">
+                <input class="form-control form-control-sm" data-mp-customer-input-field="label" value="${escapeHtml(label)}" />
+                <button class="btn btn-outline-danger btn-sm" type="button" data-remove-mp-customer-input="${index}">Remove</button>
+            </div>
+        `).join("")
+        : `<div class="text-secondary small">No customer inputs added.</div>`;
+}
+
+function addMarketplaceCustomerInput(label) {
+    const value = String(label || document.getElementById("marketplaceProductCustomerNewInput")?.value || "").trim();
+    if (!value) return;
+    marketplaceState.draftCustomerInputs.push(value.slice(0, 80));
+    const inputEl = document.getElementById("marketplaceProductCustomerNewInput");
+    if (inputEl) inputEl.value = "";
+    renderMarketplaceCustomerInputs();
+    renderMarketplacePreview();
+    setMarketplaceUnsaved(true);
+}
+
+function removeMarketplaceCustomerInput(index) {
+    marketplaceState.draftCustomerInputs.splice(index, 1);
+    renderMarketplaceCustomerInputs();
+    renderMarketplacePreview();
+    setMarketplaceUnsaved(true);
+}
+
+function setMarketplaceUnsaved(isDirty) {
+    const was = marketplaceState.hasUnsavedChanges;
+    marketplaceState.hasUnsavedChanges = Boolean(isDirty);
+    if (marketplaceState.hasUnsavedChanges === was) return;
+    const indicator = document.getElementById("marketplaceUnsavedIndicator");
+    if (!indicator) return;
+    indicator.classList.toggle("is-dirty", marketplaceState.hasUnsavedChanges);
+    indicator.innerHTML = `<span></span>${marketplaceState.hasUnsavedChanges ? "Unsaved changes" : "Saved"}`;
+}
+
+function renderMarketplaceVariations() {
+    const list = document.getElementById("marketplaceVariationList");
+    const defaultVariation = document.getElementById("marketplaceDefaultVariation");
+    const selectedProduct = getSelectedMarketplaceProduct();
+    if (!list || !defaultVariation) return;
+
+    list.innerHTML = marketplaceState.draftVariations.length
+        ? marketplaceState.draftVariations.map((variation, index) => `
+            <div class="admin-variation-row" data-mp-variation-index="${index}">
+                <div>
+                    <label class="form-label">ID</label>
+                    <input class="form-control form-control-sm" data-mp-variation-field="id" value="${escapeHtml(variation.id || "")}" />
+                </div>
+                <div>
+                    <label class="form-label">Label</label>
+                    <input class="form-control form-control-sm" data-mp-variation-field="label" value="${escapeHtml(variation.label || "")}" />
+                </div>
+                <div>
+                    <label class="form-label">Name</label>
+                    <input class="form-control form-control-sm" data-mp-variation-field="name" value="${escapeHtml(variation.name || "")}" />
+                </div>
+                <div>
+                    <label class="form-label">Price</label>
+                    <input class="form-control form-control-sm" data-mp-variation-field="price" type="number" min="0" step="0.001" value="${Number(variation.price ?? 0)}" />
+                </div>
+                <button class="btn btn-outline-danger btn-sm" type="button" data-remove-mp-variation="${index}"><i class="bi bi-x-lg"></i></button>
+            </div>
+        `).join("")
+        : `<div class="empty-state py-3"><p class="text-secondary mb-0">No variations for this product.</p></div>`;
+
+    defaultVariation.innerHTML = `<option value="">None</option>${marketplaceState.draftVariations
+        .map((variation) => `<option value="${escapeHtml(variation.id || "")}">${escapeHtml(variation.label || variation.name || variation.id || "Option")}</option>`)
+        .join("")}`;
+    defaultVariation.value = selectedProduct?.defaultVariation || marketplaceState.draftVariations[0]?.id || "";
+}
+
+function addMarketplaceVariation() {
+    const defaultName = document.getElementById("marketplaceProductName")?.value.trim() || `${state.database.currency || "TND"} option`;
+    let baseId = slugify(defaultName) || slugify(`${state.database.currency || "TND"} option`);
+    let id = baseId;
+    let counter = 2;
+    const existing = new Set(marketplaceState.draftVariations.map((v) => v.id));
+    while (existing.has(id) || !id) {
+        id = `${baseId}-${counter}`;
+        counter++;
+    }
+    marketplaceState.draftVariations.push({
+        id,
+        label: defaultName,
+        name: defaultName,
+        price: Number(document.getElementById("marketplaceProductPrice")?.value || 0),
+    });
+    renderMarketplaceVariations();
+    renderMarketplacePreview();
+    setMarketplaceUnsaved(true);
+}
+
+function updateMarketplaceVariation(index, field, value) {
+    if (!marketplaceState.draftVariations[index]) return;
+    marketplaceState.draftVariations[index][field] = field === "price" ? Number(value || 0) : value;
+    if (field === "name" || field === "label") {
+        const currentId = String(marketplaceState.draftVariations[index].id || "").trim();
+        if (!currentId) {
+            let base = slugify(String(value || "option"));
+            let id = base;
+            let counter = 2;
+            const existing = new Set(marketplaceState.draftVariations.map((v, i) => (i === index ? null : v.id)).filter(Boolean));
+            while (existing.has(id) || !id) {
+                id = `${base}-${counter}`;
+                counter++;
+            }
+            marketplaceState.draftVariations[index].id = id;
+        }
+    }
+    renderMarketplacePreview();
+    setMarketplaceUnsaved(true);
+}
+
+function removeMarketplaceVariation(index) {
+    marketplaceState.draftVariations.splice(index, 1);
+    renderMarketplaceVariations();
+    renderMarketplacePreview();
+    setMarketplaceUnsaved(true);
+}
+
+function readMarketplaceFormProduct() {
+    const id = document.getElementById("marketplaceProductId").value.trim();
+    const name = document.getElementById("marketplaceProductName").value.trim();
+    const soldBy = document.getElementById("marketplaceProductSoldBy").value.trim();
+    const shortDescription = document.getElementById("marketplaceProductShortDesc").value.trim();
+    const price = Number(document.getElementById("marketplaceProductPrice").value || 0);
+    const image = document.getElementById("marketplaceProductImage").value.trim();
+    const description = document.getElementById("marketplaceProductDescription").value.trim();
+    const visible = document.getElementById("marketplaceProductVisible").checked;
+    const inStock = document.getElementById("marketplaceProductInStock")?.checked !== false;
+    const defaultVariation = document.getElementById("marketplaceDefaultVariation").value;
+    const customerInputEnabled = document.getElementById("marketplaceProductCustomerInputEnabled")?.checked || false;
+
+    if (!id) throw new Error("Product ID is required");
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error("Product ID must use lowercase letters, numbers, and hyphens");
+    if (!name) throw new Error("Product name is required");
+    if (!Number.isFinite(price) || price < 0) throw new Error("Price must be zero or more");
+    if (id !== marketplaceState.originalId && getMarketplaceProducts()[id]) throw new Error("Product ID already exists");
+
+    const product = { name, price };
+    if (soldBy) product.soldBy = soldBy;
+    if (shortDescription) product.shortDescription = shortDescription;
+    if (image) product.image = image;
+    else if (!marketplaceState.originalId) product.image = "assets/hyperlogo.png";
+    if (description) product.description = description;
+    if (!visible) product.visible = false;
+    if (!inStock) product.inStock = false;
+    if (customerInputEnabled) {
+        const labels = (marketplaceState.draftCustomerInputs || []).map((l) => String(l || "").slice(0, 80)).filter(Boolean);
+        if (labels.length === 1) {
+            product.customerInput = { enabled: true, label: labels[0] };
+        } else if (labels.length > 1) {
+            product.customerInput = { enabled: true, labels };
+        }
+    }
+
+    const variations = marketplaceState.draftVariations
+        .map((variation) => ({
+            id: String(variation.id || "").trim(),
+            label: String(variation.label || "").trim(),
+            name: String(variation.name || "").trim(),
+            price: Number(variation.price || 0),
+        }))
+        .filter((variation) => variation.id || variation.label || variation.name);
+
+    const seenVariationIds = new Set();
+    variations.forEach((variation, index) => {
+        if (!variation.id) variation.id = slugify(variation.label || variation.name || `option-${index + 1}`);
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(variation.id)) throw new Error(`Variation ID is invalid: ${variation.id}`);
+        if (seenVariationIds.has(variation.id)) throw new Error(`Duplicate variation ID: ${variation.id}`);
+        if (!Number.isFinite(variation.price) || variation.price < 0) throw new Error(`Variation price is invalid: ${variation.id}`);
+        seenVariationIds.add(variation.id);
+    });
+
+    if (variations.length) {
+        product.variations = variations;
+        product.defaultVariation = defaultVariation && seenVariationIds.has(defaultVariation) ? defaultVariation : variations[0].id;
+    }
+
+    return { id, product };
+}
+
+function saveMarketplaceProduct(options = {}) {
+    try {
+        const { id, product } = readMarketplaceFormProduct();
+        const products = getMarketplaceProducts();
+        if (marketplaceState.originalId && marketplaceState.originalId !== id) delete products[marketplaceState.originalId];
+        products[id] = product;
+        selectMarketplaceProduct(id);
+        renderMarketplaceProductList();
+        fillMarketplaceForm();
+        setMarketplaceUnsaved(false);
+        if (!options.silent) showToast("Product saved in editor");
+    } catch (error) {
+        const msg = String(error?.message || error || "An error occurred");
+        showToast(msg);
+        if (msg.toLowerCase().includes("product id")) document.getElementById("marketplaceProductId")?.focus();
+        else if (msg.toLowerCase().includes("name")) document.getElementById("marketplaceProductName")?.focus();
+        else if (msg.toLowerCase().includes("price")) document.getElementById("marketplaceProductPrice")?.focus();
+    }
+}
+
+function deleteMarketplaceProduct() {
+    if (!marketplaceState.selectedId) return;
+    const product = getSelectedMarketplaceProduct();
+    if (!product) return;
+    if (!window.confirm(`Delete ${product.name || marketplaceState.selectedId}?`)) return;
+
+    delete getMarketplaceProducts()[marketplaceState.selectedId];
+    const nextId = Object.keys(getMarketplaceProducts())[0] || "";
+    selectMarketplaceProduct(nextId);
+    renderMarketplaceProductList();
+    fillMarketplaceForm();
+    showToast("Product deleted in editor");
+}
+
+function createNewMarketplaceProduct() {
+    marketplaceState.selectedId = "";
+    marketplaceState.originalId = "";
+    marketplaceState.draftVariations = [];
+    marketplaceState.draftCustomerInputs = [];
+    fillMarketplaceForm();
+    document.getElementById("marketplaceProductId").value = "";
+    document.getElementById("marketplaceProductName").focus();
+    setMarketplaceUnsaved(true);
+}
+
+function duplicateMarketplaceProduct() {
+    const original = getSelectedMarketplaceProduct();
+    if (!original) { showToast("Select a product to duplicate."); return; }
+    const baseName = String(original.name || "Product").trim();
+    const newName = `${baseName} (copy)`;
+    const baseId = slugify(newName) || "duplicate-product";
+    let newId = baseId;
+    let counter = 2;
+    const existing = new Set(Object.keys(getMarketplaceProducts()));
+    while (existing.has(newId)) {
+        newId = `${baseId}-${counter}`;
+        counter++;
+    }
+    getMarketplaceProducts()[newId] = { ...clone(original), name: newName };
+    selectMarketplaceProduct(newId);
+    renderMarketplaceProductList();
+    fillMarketplaceForm();
+    showToast(`Duplicated as ${newId}`);
+}
+
+function toggleMarketplaceProductVisibility(id) {
+    const product = getMarketplaceProducts()[id];
+    if (!product) return;
+    if (product.visible === false) {
+        delete product.visible;
+        showToast("Product published");
+    } else {
+        product.visible = false;
+        showToast("Product hidden");
+    }
+    if (id === marketplaceState.selectedId) fillMarketplaceForm();
+    renderMarketplaceProductList();
+}
+
+function updateMarketplaceImagePreview() {
+    const container = document.getElementById("marketplaceAdminImagePreview");
+    const img = document.getElementById("marketplaceAdminImagePreviewImg");
+    if (!container || !img) return;
+    const pathInput = document.getElementById("marketplaceProductImage");
+    const path = pathInput?.value?.trim() || "";
+    const blobUrl = marketplaceState.previewImages[path];
+    if (blobUrl) {
+        img.src = blobUrl;
+        container.style.display = "";
+    } else if (path) {
+        img.src = path;
+        container.style.display = "";
+    } else {
+        container.style.display = "none";
+    }
+}
+
+function handleMarketplacePhotoFile(file) {
+    if (!file) return;
+    const path = `assets/${safeAssetFileName(file.name)}`;
+    const input = document.getElementById("marketplaceProductImage");
+    if (input) input.value = path;
+    if (marketplaceState.previewImages[path]) URL.revokeObjectURL(marketplaceState.previewImages[path]);
+    marketplaceState.previewImages[path] = URL.createObjectURL(file);
+    updateMarketplaceImagePreview();
+    renderMarketplacePreview();
+    setMarketplaceUnsaved(true);
+    showToast(`Photo path set to ${path}`);
+}
+
+function getMarketplacePreviewProduct() {
+    try {
+        return readMarketplaceFormProduct();
+    } catch {
+        return {
+            id: document.getElementById("marketplaceProductId")?.value || "new-product",
+            product: {
+                name: document.getElementById("marketplaceProductName")?.value || "New product",
+                price: Number(document.getElementById("marketplaceProductPrice")?.value || 0),
+                image: document.getElementById("marketplaceProductImage")?.value || "assets/hyperlogo.png",
+                soldBy: document.getElementById("marketplaceProductSoldBy")?.value || "",
+                shortDescription: document.getElementById("marketplaceProductShortDesc")?.value || "",
+                description: document.getElementById("marketplaceProductDescription")?.value || "",
+                inStock: document.getElementById("marketplaceProductInStock")?.checked !== false,
+                customerInput: document.getElementById("marketplaceProductCustomerInputEnabled")?.checked
+                    ? { enabled: true, labels: (marketplaceState.draftCustomerInputs && marketplaceState.draftCustomerInputs.length) ? marketplaceState.draftCustomerInputs : [document.getElementById("marketplaceProductCustomerNewInput")?.value || "Player ID"] }
+                    : undefined,
+                variations: marketplaceState.draftVariations,
+            },
+        };
+    }
+}
+
+function renderMarketplacePreview() {
+    const container = document.getElementById("marketplacePreviewBody");
+    if (!container) return;
+    const { id, product } = getMarketplacePreviewProduct();
+    const image = String(product.image || "").trim();
+    const statePreviewImage = marketplaceState.previewImages?.[image];
+    const hasVariations = Array.isArray(product.variations) && product.variations.length > 0;
+    const defaultVariation = hasVariations && product.variations.find((v) => v.visible !== false && v.inStock !== false) || product.variations?.[0];
+    const displayPrice = defaultVariation?.price ?? product.price ?? 0;
+    const inStock = product.inStock !== false;
+    const art = "gamekey-art";
+
+    container.innerHTML = `
+        <div class="col-12 px-0">
+            <article class="card product-card h-100">
+                <a class="product-art ${escapeHtml(art)}" href="product.html?product=${encodeURIComponent(id)}">
+                    ${image
+                        ? `<img class="product-image" src="${escapeHtml(statePreviewImage || image)}" alt="${escapeHtml(product.name)}" />`
+                        : `<i class="bi bi-shop"></i>`
+                    }
+                </a>
+                <div class="card-body d-flex flex-column">
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        ${product.shortDescription ? `<span class="badge text-bg-dark">${escapeHtml(product.shortDescription)}</span>` : ""}
+                        <span class="badge ${inStock ? "text-bg-success" : "text-bg-secondary"}">${inStock ? "Available" : "Out of stock"}</span>
+                    </div>
+                    <h2 class="h5">${escapeHtml(product.name || "New product")}</h2>
+                    ${product.soldBy ? `<p class="small text-secondary mb-1"><i class="bi bi-person me-1"></i>Sold by: ${escapeHtml(product.soldBy)}</p>` : ""}
+                    <p class="text-secondary flex-grow-1">${escapeHtml(product.shortDescription || product.description || "") || "&nbsp;"}</p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <strong class="price">${hasVariations ? "From " : ""}${money(displayPrice, state.database.currency)}</strong>
+                        <button class="btn btn-primary btn-sm" ${inStock ? "" : "disabled"}>${inStock ? "Add" : "Unavailable"}</button>
+                    </div>
+                </div>
+            </article>
+        </div>
+        <div class="admin-preview-details mt-3">
+            <details>
+                <summary>Product info</summary>
+                <div class="small text-secondary mt-2" style="white-space: pre-wrap;">
+ID: ${escapeHtml(id)}
+${hasVariations ? `Variations: ${product.variations.length}` : `Price: ${money(displayPrice, state.database.currency)}`}
+${product.soldBy ? `Sold by: ${escapeHtml(product.soldBy)}` : ""}
+${image ? `Image: ${escapeHtml(image)}` : "No image"}
+${product.visible === false ? "Hidden" : "Visible"}
+${!inStock ? "Out of stock" : ""}
+${product.customerInput?.enabled ? "Customer input enabled" : ""}
+                </div>
+            </details>
+        </div>
+    `;
+}
+
+function renderMarketplaceAll() {
+    renderMarketplaceProductList();
+    fillMarketplaceForm();
+}
+
+// ===== End marketplace admin functions =====
+
 function bindEvents() {
     document.getElementById("productSearch")?.addEventListener("input", () => updateProductFiltersFromControls("desktop"));
     document.getElementById("productCategoryFilter")?.addEventListener("change", () => updateProductFiltersFromControls("desktop"));
@@ -2570,22 +3123,12 @@ function bindEvents() {
         updateImagePreview();
         renderPreview();
     });
-    document.getElementById("productName")?.addEventListener("input", (event) => {
-        const name = event.target.value || "";
-        const idInput = document.getElementById("productId");
-        if (!idInput) return;
-        const currentId = idInput.value.trim();
-        if (!currentId || !state.originalId) {
-            lastProductNameSlug = slugify(name);
-            idInput.value = lastProductNameSlug;
-        }
-    });
     document.getElementById("productName")?.addEventListener("blur", (event) => {
         const name = event.target.value || "";
         const idInput = document.getElementById("productId");
         if (!idInput) return;
         const currentId = idInput.value.trim();
-        if (!currentId || currentId === slugify(name) || currentId === lastProductNameSlug) {
+        if (!currentId || !state.originalId) {
             lastProductNameSlug = slugify(name);
             idInput.value = lastProductNameSlug;
         }
@@ -2690,12 +3233,15 @@ function bindEvents() {
         closeMobileProductCatalog();
     });
 
-    document.getElementById("variationList")?.addEventListener("input", (event) => {
+    function handleVariationFieldInput(event) {
         const input = event.target.closest("[data-variation-field]");
         if (!input) return;
         const row = input.closest("[data-variation-index]");
+        if (!row) return;
         updateVariation(Number(row.dataset.variationIndex), input.dataset.variationField, input.value);
-    });
+    }
+    document.getElementById("variationList")?.addEventListener("input", handleVariationFieldInput);
+    document.getElementById("variationList")?.addEventListener("change", handleVariationFieldInput);
 
     document.getElementById("variationList")?.addEventListener("click", (event) => {
         const button = event.target.closest("[data-remove-variation]");
@@ -2856,6 +3402,10 @@ function bindEvents() {
             showToast("Fill all fields");
             return;
         }
+        if (!/^\d{8}$/.test(phone)) {
+            showToast("Phone must be 8 digits");
+            return;
+        }
         try {
             const affiliate = await createAdminAffiliate(name, phone, password);
             showToast(`Affiliate created: ${affiliate.refCode}`);
@@ -2926,12 +3476,143 @@ function bindEvents() {
         if (!button) return;
         const id = Number(button.dataset.approvePayout);
         const status = button.dataset.payoutStatus;
+        const statusLabel = status === "paid" ? "mark as paid" : "reject";
+        if (!confirm(`Are you sure you want to ${statusLabel} payout #${id}?`)) return;
         try {
             await approveAdminPayout(id, status);
             showToast(`Payout #${id} ${status}`);
         } catch (error) {
             showToast(error.message || "Could not update payout");
         }
+    });
+
+    // Marketplace event listeners
+    document.getElementById("marketplaceSearch")?.addEventListener("input", () => {
+        marketplaceState.filters.search = document.getElementById("marketplaceSearch").value.trim().toLowerCase();
+        renderMarketplaceProductList();
+    });
+    document.getElementById("marketplaceStatusFilter")?.addEventListener("change", () => {
+        marketplaceState.filters.status = document.getElementById("marketplaceStatusFilter").value;
+        renderMarketplaceProductList();
+    });
+    document.getElementById("mobileMarketplaceCatalogSearch")?.addEventListener("input", () => {
+        marketplaceState.filters.search = document.getElementById("mobileMarketplaceCatalogSearch").value.trim().toLowerCase();
+        renderMarketplaceProductList();
+    });
+    document.getElementById("mobileMarketplaceStatusFilter")?.addEventListener("change", () => {
+        marketplaceState.filters.status = document.getElementById("mobileMarketplaceStatusFilter").value;
+        renderMarketplaceProductList();
+    });
+    document.getElementById("mobileMarketplaceSelect")?.addEventListener("change", (event) => {
+        selectMarketplaceProduct(event.target.value);
+        fillMarketplaceForm();
+        renderMarketplaceProductList();
+    });
+    document.getElementById("newMarketplaceProductButton")?.addEventListener("click", createNewMarketplaceProduct);
+    document.getElementById("deleteMarketplaceProductButton")?.addEventListener("click", deleteMarketplaceProduct);
+    document.getElementById("addMarketplaceVariationButton")?.addEventListener("click", addMarketplaceVariation);
+    document.getElementById("resetMarketplaceFormButton")?.addEventListener("click", fillMarketplaceForm);
+    document.getElementById("toggleMarketplacePreviewButton")?.addEventListener("click", () => {
+        const column = document.getElementById("marketplacePreviewColumn");
+        if (!column) return;
+        const isHidden = column.style.display === "none" || !column.style.display;
+        column.style.display = isHidden ? "" : "none";
+    });
+    document.getElementById("marketplaceProductImage")?.addEventListener("input", () => {
+        updateMarketplaceImagePreview();
+        renderMarketplacePreview();
+        setMarketplaceUnsaved(true);
+    });
+    document.getElementById("marketplaceProductPhotoFile")?.addEventListener("change", (event) => handleMarketplacePhotoFile(event.target.files[0]));
+    document.getElementById("marketplaceUploadToGitHubButton")?.addEventListener("click", async () => {
+        const fileInput = document.getElementById("marketplaceProductPhotoFile");
+        const file = fileInput?.files?.[0];
+        if (!file) { showToast("Select a photo file first."); return; }
+        try {
+            const result = await uploadToGitHub(file);
+            document.getElementById("marketplaceProductImage").value = result.path;
+            updateMarketplaceImagePreview();
+            renderMarketplacePreview();
+            setMarketplaceUnsaved(true);
+            showToast(`Uploaded to ${result.path}`);
+        } catch (error) {
+            showToast(error.message || "Upload failed");
+        }
+    });
+    document.getElementById("addMarketplaceCustomerInputButton")?.addEventListener("click", () => addMarketplaceCustomerInput());
+    document.getElementById("marketplaceProductCustomerInputs")?.addEventListener("click", (event) => {
+        const btn = event.target.closest("[data-remove-mp-customer-input]");
+        if (btn) removeMarketplaceCustomerInput(Number(btn.dataset.removeMpCustomerInput));
+    });
+    document.getElementById("marketplaceProductCustomerInputs")?.addEventListener("input", (event) => {
+        const field = event.target.closest("[data-mp-customer-input-field]");
+        if (!field) return;
+        const container = field.closest("[data-mp-customer-input-index]");
+        if (!container) return;
+        const index = Number(container.dataset.mpCustomerInputIndex);
+        if (!Number.isFinite(index)) return;
+        marketplaceState.draftCustomerInputs[index] = field.value.slice(0, 80);
+        setMarketplaceUnsaved(true);
+    });
+    document.getElementById("marketplaceProductName")?.addEventListener("blur", (event) => {
+        const idField = document.getElementById("marketplaceProductId");
+        if (idField && !idField.value.trim()) {
+            idField.value = slugify(event.target.value);
+        }
+    });
+    document.getElementById("marketplaceProductList")?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-select-marketplace-product]");
+        if (!button) return;
+        selectMarketplaceProduct(button.dataset.selectMarketplaceProduct);
+        fillMarketplaceForm();
+        renderMarketplaceProductList();
+    });
+    document.getElementById("mobileMarketplaceList")?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-select-marketplace-product]");
+        if (!button) return;
+        selectMarketplaceProduct(button.dataset.selectMarketplaceProduct);
+        fillMarketplaceForm();
+        renderMarketplaceProductList();
+        const sheet = document.getElementById("mobileMarketplaceCatalogSheet");
+        if (sheet && window.bootstrap) bootstrap.Offcanvas.getInstance(sheet)?.hide();
+    });
+    function handleMpVariationFieldInput(event) {
+        const field = event.target.closest("[data-mp-variation-field]");
+        if (!field) return;
+        const container = field.closest("[data-mp-variation-index]");
+        if (!container) return;
+        const index = Number(container.dataset.mpVariationIndex);
+        if (!Number.isFinite(index)) return;
+        updateMarketplaceVariation(index, field.dataset.mpVariationField, field.value);
+    }
+    document.getElementById("marketplaceVariationList")?.addEventListener("input", handleMpVariationFieldInput);
+    document.getElementById("marketplaceVariationList")?.addEventListener("change", handleMpVariationFieldInput);
+    document.getElementById("marketplaceVariationList")?.addEventListener("click", (event) => {
+        const removeBtn = event.target.closest("[data-remove-mp-variation]");
+        if (removeBtn) {
+            removeMarketplaceVariation(Number(removeBtn.dataset.removeMpVariation));
+            return;
+        }
+        const moveBtn = event.target.closest("[data-move-mp-variation]");
+        if (moveBtn) {
+            // reuse same move logic pattern
+        }
+    });
+    document.getElementById("marketplaceProductForm")?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        saveMarketplaceProduct();
+    });
+    document.getElementById("marketplaceProductForm")?.addEventListener("input", () => {
+        setMarketplaceUnsaved(true);
+    });
+
+    // Reset unsaved changes when switching tabs away from marketplace
+    document.querySelectorAll("#adminWorkspaceTabs .nav-link").forEach((tab) => {
+        tab.addEventListener("shown.bs.tab", () => {
+            if (tab.id === "marketplaceTab") {
+                renderMarketplaceAll();
+            }
+        });
     });
 
 }
