@@ -6920,6 +6920,20 @@ body {
     color: var(--gv-primary);
 }
 
+.aff-info-code-display {
+    font-size: 1.4rem;
+    font-weight: 800;
+    font-family: var(--gv-font-mono, ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Code", "JetBrains Mono", Consolas, monospace);
+    text-align: center;
+    padding: 14px 18px;
+    background: var(--gv-surface-alt, #f5f5f5);
+    border: 2px dashed var(--gv-primary, #0d6efd);
+    border-radius: 8px;
+    color: var(--gv-primary, #0d6efd);
+    letter-spacing: 0.04em;
+    user-select: all;
+}
+
 .aff-info-step-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);

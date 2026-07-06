@@ -128,21 +128,23 @@ function getCorsHeaders(request) {
     };
 }
 
+class ApiError extends Error {
+    constructor(message, statusCode) {
+        super(message);
+        this.statusCode = statusCode;
+    }
+}
+
 function getOrderDb(env) {
     if (!env.DB) {
-        const error = new Error("D1 database binding DB is not configured");
-        error.statusCode = 500;
-        throw error;
+        throw new ApiError("D1 database binding DB is not configured", 500);
     }
-
-    marketplaceSchemaReady = true;
+    return env.DB;
 }
 
 function getCatalogDb(env) {
     if (!env.product_db) {
-        const error = new Error("D1 database binding product_db is not configured");
-        error.statusCode = 500;
-        throw error;
+        throw new ApiError("D1 database binding product_db is not configured", 500);
     }
     return env.product_db;
 }
@@ -246,31 +248,23 @@ async function ensureAffiliateSchema(env) {
 
 function requireAdmin(request, env) {
     if (!env.ADMIN_API_TOKEN) {
-        const error = new Error("ADMIN_API_TOKEN is not configured");
-        error.statusCode = 500;
-        throw error;
+        throw new ApiError("ADMIN_API_TOKEN is not configured", 500);
     }
 
     const token = request.headers.get("X-Admin-Token") || "";
     if (token !== env.ADMIN_API_TOKEN) {
-        const error = new Error("Admin token is invalid");
-        error.statusCode = 401;
-        throw error;
+        throw new ApiError("Admin token is invalid", 401);
     }
 }
 
 function requireTelegramWebhook(request, env) {
     if (!env.TELEGRAM_WEBHOOK_SECRET) {
-        const error = new Error("TELEGRAM_WEBHOOK_SECRET is not configured");
-        error.statusCode = 500;
-        throw error;
+        throw new ApiError("TELEGRAM_WEBHOOK_SECRET is not configured", 500);
     }
 
     const token = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
     if (token !== env.TELEGRAM_WEBHOOK_SECRET) {
-        const error = new Error("Telegram webhook token is invalid");
-        error.statusCode = 401;
-        throw error;
+        throw new ApiError("Telegram webhook token is invalid", 401);
     }
 }
 
@@ -423,6 +417,8 @@ async function ensureMarketplaceSchema(env) {
         if (/already exists/i.test(String(error?.message || ""))) return;
         throw error;
     }
+
+    marketplaceSchemaReady = true;
 }
 
 async function readAllMarketplaceProducts(env) {
@@ -1787,9 +1783,7 @@ function getAdminOrderKeyboard(order) {
 
 async function callTelegramApi(env, method, payload) {
     if (!env.TELEGRAM_BOT_TOKEN) {
-        const error = new Error("Telegram bot token is not configured");
-        error.statusCode = 500;
-        throw error;
+        throw new ApiError("Telegram bot token is not configured", 500);
     }
 
     const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
@@ -1953,9 +1947,7 @@ async function handleCustomerInput(body, env, corsHeaders) {
     });
 
     if (!env.TELEGRAM_ADMIN_CHAT_ID) {
-        const error = new Error("Telegram admin chat ID is not configured");
-        error.statusCode = 500;
-        throw error;
+        throw new ApiError("Telegram admin chat ID is not configured", 500);
     }
 
     const phone = normalizePhone(record.customer_phone);
@@ -2549,15 +2541,18 @@ async function handleTelegramWebhook(body, request, env, corsHeaders) {
         return jsonResponse({ ok: true }, 200, corsHeaders);
     }
 
-    const updateBody = {
-        orderId: action.orderId,
-        ...(action.target === "payment" ? { paymentStatus: action.status } : { deliveryStatus: action.status }),
-    };
-    if (action.target === "payment" && action.status === "rejected") {
-        updateBody.paymentStatusReason = getDefaultStatusReason("payment", "rejected");
-    }
-    if (action.target === "delivery" && action.status === "cancelled") {
-        updateBody.deliveryStatusReason = getDefaultStatusReason("delivery", "cancelled");
+    const updateBody = {};
+    updateBody.orderId = action.orderId;
+    if (action.target === "payment") {
+        updateBody.paymentStatus = action.status;
+        if (action.status === "rejected") {
+            updateBody.paymentStatusReason = getDefaultStatusReason("payment", "rejected");
+        }
+    } else {
+        updateBody.deliveryStatus = action.status;
+        if (action.status === "cancelled") {
+            updateBody.deliveryStatusReason = getDefaultStatusReason("delivery", "cancelled");
+        }
     }
 
     try {
@@ -2708,6 +2703,34 @@ async function handleAffiliateAction(body, request, env, corsHeaders) {
     await ensureOrderSchema(env);
 
     const action = body.action;
+
+    if (action === "affiliate-register") {
+        const name = String(body.name || "").trim();
+        const phone = String(body.phone || "").trim().replace(/\D/g, "");
+        const password = String(body.password || "").trim();
+        if (!name) return jsonResponse({ error: "Name is required" }, 400, corsHeaders);
+        if (!phone || phone.length !== 8) return jsonResponse({ error: "Enter a valid 8-digit Tunisian phone number" }, 400, corsHeaders);
+        if (!password || password.length < 4) return jsonResponse({ error: "Password must be at least 4 characters" }, 400, corsHeaders);
+        const db = getOrderDb(env);
+        const encoder = new TextEncoder();
+        const passwordBuffer = encoder.encode(password);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", passwordBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+        let refCode = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+        if (!refCode) return jsonResponse({ error: "Could not generate affiliate code from name" }, 400, corsHeaders);
+        let existing = await db.prepare("SELECT ref_code FROM affiliates WHERE ref_code = ?").bind(refCode).first();
+        let suffix = 2;
+        const originalCode = refCode;
+        while (existing) {
+            refCode = `${originalCode}-${suffix}`;
+            suffix++;
+            existing = await db.prepare("SELECT ref_code FROM affiliates WHERE ref_code = ?").bind(refCode).first();
+        }
+        const now = new Date().toISOString();
+        await db.prepare("INSERT INTO affiliates (ref_code, name, phone, password_hash, total_earnings, active, created_at) VALUES (?, ?, ?, ?, 0, 1, ?)").bind(refCode, name, phone, hashHex, now).run();
+        return jsonResponse({ ok: true, refCode, name }, 200, corsHeaders);
+    }
 
     if (action === "affiliate-login") {
         const refCode = String(body.refCode || "").trim().toLowerCase();

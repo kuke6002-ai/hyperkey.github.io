@@ -98,6 +98,17 @@ async function requestPayout(token, amount, method, recipientDetail) {
     return result;
 }
 
+async function registerAffiliate(name, phone, password) {
+    const response = await fetch(AF_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "affiliate-register", name, phone, password }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "Registration failed");
+    return result;
+}
+
 /* ── Dashboard rendering ──────────────────── */
 
 function renderDashboard(data) {
@@ -264,119 +275,177 @@ document.addEventListener("DOMContentLoaded", () => {
     const codeInput = document.getElementById("affiliateCodeInput");
     const passInput = document.getElementById("affiliatePasswordInput");
 
-    const session = getAfSession();
-    if (session) {
-        showAffSection("dashboard");
-        setDashLoading(true);
-        loadAffiliateStats(session.token)
-            .then((data) => { renderDashboard(data); if (typeof translatePage === "function") translatePage(); })
-            .catch(() => { clearAfSession(); showAffSection("login"); })
-            .finally(() => setDashLoading(false));
-    } else {
-        showAffSection("login");
-    }
+    /* Registration form (on affiliate-register.html) */
+    const registerForm = document.getElementById("affiliateRegisterForm");
+    const registerBtn = document.getElementById("affiliateRegisterButton");
+    const registerError = document.getElementById("affiliateRegisterError");
+    const regNameInput = document.getElementById("affiliateRegName");
+    const regPhoneInput = document.getElementById("affiliateRegPhone");
+    const regPassInput = document.getElementById("affiliateRegPassword");
 
-    /* Login form */
-    loginForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const refCode = codeInput.value.trim();
-        const password = passInput.value;
-        if (!refCode || !password) {
-            loginError.textContent = afT("Enter your affiliate code and password.");
-            loginError.classList.remove("d-none");
-            return;
-        }
-        loginBtn.disabled = true;
-        loginBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + afT("Logging in...");
-        loginError.classList.add("d-none");
-        try {
-            const result = await loginAffiliate(refCode, password);
-            saveAfSession({ refCode: result.affiliate.refCode, token: result.token });
+    /* === LOGIN (only on affiliate.html) === */
+    if (loginForm) {
+        const session = getAfSession();
+        if (session) {
             showAffSection("dashboard");
             setDashLoading(true);
-            const data = await loadAffiliateStats(result.token);
-            renderDashboard(data);
-            if (typeof translatePage === "function") translatePage();
-        } catch (error) {
-            clearAfSession();
-            setDashLoading(false);
+            loadAffiliateStats(session.token)
+                .then((data) => { renderDashboard(data); if (typeof translatePage === "function") translatePage(); })
+                .catch(() => { clearAfSession(); showAffSection("login"); })
+                .finally(() => setDashLoading(false));
+        } else {
             showAffSection("login");
-            loginError.textContent = error.message ? afTranslateError(error.message) : afT("Login failed");
-            loginError.classList.remove("d-none");
-        } finally {
-            setDashLoading(false);
-            loginBtn.disabled = false;
-            loginBtn.innerHTML = '<i class="bi bi-box-arrow-in-right me-1"></i>' + afT("Login");
         }
-    });
+
+        loginForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const refCode = codeInput.value.trim();
+            const password = passInput.value;
+            if (!refCode || !password) {
+                loginError.textContent = afT("Enter your affiliate code and password.");
+                loginError.classList.remove("d-none");
+                return;
+            }
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + afT("Logging in...");
+            loginError.classList.add("d-none");
+            try {
+                const result = await loginAffiliate(refCode, password);
+                saveAfSession({ refCode: result.affiliate.refCode, token: result.token });
+                showAffSection("dashboard");
+                setDashLoading(true);
+                const data = await loadAffiliateStats(result.token);
+                renderDashboard(data);
+                if (typeof translatePage === "function") translatePage();
+            } catch (error) {
+                clearAfSession();
+                setDashLoading(false);
+                showAffSection("login");
+                loginError.textContent = error.message ? afTranslateError(error.message) : afT("Login failed");
+                loginError.classList.remove("d-none");
+            } finally {
+                setDashLoading(false);
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = '<i class="bi bi-box-arrow-in-right me-1"></i>' + afT("Login");
+            }
+        });
+    }
+
+    /* === REGISTRATION (only on affiliate-register.html) === */
+    if (registerForm) {
+        registerForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const name = regNameInput.value.trim();
+            const phone = regPhoneInput.value.trim();
+            const password = regPassInput.value;
+            if (!name || !phone || !password) {
+                registerError.textContent = afT("Fill in all fields");
+                registerError.classList.remove("d-none");
+                return;
+            }
+            registerBtn.disabled = true;
+            registerBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + afT("Registering...");
+            registerError.classList.add("d-none");
+            try {
+                const result = await registerAffiliate(name, phone, password);
+                registerForm.style.display = "none";
+                const success = document.getElementById("affiliateRegisterSuccess");
+                if (success) {
+                    document.getElementById("affiliateRegGeneratedCode").textContent = result.refCode;
+                    success.classList.remove("d-none");
+                }
+            } catch (error) {
+                registerError.textContent = error.message || afT("Registration failed");
+                registerError.classList.remove("d-none");
+            } finally {
+                registerBtn.disabled = false;
+                registerBtn.innerHTML = '<i class="bi bi-person-plus me-1"></i>' + afT("Register");
+            }
+        });
+    }
+
+    /* === DASHBOARD (only on affiliate.html) === */
 
     /* Copy referral link */
-    document.getElementById("copyReferralLinkButton").addEventListener("click", () => {
-        const input = document.getElementById("affiliateReferralLink");
-        if (!input) return;
-        navigator.clipboard?.writeText(input.value).then(() => {
-            const btn = document.getElementById("copyReferralLinkButton");
-            const original = btn.innerHTML;
-            btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>' + afT("Copied");
-            btn.className = "btn btn-success";
-            setTimeout(() => { btn.innerHTML = original; btn.className = "btn btn-primary"; }, 2000);
-        }).catch(() => {
-            input.select();
+    const copyBtn = document.getElementById("copyReferralLinkButton");
+    if (copyBtn) {
+        copyBtn.addEventListener("click", () => {
+            const input = document.getElementById("affiliateReferralLink");
+            if (!input) return;
+            navigator.clipboard?.writeText(input.value).then(() => {
+                const btn = document.getElementById("copyReferralLinkButton");
+                const original = btn.innerHTML;
+                btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>' + afT("Copied");
+                btn.className = "btn btn-success";
+                setTimeout(() => { btn.innerHTML = original; btn.className = "btn btn-primary"; }, 2000);
+            }).catch(() => {
+                input.select();
+            });
         });
-    });
+    }
 
     /* Payout Max button */
-    document.getElementById("affPayoutMaxBtn").addEventListener("click", () => {
-        const balance = document.getElementById("affPayoutBalance");
-        const input = document.getElementById("payoutAmountInput");
-        const num = parseFloat(balance.textContent.replace("TND ", ""));
-        if (num > 0) input.value = num.toFixed(3);
-    });
+    const payoutMaxBtn = document.getElementById("affPayoutMaxBtn");
+    if (payoutMaxBtn) {
+        payoutMaxBtn.addEventListener("click", () => {
+            const balance = document.getElementById("affPayoutBalance");
+            const input = document.getElementById("payoutAmountInput");
+            const num = parseFloat(balance.textContent.replace("TND ", ""));
+            if (num > 0) input.value = num.toFixed(3);
+        });
+    }
 
     /* Request payout */
-    document.getElementById("requestPayoutButton").addEventListener("click", async () => {
-        const session = getAfSession();
-        if (!session) return;
-        const amount = Number(document.getElementById("payoutAmountInput").value);
-        const method = document.querySelector("#payoutMethodInput input[type=radio]:checked")?.value || "d17";
-        const recipientDetail = document.getElementById("payoutRecipientInput").value.trim();
-        const errorEl = document.getElementById("payoutError");
-        const button = document.getElementById("requestPayoutButton");
-        if (!amount || amount <= 0) {
-            errorEl.textContent = afT("Enter a valid amount");
-            errorEl.classList.remove("d-none");
-            return;
-        }
-        if (gMinWithdrawal > 0 && amount < gMinWithdrawal) {
-            errorEl.textContent = afT("Minimum withdrawal is ") + afMoney(gMinWithdrawal);
-            errorEl.classList.remove("d-none");
-            return;
-        }
-        button.disabled = true;
-        button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + afT("Requesting...");
-        errorEl.classList.add("d-none");
-        try {
-            await requestPayout(session.token, amount, method, recipientDetail);
-            document.getElementById("payoutAmountInput").value = "";
-            afToast("Payout requested successfully", "success");
-            await refreshDashboard();
-        } catch (error) {
-            errorEl.textContent = error.message ? afTranslateError(error.message) : afT("Payout request failed");
-            errorEl.classList.remove("d-none");
-        } finally {
-            button.disabled = false;
-            button.innerHTML = '<i class="bi bi-send me-1"></i>' + afT("Request payout");
-        }
-    });
+    const requestPayoutBtn = document.getElementById("requestPayoutButton");
+    if (requestPayoutBtn) {
+        requestPayoutBtn.addEventListener("click", async () => {
+            const session = getAfSession();
+            if (!session) return;
+            const amount = Number(document.getElementById("payoutAmountInput").value);
+            const method = document.querySelector("#payoutMethodInput input[type=radio]:checked")?.value || "d17";
+            const recipientDetail = document.getElementById("payoutRecipientInput").value.trim();
+            const errorEl = document.getElementById("payoutError");
+            const button = document.getElementById("requestPayoutButton");
+            if (!amount || amount <= 0) {
+                errorEl.textContent = afT("Enter a valid amount");
+                errorEl.classList.remove("d-none");
+                return;
+            }
+            if (gMinWithdrawal > 0 && amount < gMinWithdrawal) {
+                errorEl.textContent = afT("Minimum withdrawal is ") + afMoney(gMinWithdrawal);
+                errorEl.classList.remove("d-none");
+                return;
+            }
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + afT("Requesting...");
+            errorEl.classList.add("d-none");
+            try {
+                await requestPayout(session.token, amount, method, recipientDetail);
+                document.getElementById("payoutAmountInput").value = "";
+                afToast("Payout requested successfully", "success");
+                await refreshDashboard();
+            } catch (error) {
+                errorEl.textContent = error.message ? afTranslateError(error.message) : afT("Payout request failed");
+                errorEl.classList.remove("d-none");
+            } finally {
+                button.disabled = false;
+                button.innerHTML = '<i class="bi bi-send me-1"></i>' + afT("Request payout");
+            }
+        });
+    }
 
     /* Refresh */
-    document.getElementById("affRefreshStats").addEventListener("click", refreshDashboard);
+    const refreshBtn = document.getElementById("affRefreshStats");
+    if (refreshBtn) refreshBtn.addEventListener("click", refreshDashboard);
 
     /* Logout */
-    document.getElementById("affiliateLogoutButton").addEventListener("click", async () => {
-        const session = getAfSession();
-        if (session) await logoutAffiliate(session.token).catch(() => {});
-        clearAfSession();
-        location.reload();
-    });
+    const logoutBtn = document.getElementById("affiliateLogoutButton");
+    if (logoutBtn) {
+        logoutBtn.addEventListener("click", async () => {
+            const session = getAfSession();
+            if (session) await logoutAffiliate(session.token).catch(() => {});
+            clearAfSession();
+            location.reload();
+        });
+    }
 });
