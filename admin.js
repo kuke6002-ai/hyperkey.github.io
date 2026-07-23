@@ -1,4 +1,25 @@
-﻿const DEFAULT_PAYMENT_SETTINGS = {
+﻿/* ── Scroll reveal for admin page ─────────── */
+function observeReveal(container) {
+    (container || document).querySelectorAll(".hk-reveal").forEach((el) => {
+        if (!el.classList.contains("hk-visible")) {
+            revealObserver.observe(el);
+        }
+    });
+}
+const revealObserver = new IntersectionObserver(
+    (entries) => {
+        entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add("hk-visible");
+                revealObserver.unobserve(entry.target);
+            }
+        });
+    },
+    { threshold: 0.1, rootMargin: "0px 0px -40px 0px" }
+);
+document.querySelectorAll(".hk-reveal").forEach((el) => revealObserver.observe(el));
+
+const DEFAULT_PAYMENT_SETTINGS = {
     store: {
         name: "HyperKey Store",
         logo: "assets/hyperlogo.png",
@@ -87,6 +108,8 @@
     },
     affiliate: {
         minimumWithdrawal: 10,
+        registrationOpen: true,
+        autoActivate: true,
     },
 };
 
@@ -108,6 +131,10 @@ const state = {
     draftVariations: [],
     draftCustomerInputs: [],
     previewImages: {},
+    editingAffiliateRefCode: "",
+    affiliateSearch: "",
+    sellerSearch: "",
+    payoutSearch: "",
     productFilters: {
         search: "",
         category: "",
@@ -425,6 +452,7 @@ function renderAll() {
     fillForm();
     updateJsonOutput();
     renderMarketplaceAll();
+    if (typeof observeReveal === "function") observeReveal();
 }
 
 function renderCategoryEditor() {
@@ -1291,6 +1319,8 @@ function fillSettingsForm() {
         ttCardFeePercent: ttCard.feePercent,
         ttCardCodeLength: ttCard.codeLength,
         affMinWithdrawal: affiliateSettings.minimumWithdrawal,
+        affRegOpen: affiliateSettings.registrationOpen,
+        affAutoActivate: affiliateSettings.autoActivate,
     };
 
     Object.entries(fields).forEach(([id, value]) => {
@@ -1378,6 +1408,8 @@ function readSettingsForm() {
         },
         affiliate: {
             minimumWithdrawal: numberValue("affMinWithdrawal", DEFAULT_PAYMENT_SETTINGS.affiliate.minimumWithdrawal),
+            registrationOpen: checkedValue("affRegOpen"),
+            autoActivate: checkedValue("affAutoActivate"),
         },
     };
 }
@@ -1640,7 +1672,7 @@ async function unlockAdminPanel(token) {
         sessionStorage.removeItem("hyperkey-admin-unlocked");
         if (errorEl) {
             errorEl.textContent = err.message || "Token is invalid";
-            errorEl.style.display = "";
+            errorEl.classList.remove("d-none");
         }
     } finally {
         if (button) {
@@ -1655,7 +1687,7 @@ function lockAdminPanel() {
     sessionStorage.removeItem("hyperkey-admin-unlocked");
     showLockScreen();
     const errorEl = document.getElementById("adminLockError");
-    if (errorEl) errorEl.style.display = "none";
+    if (errorEl) errorEl.classList.add("d-none");
     const tokenInput = document.getElementById("adminLockToken");
     if (tokenInput) tokenInput.value = "";
 }
@@ -1965,6 +1997,185 @@ function getFilteredOrders() {
     });
 }
 
+function filterSellers(sellers) {
+    const search = state.sellerSearch.trim().toLowerCase();
+    if (!search) return sellers;
+    return sellers.filter((s) => {
+        const haystack = [s.id, s.name, s.displayName, s.phone].join(" ").toLowerCase();
+        return haystack.includes(search);
+    });
+}
+
+async function loadAdminSellers() {
+    const list = document.getElementById("adminSellersList");
+    if (list) list.innerHTML = `<div class="empty-state py-4"><p class="text-secondary mb-0">Loading sellers...</p></div>`;
+    try {
+        const result = await adminRequest({ action: "admin-list-sellers" });
+        const sellers = filterSellers(result.sellers || []);
+        const listEl = document.getElementById("adminSellersList");
+        if (!listEl) return;
+        if (!sellers.length) {
+            listEl.innerHTML = `<div class="empty-state py-4"><p class="text-secondary mb-0">No sellers yet.</p></div>`;
+            return;
+        }
+        listEl.innerHTML = `
+            <div class="table-responsive">
+                <table class="table table-sm table-hover admin-sellers-table">
+                    <thead>
+                        <tr>
+                            <th style="width:32px"></th>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Display</th>
+                            <th>Phone</th>
+                            <th>Fee</th>
+                            <th>Total earned</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${sellers.map((s) => `
+                             <tr data-seller-id="${escapeHtml(s.id)}" data-min-withdrawal="${escapeHtml(String(s.minWithdrawal ?? ""))}">
+                                <td>
+                                    <button class="btn btn-sm btn-outline-secondary border-0" type="button" data-expand-seller="${escapeHtml(s.id)}" title="View details">
+                                        <i class="bi bi-chevron-right"></i>
+                                    </button>
+                                </td>
+                                <td><code>${escapeHtml(s.id)}</code></td>
+                                <td>${escapeHtml(s.name)}</td>
+                                <td>${escapeHtml(s.displayName || "-")}</td>
+                                <td>${escapeHtml(s.phone)}</td>
+                                <td>${s.platformFeePercent || 0}%</td>
+                                <td class="fw-semibold">${money(s.totalEarnings)}</td>
+                                <td><span class="badge ${s.active ? "text-bg-success" : "text-bg-secondary"}">${s.active ? "Active" : "Inactive"}</span></td>
+                                <td>${formatAdminDateTime(s.createdAt)}</td>
+                                <td>
+                                    <div class="d-flex gap-1 flex-wrap">
+                                        <button class="btn btn-sm btn-outline-primary" type="button" data-edit-seller="${escapeHtml(s.id)}">Edit</button>
+                                        <button class="btn btn-sm ${s.active ? "btn-outline-secondary" : "btn-outline-success"}" type="button" data-toggle-seller="${escapeHtml(s.id)}">${s.active ? "Deactivate" : "Activate"}</button>
+                                        <button class="btn btn-sm btn-outline-info" type="button" data-change-pass-seller="${escapeHtml(s.id)}">Pass</button>
+                                        <button class="btn btn-sm btn-outline-danger" type="button" data-delete-seller="${escapeHtml(s.id)}">Del</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr class="seller-detail-row" data-detail-seller="${escapeHtml(s.id)}" style="display:none">
+                                <td colspan="10">
+                                    <div class="seller-detail-content p-3">
+                                        <div class="text-center py-4">
+                                            <div class="spinner-border spinner-border-sm text-secondary me-2" role="status"></div>
+                                            <span class="text-secondary">Loading details...</span>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join("")}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    } catch (error) {
+        const listEl = document.getElementById("adminSellersList");
+        if (listEl) listEl.innerHTML = `<div class="empty-state py-4"><p class="text-danger mb-0">${escapeHtml(error.message || "Could not load sellers")}</p></div>`;
+    }
+    if (typeof observeReveal === "function") observeReveal();
+}
+
+async function toggleAdminSellerDetail(sellerId) {
+    const detailRow = document.querySelector(`.seller-detail-row[data-detail-seller="${CSS.escape(sellerId)}"]`);
+    const expandBtn = document.querySelector(`[data-expand-seller="${CSS.escape(sellerId)}"]`);
+    if (!detailRow) return;
+    const isVisible = detailRow.style.display !== "none";
+    if (isVisible) {
+        detailRow.style.display = "none";
+        if (expandBtn) expandBtn.querySelector("i").className = "bi bi-chevron-right";
+        return;
+    }
+    detailRow.style.display = "";
+    if (expandBtn) expandBtn.querySelector("i").className = "bi bi-chevron-down";
+    try {
+        const result = await adminRequest({ action: "admin-seller-detail", sellerId });
+        const stats = result.stats || {};
+        const earnings = result.earnings || [];
+        const payouts = result.payouts || [];
+        const content = detailRow.querySelector(".seller-detail-content");
+        content.innerHTML = `
+            <div class="row g-2 mb-3">
+                <div class="col-6 col-md-3">
+                    <div class="border rounded p-2 p-md-3 text-center h-100">
+                        <p class="h4 fw-bold mb-0">${(stats.totalOrders ?? 0)}</p>
+                        <p class="small text-secondary mb-0">Orders containing products</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="border rounded p-2 p-md-3 text-center h-100">
+                        <p class="h4 fw-bold mb-0 text-success">${money(stats.totalEarnings ?? 0)}</p>
+                        <p class="small text-secondary mb-0">Total earned</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="border rounded p-2 p-md-3 text-center h-100">
+                        <p class="h4 fw-bold mb-0 text-primary">${money(stats.pendingEarnings ?? 0)}</p>
+                        <p class="small text-secondary mb-0">Pending earnings</p>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="border rounded p-2 p-md-3 text-center h-100">
+                        <p class="h4 fw-bold mb-0 text-info">${money(stats.paidEarnings ?? 0)}</p>
+                        <p class="small text-secondary mb-0">Paid out</p>
+                    </div>
+                </div>
+            </div>
+            ${earnings.length ? `
+                <h5 class="h6 fw-bold mb-2">Recent earnings</h5>
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm">
+                        <thead><tr><th>Order</th><th>Product</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+                        <tbody>${earnings.slice(0, 10).map((e) => `
+                            <tr>
+                                <td><code>${escapeHtml(e.orderId)}</code></td>
+                                <td>${escapeHtml(e.productId)}</td>
+                                <td class="fw-semibold">${money(e.amount)}</td>
+                                <td><span class="badge ${e.status === "paid" ? "text-bg-success" : "text-bg-warning"}">${e.status}</span></td>
+                                <td class="small text-secondary">${new Date(e.createdAt).toLocaleDateString()}</td>
+                            </tr>
+                        `).join("")}</tbody>
+                    </table>
+                </div>
+            ` : ""}
+            ${payouts.length ? `
+                <h5 class="h6 fw-bold mb-2">Payouts</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead><tr><th>Amount</th><th>Method</th><th>Status</th><th>Date</th></tr></thead>
+                        <tbody>${payouts.map((p) => `
+                            <tr>
+                                <td class="fw-semibold">${money(p.amount)}</td>
+                                <td>${escapeHtml(p.method)}</td>
+                                <td><span class="badge ${p.status === "paid" || p.status === "approved" ? "text-bg-success" : p.status === "rejected" ? "text-bg-danger" : "text-bg-warning"}">${p.status}</span></td>
+                                <td class="small text-secondary">${new Date(p.createdAt).toLocaleDateString()}</td>
+                            </tr>
+                        `).join("")}</tbody>
+                    </table>
+                </div>
+            ` : `<p class="text-secondary small mb-0">No payouts yet.</p>`}
+        `;
+    } catch (error) {
+        const content = detailRow.querySelector(".seller-detail-content");
+        if (content) content.innerHTML = `<p class="text-danger mb-0">${escapeHtml(error.message || "Could not load details")}</p>`;
+    }
+}
+
+function filterAffiliates(affiliates) {
+    const search = state.affiliateSearch.trim().toLowerCase();
+    if (!search) return affiliates;
+    return affiliates.filter((aff) => {
+        const haystack = [aff.refCode, aff.name, aff.phone].join(" ").toLowerCase();
+        return haystack.includes(search);
+    });
+}
+
 async function loadAdminAffiliates() {
     const list = document.getElementById("adminAffiliatesList");
     if (list) {
@@ -1972,7 +2183,7 @@ async function loadAdminAffiliates() {
     }
     try {
         const result = await adminRequest({ action: "admin-list-affiliates" });
-        const affiliates = result.affiliates || [];
+        const affiliates = filterAffiliates(result.affiliates || []);
         const listEl = document.getElementById("adminAffiliatesList");
         if (!listEl) return;
         if (!affiliates.length) {
@@ -2010,6 +2221,7 @@ async function loadAdminAffiliates() {
                                 <td>${formatAdminDateTime(aff.createdAt)}</td>
                                 <td>
                                     <div class="d-flex gap-1 flex-wrap">
+                                        <button class="btn btn-sm btn-outline-primary" type="button" data-edit-affiliate="${escapeHtml(aff.refCode)}">Edit</button>
                                         <button class="btn btn-sm ${aff.active ? "btn-outline-secondary" : "btn-outline-success"}" type="button" data-toggle-affiliate="${escapeHtml(aff.refCode)}">${aff.active ? "Deactivate" : "Activate"}</button>
                                         <button class="btn btn-sm btn-outline-info" type="button" data-change-pass-affiliate="${escapeHtml(aff.refCode)}">Pass</button>
                                         <button class="btn btn-sm btn-outline-danger" type="button" data-delete-affiliate="${escapeHtml(aff.refCode)}">Del</button>
@@ -2037,6 +2249,7 @@ async function loadAdminAffiliates() {
             listEl.innerHTML = `<div class="empty-state py-4"><p class="text-danger mb-0">${escapeHtml(error.message || "Could not load affiliates")}</p></div>`;
         }
     }
+    if (typeof observeReveal === "function") observeReveal();
 }
 
 async function toggleAdminAffiliateDetail(refCode) {
@@ -2057,7 +2270,7 @@ async function toggleAdminAffiliateDetail(refCode) {
     try {
         const result = await adminRequest({ action: "admin-affiliate-detail", refCode });
         const aff = result.affiliate;
-        const stats = result.stats;
+        const stats = result.stats || {};
         const commissions = result.commissions || [];
         const payouts = result.payouts || [];
 
@@ -2066,25 +2279,25 @@ async function toggleAdminAffiliateDetail(refCode) {
             <div class="row g-2 mb-3">
                 <div class="col-6 col-md-3">
                     <div class="border rounded p-2 p-md-3 text-center h-100">
-                        <p class="h4 fw-bold mb-0">${stats.totalOrders}</p>
+                        <p class="h4 fw-bold mb-0">${(stats.totalOrders ?? 0)}</p>
                         <p class="small text-secondary mb-0">Orders referred</p>
                     </div>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="border rounded p-2 p-md-3 text-center h-100">
-                        <p class="h4 fw-bold mb-0 text-success">${money(stats.totalCommissions)}</p>
+                        <p class="h4 fw-bold mb-0 text-success">${money(stats.totalCommissions ?? 0)}</p>
                         <p class="small text-secondary mb-0">Total earned</p>
                     </div>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="border rounded p-2 p-md-3 text-center h-100">
-                        <p class="h4 fw-bold mb-0 text-warning">${money(stats.pendingCommissions)}</p>
+                        <p class="h4 fw-bold mb-0 text-warning">${money(stats.pendingCommissions ?? 0)}</p>
                         <p class="small text-secondary mb-0">Pending</p>
                     </div>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="border rounded p-2 p-md-3 text-center h-100">
-                        <p class="h4 fw-bold mb-0 text-info">${money(stats.paidCommissions)}</p>
+                        <p class="h4 fw-bold mb-0 text-info">${money(stats.paidCommissions ?? 0)}</p>
                         <p class="small text-secondary mb-0">Paid out</p>
                     </div>
                 </div>
@@ -2188,6 +2401,59 @@ async function changeAdminAffiliatePasswordFn(refCode, password) {
     await adminRequest({ action: "admin-change-affiliate-password", refCode, password });
 }
 
+async function updateAdminAffiliateFn(refCode, name, phone) {
+    await adminRequest({ action: "admin-update-affiliate", refCode, name, phone });
+}
+
+async function setAffiliateBalanceFn(refCode, amount, visible) {
+    await adminRequest({ action: "admin-set-affiliate-balance", refCode, amount, visible });
+}
+
+function resetAffiliateForm() {
+    state.editingAffiliateRefCode = "";
+    document.getElementById("affiliateName").value = "";
+    document.getElementById("affiliatePhone").value = "";
+    document.getElementById("affiliatePassword").value = "";
+    document.getElementById("affiliatePassword").style.display = "";
+    document.getElementById("affiliatePassword").previousElementSibling.style.display = "";
+    const balanceField = document.getElementById("affiliateBalanceField");
+    if (balanceField) balanceField.style.display = "none";
+    const heading = document.querySelector("#addAffiliateForm h3");
+    if (heading) heading.textContent = "Create affiliate";
+    const btn = document.getElementById("saveAffiliateButton");
+    if (btn) btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Save affiliate';
+    const form = document.getElementById("addAffiliateForm");
+    if (form) form.style.display = "none";
+}
+
+function populateEditAffiliateForm(refCode, name, phone) {
+    state.editingAffiliateRefCode = refCode;
+    document.getElementById("affiliateName").value = name;
+    document.getElementById("affiliatePhone").value = phone;
+    document.getElementById("affiliatePassword").value = "";
+    document.getElementById("affiliatePassword").style.display = "none";
+    document.getElementById("affiliatePassword").previousElementSibling.style.display = "none";
+    const balanceField = document.getElementById("affiliateBalanceField");
+    if (balanceField) balanceField.style.display = "";
+    const balanceInput = document.getElementById("affiliateBalance");
+    if (balanceInput) balanceInput.value = "0.000";
+    const heading = document.querySelector("#addAffiliateForm h3");
+    if (heading) heading.textContent = "Edit affiliate";
+    const btn = document.getElementById("saveAffiliateButton");
+    if (btn) btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Save changes';
+    const form = document.getElementById("addAffiliateForm");
+    if (form) form.style.display = "";
+}
+
+function filterPayouts(payouts) {
+    const search = state.payoutSearch.trim().toLowerCase();
+    if (!search) return payouts;
+    return payouts.filter((p) => {
+        const haystack = [p.refCode, p.method, p.status, p.recipientDetail].join(" ").toLowerCase();
+        return haystack.includes(search);
+    });
+}
+
 async function loadAdminPayouts() {
     const list = document.getElementById("adminPayoutsList");
     if (list) {
@@ -2195,61 +2461,145 @@ async function loadAdminPayouts() {
     }
     try {
         const result = await adminRequest({ action: "admin-list-payouts" });
-        const payouts = result.payouts || [];
+        const payouts = filterPayouts(result.payouts || []);
         const listEl = document.getElementById("adminPayoutsList");
         if (!listEl) return;
         if (!payouts.length) {
-            listEl.innerHTML = `<div class="empty-state py-4"><p class="text-secondary mb-0">No payout requests yet.</p></div>`;
-            return;
-        }
-        listEl.innerHTML = `
-            <div class="table-responsive">
-                <table class="table table-sm table-hover">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Affiliate</th>
-                            <th>Amount</th>
-                            <th>Method</th>
-                            <th>Recipient</th>
-                            <th>Status</th>
-                            <th>Date</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${payouts.map((p) => `
+            listEl.innerHTML = `<div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>ID</th><th>Affiliate</th><th>Amount</th><th>Method</th><th>Recipient</th><th>Status</th><th>Date</th><th>Action</th></tr></thead><tbody></tbody></table></div>`;
+        } else {
+            listEl.innerHTML = `
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
                             <tr>
-                                <td>#${p.id}</td>
-                                <td><code>${escapeHtml(p.refCode)}</code></td>
-                                <td>${money(p.amount)}</td>
-                                <td>${escapeHtml(p.method)}</td>
-                                <td>${escapeHtml(p.recipientDetail)}</td>
-                                <td><span class="badge ${p.status === "paid" ? "text-bg-success" : p.status === "rejected" ? "text-bg-danger" : "text-bg-warning"}">${escapeHtml(p.status)}</span></td>
-                                <td>${formatAdminDateTime(p.createdAt)}</td>
-                                <td>${p.status === "requested" ? `
-                                    <div class="d-flex gap-1">
-                                        <button class="btn btn-sm btn-success" type="button" data-approve-payout="${p.id}" data-payout-status="paid"><i class="bi bi-check2"></i></button>
-                                        <button class="btn btn-sm btn-danger" type="button" data-approve-payout="${p.id}" data-payout-status="rejected"><i class="bi bi-x-lg"></i></button>
-                                    </div>
-                                ` : `<small class="text-secondary">${escapeHtml(p.status)}</small>`}</td>
+                                <th>ID</th>
+                                <th>Affiliate</th>
+                                <th>Amount</th>
+                                <th>Method</th>
+                                <th>Recipient</th>
+                                <th>Status</th>
+                                <th>Date</th>
+                                <th>Action</th>
                             </tr>
-                        `).join("")}
-                    </tbody>
-                </table>
-            </div>
-        `;
+                        </thead>
+                        <tbody>
+                            ${payouts.map((p) => `
+                                <tr>
+                                    <td>#${p.id}</td>
+                                    <td><code>${escapeHtml(p.refCode)}</code></td>
+                                    <td>${money(p.amount)}</td>
+                                    <td>${escapeHtml(p.method)}</td>
+                                    <td>${escapeHtml(p.recipientDetail)}</td>
+                                    <td><span class="badge ${p.status === "paid" ? "text-bg-success" : p.status === "rejected" ? "text-bg-danger" : "text-bg-warning"}">${escapeHtml(p.status)}</span></td>
+                                    <td>${formatAdminDateTime(p.createdAt)}</td>
+                                    <td>${p.status === "requested" ? `
+                                        <div class="d-flex gap-1">
+                                            <button class="btn btn-sm btn-success" type="button" data-approve-payout="${p.id}" data-payout-status="paid"><i class="bi bi-check2"></i></button>
+                                            <button class="btn btn-sm btn-danger" type="button" data-approve-payout="${p.id}" data-payout-status="rejected"><i class="bi bi-x-lg"></i></button>
+                                        </div>
+                                    ` : `<small class="text-secondary">${escapeHtml(p.status)}</small>`}</td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+        renderSellerPayoutsInList();
     } catch (error) {
         const listEl = document.getElementById("adminPayoutsList");
         if (listEl) {
             listEl.innerHTML = `<div class="empty-state py-4"><p class="text-danger mb-0">${escapeHtml(error.message || "Could not load payouts")}</p></div>`;
         }
     }
+    if (typeof observeReveal === "function") observeReveal();
 }
 
 async function approveAdminPayout(id, status) {
     await adminRequest({ action: "admin-approve-payout", id, status });
     await loadAdminPayouts();
+}
+
+/* ── Seller admin functions ────────────────── */
+
+async function deleteAdminSellerFn(sellerId) {
+    if (!window.confirm(`Delete seller "${sellerId}" and all their earnings/payouts?`)) return;
+    await adminRequest({ action: "admin-delete-seller", sellerId });
+    await loadAdminSellers();
+}
+
+async function changeAdminSellerPasswordFn(sellerId, password) {
+    await adminRequest({ action: "admin-change-seller-password", sellerId, password });
+}
+
+async function updateAdminSellerFn(sellerId, data) {
+    await adminRequest({ action: "admin-update-seller", sellerId, ...data });
+}
+
+function resetSellerForm() {
+    document.getElementById("sellerName").value = "";
+    document.getElementById("sellerDisplayName").value = "";
+    document.getElementById("sellerPhone").value = "";
+    document.getElementById("sellerPassword").value = "";
+    document.getElementById("sellerPassword").style.display = "";
+    document.getElementById("sellerPassword").previousElementSibling.style.display = "";
+    document.getElementById("sellerPlatformFee").value = "10";
+    document.getElementById("sellerMinWithdrawal").value = "10";
+    const heading = document.querySelector("#addSellerForm h3");
+    if (heading) heading.textContent = "Create seller";
+    const btn = document.getElementById("saveSellerButton");
+    if (btn) btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Save seller';
+    const form = document.getElementById("addSellerForm");
+    if (form) form.style.display = "none";
+}
+
+function populateEditSellerForm(sellerId, name, displayName, phone, platformFeePercent, minWithdrawal) {
+    document.getElementById("sellerName").value = name;
+    document.getElementById("sellerDisplayName").value = displayName || "";
+    document.getElementById("sellerPhone").value = phone;
+    document.getElementById("sellerPassword").value = "";
+    document.getElementById("sellerPassword").style.display = "none";
+    document.getElementById("sellerPassword").previousElementSibling.style.display = "none";
+    document.getElementById("sellerPlatformFee").value = platformFeePercent || 10;
+    document.getElementById("sellerMinWithdrawal").value = minWithdrawal || 10;
+    const heading = document.querySelector("#addSellerForm h3");
+    if (heading) heading.textContent = "Edit seller";
+    const btn = document.getElementById("saveSellerButton");
+    if (btn) btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Save changes';
+    document.getElementById("addSellerForm").style.display = "";
+    document.getElementById("addSellerForm").dataset.editSellerId = sellerId;
+}
+
+function renderSellerPayoutsInList() {
+    const list = document.getElementById("adminPayoutsList");
+    if (!list) return;
+    // Merge seller payouts into the existing payouts table if any
+    adminRequest({ action: "admin-list-seller-payouts" }).then((result) => {
+        const sellerPayouts = result.payouts || [];
+        if (!sellerPayouts.length) return;
+        const existingTable = list.querySelector("table tbody");
+        if (existingTable) {
+            sellerPayouts.forEach((p) => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>#S${p.id}</td>
+                    <td><code>${escapeHtml(p.sellerId)}</code> (seller)</td>
+                    <td>${money(p.amount)}</td>
+                    <td>${escapeHtml(p.method)}</td>
+                    <td>${escapeHtml(p.recipientDetail)}</td>
+                    <td><span class="badge ${p.status === "paid" || p.status === "approved" ? "text-bg-success" : p.status === "rejected" ? "text-bg-danger" : "text-bg-warning"}">${escapeHtml(p.status)}</span></td>
+                    <td>${formatAdminDateTime(p.createdAt)}</td>
+                    <td>${p.status === "requested" ? `
+                        <div class="d-flex gap-1">
+                            <button class="btn btn-sm btn-success" type="button" data-approve-seller-payout="${p.id}" data-seller-payout-status="paid"><i class="bi bi-check2"></i></button>
+                            <button class="btn btn-sm btn-danger" type="button" data-approve-seller-payout="${p.id}" data-seller-payout-status="rejected"><i class="bi bi-x-lg"></i></button>
+                        </div>
+                    ` : `<small class="text-secondary">${escapeHtml(p.status)}</small>`}</td>
+                `;
+                existingTable.appendChild(row);
+            });
+        }
+    }).catch(() => {});
 }
 
 function renderAdminOrders() {
@@ -2410,6 +2760,7 @@ function renderAdminOrders() {
             `;
         })
         .join("");
+    if (typeof observeReveal === "function") observeReveal();
 }
 
 async function loadAdminOrders() {
@@ -3056,6 +3407,7 @@ ${product.customerInput?.enabled ? "Customer input enabled" : ""}
 function renderMarketplaceAll() {
     renderMarketplaceProductList();
     fillMarketplaceForm();
+    if (typeof observeReveal === "function") observeReveal();
 }
 
 // ===== End marketplace admin functions =====
@@ -3178,6 +3530,16 @@ function bindEvents() {
         renderAdminOrders();
     });
 
+    document.getElementById("affiliateSearch")?.addEventListener("input", (event) => {
+        state.affiliateSearch = event.target.value || "";
+        loadAdminAffiliates();
+    });
+
+    document.getElementById("payoutSearch")?.addEventListener("input", (event) => {
+        state.payoutSearch = event.target.value || "";
+        loadAdminPayouts();
+    });
+
     document.getElementById("togglePreviewButton")?.addEventListener("click", () => {
         const column = document.getElementById("adminPreviewColumn");
         if (!column) return;
@@ -3294,6 +3656,8 @@ function bindEvents() {
                 loadAdminAffiliates().catch((error) => showToast(error.message || "Could not load affiliates"));
             } else if (target === "#payoutsPane") {
                 loadAdminPayouts().catch((error) => showToast(error.message || "Could not load payouts"));
+            } else if (target === "#sellersPane") {
+                loadAdminSellers().catch((error) => showToast(error.message || "Could not load sellers"));
             }
         });
     });
@@ -3385,11 +3749,13 @@ function bindEvents() {
     });
 
     document.getElementById("addAffiliateButton")?.addEventListener("click", () => {
+        resetAffiliateForm();
         const form = document.getElementById("addAffiliateForm");
         if (form) form.style.display = "";
     });
 
     document.getElementById("cancelAffiliateButton")?.addEventListener("click", () => {
+        resetAffiliateForm();
         const form = document.getElementById("addAffiliateForm");
         if (form) form.style.display = "none";
     });
@@ -3397,9 +3763,8 @@ function bindEvents() {
     document.getElementById("saveAffiliateButton")?.addEventListener("click", async () => {
         const name = document.getElementById("affiliateName")?.value.trim();
         const phone = document.getElementById("affiliatePhone")?.value.trim();
-        const password = document.getElementById("affiliatePassword")?.value.trim();
-        if (!name || !phone || !password) {
-            showToast("Fill all fields");
+        if (!name || !phone) {
+            showToast("Fill name and phone");
             return;
         }
         if (!/^\d{8}$/.test(phone)) {
@@ -3407,15 +3772,26 @@ function bindEvents() {
             return;
         }
         try {
-            const affiliate = await createAdminAffiliate(name, phone, password);
-            showToast(`Affiliate created: ${affiliate.refCode}`);
-            document.getElementById("affiliateName").value = "";
-            document.getElementById("affiliatePhone").value = "";
-            document.getElementById("affiliatePassword").value = "";
-            document.getElementById("addAffiliateForm").style.display = "none";
+            if (state.editingAffiliateRefCode) {
+                await updateAdminAffiliateFn(state.editingAffiliateRefCode, name, phone);
+                const balance = Number(document.getElementById("affiliateBalance")?.value || 0);
+                const visible = document.getElementById("affiliateBalanceVisible")?.checked !== false;
+                await setAffiliateBalanceFn(state.editingAffiliateRefCode, balance, visible);
+                showToast(`Affiliate updated: ${state.editingAffiliateRefCode}`);
+                resetAffiliateForm();
+            } else {
+                const password = document.getElementById("affiliatePassword")?.value.trim();
+                if (!password) { showToast("Fill password for new affiliate"); return; }
+                const affiliate = await createAdminAffiliate(name, phone, password);
+                showToast(`Affiliate created: ${affiliate.refCode}`);
+                document.getElementById("affiliateName").value = "";
+                document.getElementById("affiliatePhone").value = "";
+                document.getElementById("affiliatePassword").value = "";
+                document.getElementById("addAffiliateForm").style.display = "none";
+            }
             await loadAdminAffiliates();
         } catch (error) {
-            showToast(error.message || "Could not create affiliate");
+            showToast(error.message || "Operation failed");
         }
     });
 
@@ -3462,6 +3838,17 @@ function bindEvents() {
             }
             return;
         }
+        const editBtn = event.target.closest("[data-edit-affiliate]");
+        if (editBtn) {
+            const refCode = editBtn.dataset.editAffiliate;
+            const row = editBtn.closest("[data-affiliate-ref]");
+            const cells = row ? row.querySelectorAll("td") : [];
+            const name = cells[2]?.textContent?.trim() || "";
+            const phone = cells[3]?.textContent?.trim() || "";
+            populateEditAffiliateForm(refCode, name, phone);
+            document.getElementById("addAffiliateForm").scrollIntoView({ behavior: "smooth", block: "start" });
+            return;
+        }
         const expandBtn = event.target.closest("[data-expand-affiliate]");
         if (expandBtn) {
             const refCode = expandBtn.dataset.expandAffiliate;
@@ -3473,16 +3860,33 @@ function bindEvents() {
 
     document.getElementById("adminPayoutsList")?.addEventListener("click", async (event) => {
         const button = event.target.closest("[data-approve-payout]");
-        if (!button) return;
-        const id = Number(button.dataset.approvePayout);
-        const status = button.dataset.payoutStatus;
-        const statusLabel = status === "paid" ? "mark as paid" : "reject";
-        if (!confirm(`Are you sure you want to ${statusLabel} payout #${id}?`)) return;
-        try {
-            await approveAdminPayout(id, status);
-            showToast(`Payout #${id} ${status}`);
-        } catch (error) {
-            showToast(error.message || "Could not update payout");
+        if (button) {
+            const id = Number(button.dataset.approvePayout);
+            const status = button.dataset.payoutStatus;
+            const statusLabel = status === "paid" ? "mark as paid" : "reject";
+            if (!confirm(`Are you sure you want to ${statusLabel} payout #${id}?`)) return;
+            try {
+                await approveAdminPayout(id, status);
+                showToast(`Payout #${id} ${status}`);
+            } catch (error) {
+                showToast(error.message || "Could not update payout");
+            }
+            return;
+        }
+        const sellerBtn = event.target.closest("[data-approve-seller-payout]");
+        if (sellerBtn) {
+            const id = Number(sellerBtn.dataset.approveSellerPayout);
+            const status = sellerBtn.dataset.sellerPayoutStatus;
+            const statusLabel = status === "paid" ? "mark as paid" : "reject";
+            if (!confirm(`Are you sure you want to ${statusLabel} seller payout #${id}?`)) return;
+            try {
+                await adminRequest({ action: "admin-approve-seller-payout", payoutId: id, status });
+                showToast(`Seller payout #${id} ${status}`);
+                await loadAdminPayouts();
+            } catch (error) {
+                showToast(error.message || "Could not update seller payout");
+            }
+            return;
         }
     });
 
@@ -3615,6 +4019,105 @@ function bindEvents() {
         });
     });
 
+    /* ── Seller event listeners ── */
+
+    document.getElementById("sellerSearch")?.addEventListener("input", (event) => {
+        state.sellerSearch = event.target.value || "";
+        loadAdminSellers().catch((error) => showToast(error.message || "Could not load sellers"));
+    });
+
+    document.getElementById("addSellerButton")?.addEventListener("click", () => {
+        resetSellerForm();
+        document.getElementById("addSellerForm").style.display = "";
+    });
+
+    document.getElementById("cancelSellerButton")?.addEventListener("click", () => {
+        document.getElementById("addSellerForm").style.display = "none";
+    });
+
+    document.getElementById("saveSellerButton")?.addEventListener("click", async () => {
+        const name = document.getElementById("sellerName").value.trim();
+        const displayName = document.getElementById("sellerDisplayName").value.trim();
+        const phone = document.getElementById("sellerPhone").value.trim().replace(/\D/g, "");
+        const password = document.getElementById("sellerPassword").value;
+        const platformFeePercent = Number(document.getElementById("sellerPlatformFee").value) || 0;
+        const minWithdrawal = Number(document.getElementById("sellerMinWithdrawal").value) || 0;
+        if (!name || !phone) { showToast("Name and phone are required."); return; }
+        const form = document.getElementById("addSellerForm");
+        const editSellerId = form?.dataset.editSellerId;
+        try {
+            if (editSellerId) {
+                await updateAdminSellerFn(editSellerId, { name, displayName, phone, platformFeePercent, minWithdrawal });
+                showToast(`Updated seller: ${editSellerId}`);
+            } else {
+                if (!password || password.length < 4) { showToast("Password must be at least 4 characters"); return; }
+                await adminRequest({ action: "admin-create-seller", name, displayName, phone, password, platformFeePercent, minWithdrawal });
+                showToast("Seller created");
+            }
+            resetSellerForm();
+            await loadAdminSellers();
+        } catch (error) {
+            showToast(error.message || "Could not save seller");
+        }
+    });
+
+    /* Seller list actions */
+    document.getElementById("adminSellersList")?.addEventListener("click", async (event) => {
+        const toggleBtn = event.target.closest("[data-toggle-seller]");
+        if (toggleBtn) {
+            const sellerId = toggleBtn.dataset.toggleSeller;
+            try {
+                await adminRequest({ action: "admin-toggle-seller", sellerId });
+                await loadAdminSellers();
+            } catch (error) {
+                showToast(error.message || "Could not toggle seller");
+            }
+            return;
+        }
+        const deleteBtn = event.target.closest("[data-delete-seller]");
+        if (deleteBtn) {
+            try {
+                await deleteAdminSellerFn(deleteBtn.dataset.deleteSeller);
+            } catch (error) {
+                showToast(error.message || "Could not delete seller");
+            }
+            return;
+        }
+        const passBtn = event.target.closest("[data-change-pass-seller]");
+        if (passBtn) {
+            const sellerId = passBtn.dataset.changePassSeller;
+            const password = window.prompt(`Enter new password for "${sellerId}" (min 4 chars):`);
+            if (!password || password.length < 4) { showToast("Password must be at least 4 characters"); return; }
+            try {
+                await changeAdminSellerPasswordFn(sellerId, password);
+                showToast(`Password changed for: ${sellerId}`);
+            } catch (error) {
+                showToast(error.message || "Could not change password");
+            }
+            return;
+        }
+        const editBtn = event.target.closest("[data-edit-seller]");
+        if (editBtn) {
+            const sellerId = editBtn.dataset.editSeller;
+            const row = editBtn.closest("[data-seller-id]");
+            const cells = row ? row.querySelectorAll("td") : [];
+            const name = cells[2]?.textContent?.trim() || "";
+            const displayName = cells[3]?.textContent?.trim() || "";
+            const phone = cells[4]?.textContent?.trim() || "";
+            const fee = parseFloat(cells[5]?.textContent) || 10;
+            const minWithdrawal = parseFloat(row?.dataset.minWithdrawal) || 10;
+            populateEditSellerForm(sellerId, name, displayName, phone, fee, minWithdrawal);
+            document.getElementById("addSellerForm").scrollIntoView({ behavior: "smooth", block: "start" });
+            return;
+        }
+        const expandBtn = event.target.closest("[data-expand-seller]");
+        if (expandBtn) {
+            event.stopPropagation();
+            await toggleAdminSellerDetail(expandBtn.dataset.expandSeller);
+            return;
+        }
+    });
+
 }
 
 bindEvents();
@@ -3622,6 +4125,7 @@ bindEvents();
 function initAdminPanel() {
     loadDatabase();
     loadSettings();
+    loadAdminPayouts();
 }
 
 // start locked; check if already verified this session

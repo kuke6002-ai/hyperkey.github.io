@@ -137,8 +137,9 @@ function renderDashboard(data) {
     linkInput.value = refLink;
 
     /* Commissions table */
+    const visibleCommissions = commissions.filter((c) => !String(c.productId || "").startsWith("admin-"));
     const commissionsTable = document.getElementById("affiliateCommissionsTable");
-    if (!commissions.length) {
+    if (!visibleCommissions.length) {
         commissionsTable.innerHTML = `
             <div class="aff-empty">
                 <div class="aff-empty-icon"><i class="bi bi-inbox"></i></div>
@@ -151,17 +152,33 @@ function renderDashboard(data) {
             <div class="table-responsive">
                 <table class="table table-sm aff-table">
                     <thead>
-                        <tr><th>Order</th><th>Product</th><th>Amount</th><th>Date</th></tr>
+                        <tr><th>Order</th><th>Product</th><th>Amount</th><th>Order Status</th><th>Date</th></tr>
                     </thead>
                     <tbody>
-                        ${commissions.map((c) => `
+                        ${visibleCommissions.map((c) => {
+                            const delStatus = String(c.deliveryStatus || "").toLowerCase();
+                            const payStatus = String(c.paymentStatus || "").toLowerCase();
+                            let statusLabel = "Pending";
+                            if (delStatus === "delivered") statusLabel = "Delivered";
+                            else if (delStatus === "cancelled" || delStatus === "canceled") statusLabel = "Cancelled";
+                            else if (payStatus === "rejected") statusLabel = "Payment rejected";
+                            else if (delStatus === "delivering") statusLabel = "Delivering";
+                            else if (payStatus === "verified") statusLabel = "Payment verified";
+                            else if (payStatus === "manual" || payStatus === "pending") statusLabel = "Payment review";
+                            const sv = delStatus || payStatus || statusLabel;
+                            let tone = "neutral";
+                            if (["delivered", "verified"].some((x) => sv.includes(x))) tone = "good";
+                            else if (["cancelled", "canceled", "rejected"].some((x) => sv.includes(x))) tone = "bad";
+                            else if (["pending", "waiting", "manual", "delivering"].some((x) => sv.includes(x))) tone = "pending";
+                            return `
                             <tr>
                                 <td><code class="aff-order-id">${afEscape(c.orderId)}</code></td>
                                 <td>${afEscape(c.productId)}</td>
                                 <td class="fw-bold">${afMoney(c.amount)}</td>
+                                <td><strong class="status-badge status-${tone}"><span class="status-dot" aria-hidden="true"></span>${afEscape(statusLabel)}</strong></td>
                                 <td class="text-secondary small">${new Date(c.createdAt).toLocaleDateString()}</td>
                             </tr>
-                        `).join("")}
+                        `}).join("")}
                     </tbody>
                 </table>
             </div>
@@ -355,7 +372,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     success.classList.remove("d-none");
                 }
             } catch (error) {
-                registerError.textContent = error.message || afT("Registration failed");
+                registerError.textContent = error.message ? afTranslateError(error.message) : afT("Registration failed");
                 registerError.classList.remove("d-none");
             } finally {
                 registerBtn.disabled = false;

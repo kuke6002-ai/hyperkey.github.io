@@ -9,6 +9,7 @@ let customerInputTableReady = false;
 let orderSchemaReady = false;
 let marketplaceSchemaReady = false;
 let affiliateSchemaReady = false;
+let sellerSchemaReady = false;
 
 const loginAttempts = new Map();
 function checkLoginRateLimit(key) {
@@ -89,6 +90,12 @@ const DEFAULT_PAYMENT_SETTINGS = {
         },
     },
     affiliate: {
+        minimumWithdrawal: 10,
+        registrationOpen: true,
+        autoActivate: true,
+    },
+    seller: {
+        defaultPlatformFeePercent: 10,
         minimumWithdrawal: 10,
     },
 };
@@ -246,6 +253,101 @@ async function ensureAffiliateSchema(env) {
     affiliateSchemaReady = true;
 }
 
+async function ensureSellerSchema(env) {
+    if (sellerSchemaReady) return;
+    const db = getOrderDb(env);
+    const tableMigrations = [
+        `CREATE TABLE IF NOT EXISTS sellers (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            total_earnings REAL NOT NULL DEFAULT 0,
+            platform_fee_percent REAL NOT NULL DEFAULT 10,
+            active INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS seller_sessions (
+            token TEXT PRIMARY KEY,
+            seller_id TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS seller_earnings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            seller_id TEXT NOT NULL,
+            order_id TEXT NOT NULL,
+            product_id TEXT NOT NULL,
+            line_total REAL NOT NULL,
+            fee_percent REAL NOT NULL,
+            earnings_amount REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            paid_at TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS seller_payouts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            seller_id TEXT NOT NULL,
+            amount REAL NOT NULL,
+            method TEXT NOT NULL,
+            recipient_detail TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'requested',
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        )`,
+    ];
+
+    for (const migration of tableMigrations) {
+        try {
+            await db.prepare(migration).run();
+        } catch (error) {
+            const message = String(error?.message || "");
+            if (/already exists/i.test(message)) continue;
+            throw error;
+        }
+    }
+
+    // Migrate existing tables that may be missing columns from earlier deploys
+    const alterMigrations = [
+        "ALTER TABLE sellers ADD COLUMN name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE sellers ADD COLUMN display_name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE sellers ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE sellers ADD COLUMN platform_fee_percent REAL NOT NULL DEFAULT 10",
+        "ALTER TABLE sellers ADD COLUMN active INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE sellers ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE seller_earnings ADD COLUMN paid_at TEXT",
+        "ALTER TABLE seller_payouts ADD COLUMN updated_at TEXT",
+        "ALTER TABLE sellers ADD COLUMN min_withdrawal REAL",
+    ];
+
+    for (const migration of alterMigrations) {
+        try {
+            await db.prepare(migration).run();
+        } catch (error) {
+            const message = String(error?.message || "");
+            if (/duplicate column|already exists/i.test(message)) continue;
+        }
+    }
+
+    sellerSchemaReady = true;
+}
+
+async function getSellerByToken(env, token) {
+    if (!token) return null;
+    const db = getOrderDb(env);
+    const session = await db.prepare("SELECT seller_id FROM seller_sessions WHERE token = ?").bind(token).first();
+    if (!session) return null;
+    return db.prepare("SELECT id, name, display_name, phone, total_earnings, platform_fee_percent, min_withdrawal, active FROM sellers WHERE id = ?").bind(session.seller_id).first();
+}
+
+async function hashPassword(password) {
+    const encoder = new TextEncoder();
+    const passwordBuffer = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", passwordBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 function requireAdmin(request, env) {
     if (!env.ADMIN_API_TOKEN) {
         throw new ApiError("ADMIN_API_TOKEN is not configured", 500);
@@ -307,6 +409,13 @@ function mergePaymentSettings(settings = {}) {
         merged.affiliate = {
             ...merged.affiliate,
             ...settings.affiliate,
+        };
+    }
+
+    if (settings.seller && typeof settings.seller === "object") {
+        merged.seller = {
+            ...merged.seller,
+            ...settings.seller,
         };
     }
 
@@ -1404,6 +1513,11 @@ async function updateAdminOrder(env, body) {
         values.push(body.deliveryStatus === "cancelled" ? reason || getDefaultStatusReason("delivery", body.deliveryStatus) : "");
     }
 
+    if (body.paymentStatus === "rejected") {
+        updates.push("delivery_status = ?");
+        values.push("cancelled");
+    }
+
     if (!updates.length) throw new Error("No status update was provided");
     updates.push("updated_at = ?");
     values.push(new Date().toISOString());
@@ -1415,11 +1529,18 @@ async function updateAdminOrder(env, body) {
     const record = await getOrderById(env, orderId);
     if (!record) throw new Error("Order was not found");
 
-    if (body.deliveryStatus === "delivered" && record.referred_by) {
+    if (body.deliveryStatus === "delivered") {
+        if (record.referred_by) {
+            try {
+                await earnCommissionsForOrder(env, orderId);
+            } catch (err) {
+                console.error(`Commission earning failed for order ${orderId}:`, err);
+            }
+        }
         try {
-            await calculateAndSaveCommissions(env, record);
+            await earnSellerForOrder(env, orderId);
         } catch (err) {
-            console.error(`Commission calculation failed for order ${orderId}:`, err);
+            console.error(`Seller earnings failed for order ${orderId}:`, err);
         }
     }
 
@@ -2102,6 +2223,48 @@ async function getAdminAffiliateDetail(env, body) {
     };
 }
 
+async function updateAdminAffiliate(env, body) {
+    await ensureOrderSchema(env);
+    const refCode = String(body.refCode || "").trim().toLowerCase();
+    const name = String(body.name || "").trim();
+    const phone = String(body.phone || "").trim().replace(/\D/g, "");
+    if (!refCode) throw new Error("Affiliate code is required");
+    if (!name) throw new Error("Affiliate name is required");
+    if (!phone) throw new Error("Affiliate phone is required");
+    const db = getOrderDb(env);
+    const result = await db.prepare("UPDATE affiliates SET name = ?, phone = ? WHERE ref_code = ?").bind(name, phone, refCode).run();
+    if (!result.meta?.changes) throw new Error("Affiliate not found");
+    return { refCode, name, phone };
+}
+
+async function setAffiliateBalance(env, body) {
+    await ensureOrderSchema(env);
+    const refCode = String(body.refCode || "").trim().toLowerCase();
+    const amount = Number(body.amount) || 0;
+    const visible = body.visible !== false;
+    if (!refCode) throw new Error("Affiliate code is required");
+    if (amount < 0) throw new Error("Amount cannot be negative");
+    const db = getOrderDb(env);
+    const affiliate = await db.prepare("SELECT ref_code FROM affiliates WHERE ref_code = ?").bind(refCode).first();
+    if (!affiliate) throw new Error("Affiliate not found");
+    const productId = visible ? "admin-balance" : "admin-balance-secret";
+    const operations = [
+        db.prepare("DELETE FROM referral_commissions WHERE ref_code = ? AND status = 'pending'").bind(refCode),
+    ];
+    if (amount > 0) {
+        const now = new Date().toISOString();
+        const orderId = "admin-balance-set-" + Date.now();
+        operations.push(
+            db.prepare("INSERT INTO referral_commissions (ref_code, order_id, product_id, commission_amount, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)").bind(refCode, orderId, productId, amount, now),
+        );
+    }
+    operations.push(
+        db.prepare("UPDATE affiliates SET total_earnings = (SELECT COALESCE(SUM(commission_amount), 0) FROM referral_commissions WHERE ref_code = ?) WHERE ref_code = ?").bind(refCode, refCode),
+    );
+    await db.batch(operations);
+    return { refCode, amount, visible };
+}
+
 async function changeAdminAffiliatePassword(env, body) {
     await ensureOrderSchema(env);
     const refCode = String(body.refCode || "").trim().toLowerCase();
@@ -2146,10 +2309,37 @@ async function approveAdminPayout(env, body) {
 
     const now = new Date().toISOString();
     if (newStatus === "paid") {
-        await db.batch([
+        const pendingCommissions = await getAllResults(
+            db.prepare("SELECT id, commission_amount FROM referral_commissions WHERE ref_code = ? AND status = 'pending' ORDER BY created_at ASC").bind(payout.ref_code)
+        );
+        let remaining = Number(payout.amount);
+        const toMarkPaid = [];
+        const toReduce = [];
+        for (const c of pendingCommissions) {
+            if (remaining <= 0) break;
+            const amt = Number(c.commission_amount);
+            if (amt <= remaining) {
+                toMarkPaid.push(c.id);
+                remaining -= amt;
+            } else {
+                toReduce.push({ id: c.id, newAmount: amt - remaining });
+                remaining = 0;
+            }
+        }
+        const operations = [
             db.prepare("UPDATE affiliate_payouts SET status = 'paid', updated_at = ? WHERE id = ?").bind(now, id),
-            db.prepare("UPDATE referral_commissions SET status = 'paid', paid_at = ? WHERE ref_code = ? AND status = 'pending'").bind(now, payout.ref_code),
-        ]);
+        ];
+        for (const cId of toMarkPaid) {
+            operations.push(
+                db.prepare("UPDATE referral_commissions SET status = 'paid', paid_at = ? WHERE id = ?").bind(now, cId)
+            );
+        }
+        for (const r of toReduce) {
+            operations.push(
+                db.prepare("UPDATE referral_commissions SET commission_amount = ? WHERE id = ?").bind(r.newAmount, r.id)
+            );
+        }
+        await db.batch(operations);
     } else {
         await db.prepare("UPDATE affiliate_payouts SET status = 'rejected', updated_at = ? WHERE id = ?").bind(now, id).run();
         await db.prepare("UPDATE affiliates SET total_earnings = total_earnings - ? WHERE ref_code = ?").bind(payout.amount, payout.ref_code).run();
@@ -2212,6 +2402,14 @@ async function handleAdminAction(body, request, env, corsHeaders) {
         return jsonResponse({ ok: true }, 200, corsHeaders);
     }
 
+    if (body.action === "admin-update-affiliate") {
+        return jsonResponse({ ok: true, affiliate: await updateAdminAffiliate(env, body) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-set-affiliate-balance") {
+        return jsonResponse({ ok: true, result: await setAffiliateBalance(env, body) }, 200, corsHeaders);
+    }
+
     if (body.action === "admin-change-affiliate-password") {
         await changeAdminAffiliatePassword(env, body);
         return jsonResponse({ ok: true }, 200, corsHeaders);
@@ -2227,6 +2425,135 @@ async function handleAdminAction(body, request, env, corsHeaders) {
 
     if (body.action === "admin-approve-payout") {
         return jsonResponse({ ok: true, payout: await approveAdminPayout(env, body) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-list-sellers") {
+        await ensureSellerSchema(env);
+        const db = getOrderDb(env);
+        const sellers = await getAllResults(db.prepare("SELECT id, name, display_name, phone, total_earnings, platform_fee_percent, min_withdrawal, active, created_at FROM sellers ORDER BY created_at DESC").bind());
+        return jsonResponse({ ok: true, sellers: sellers.map((s) => ({ id: s.id, name: s.name, displayName: s.display_name, phone: s.phone, totalEarnings: s.total_earnings, platformFeePercent: s.platform_fee_percent, minWithdrawal: s.min_withdrawal, active: s.active, createdAt: s.created_at })) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-create-seller") {
+        await ensureSellerSchema(env);
+        const db = getOrderDb(env);
+        const name = String(body.name || "").trim();
+        const displayName = String(body.displayName || name).trim();
+        const phone = String(body.phone || "").trim().replace(/\D/g, "");
+        const password = String(body.password || "").trim();
+        const platformFeePercent = Number(body.platformFeePercent) || 10;
+        const minWithdrawal = Number(body.minWithdrawal);
+        if (!name) throw new ApiError("Name is required", 400);
+        if (!phone || phone.length !== 8) throw new ApiError("Enter a valid 8-digit phone number", 400);
+        if (!password || password.length < 4) throw new ApiError("Password must be at least 4 characters", 400);
+        let id = "SLR-" + phone.slice(-4);
+        let existing = await db.prepare("SELECT id FROM sellers WHERE id = ?").bind(id).first();
+        let suffix = 2;
+        const originalId = id;
+        while (existing) {
+            id = `${originalId}-${suffix}`;
+            suffix++;
+            existing = await db.prepare("SELECT id FROM sellers WHERE id = ?").bind(id).first();
+        }
+        const hashHex = await hashPassword(password);
+        const now = new Date().toISOString();
+        await db.prepare("INSERT INTO sellers (id, name, display_name, phone, password_hash, total_earnings, platform_fee_percent, min_withdrawal, active, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, 1, ?)").bind(id, name, displayName, phone, hashHex, platformFeePercent, Number.isFinite(minWithdrawal) ? minWithdrawal : null, now).run();
+        return jsonResponse({ ok: true, seller: { id, name, displayName, phone, platformFeePercent, minWithdrawal: Number.isFinite(minWithdrawal) ? minWithdrawal : null, active: true, createdAt: now } }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-toggle-seller") {
+        await ensureSellerSchema(env);
+        const db = getOrderDb(env);
+        const sellerId = String(body.sellerId || "").trim();
+        const seller = await db.prepare("SELECT id, active FROM sellers WHERE id = ?").bind(sellerId).first();
+        if (!seller) throw new ApiError("Seller not found", 404);
+        const newActive = seller.active ? 0 : 1;
+        await db.prepare("UPDATE sellers SET active = ? WHERE id = ?").bind(newActive, sellerId).run();
+        return jsonResponse({ ok: true, seller: { id: sellerId, active: newActive } }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-delete-seller") {
+        await ensureSellerSchema(env);
+        const db = getOrderDb(env);
+        const sellerId = String(body.sellerId || "").trim();
+        await db.prepare("DELETE FROM sellers WHERE id = ?").bind(sellerId).run();
+        await db.prepare("DELETE FROM seller_sessions WHERE seller_id = ?").bind(sellerId).run();
+        await db.prepare("DELETE FROM seller_earnings WHERE seller_id = ?").bind(sellerId).run();
+        await db.prepare("DELETE FROM seller_payouts WHERE seller_id = ?").bind(sellerId).run();
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-change-seller-password") {
+        await ensureSellerSchema(env);
+        const db = getOrderDb(env);
+        const sellerId = String(body.sellerId || "").trim();
+        const password = String(body.password || "").trim();
+        if (!password || password.length < 4) throw new ApiError("Password must be at least 4 characters", 400);
+        const hashHex = await hashPassword(password);
+        await db.prepare("UPDATE sellers SET password_hash = ? WHERE id = ?").bind(hashHex, sellerId).run();
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-update-seller") {
+        await ensureSellerSchema(env);
+        const db = getOrderDb(env);
+        const sellerId = String(body.sellerId || "").trim();
+        const name = String(body.name || "").trim();
+        const displayName = String(body.displayName || "").trim();
+        const platformFeePercent = Number(body.platformFeePercent);
+        const updates = [];
+        const params = [];
+        if (name) { updates.push("name = ?"); params.push(name); }
+        if (displayName) { updates.push("display_name = ?"); params.push(displayName); }
+        if (Number.isFinite(platformFeePercent) && platformFeePercent >= 0) { updates.push("platform_fee_percent = ?"); params.push(platformFeePercent); }
+        const minWithdrawal = Number(body.minWithdrawal);
+        if (Number.isFinite(minWithdrawal)) { updates.push("min_withdrawal = ?"); params.push(minWithdrawal); }
+        if (!updates.length) throw new ApiError("Nothing to update", 400);
+        params.push(sellerId);
+        await db.prepare(`UPDATE sellers SET ${updates.join(", ")} WHERE id = ?`).bind(...params).run();
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-seller-detail") {
+        await ensureSellerSchema(env);
+        const db = getOrderDb(env);
+        const sellerId = String(body.sellerId || "").trim();
+        const seller = await db.prepare("SELECT id, name, display_name, phone, total_earnings, platform_fee_percent, min_withdrawal, active, created_at FROM sellers WHERE id = ?").bind(sellerId).first();
+        if (!seller) throw new ApiError("Seller not found", 404);
+
+        const [earnings, payouts] = await Promise.all([
+            getAllResults(db.prepare("SELECT id, order_id, product_id, line_total, fee_percent, earnings_amount, status, created_at, paid_at FROM seller_earnings WHERE seller_id = ? ORDER BY created_at DESC LIMIT 50").bind(sellerId)),
+            getAllResults(db.prepare("SELECT id, amount, method, recipient_detail, status, created_at, updated_at FROM seller_payouts WHERE seller_id = ? ORDER BY created_at DESC LIMIT 20").bind(sellerId)),
+        ]);
+
+        return jsonResponse({
+            ok: true,
+            seller: { id: seller.id, name: seller.name, displayName: seller.display_name, phone: seller.phone, totalEarnings: seller.total_earnings, platformFeePercent: seller.platform_fee_percent, minWithdrawal: seller.min_withdrawal, active: seller.active, createdAt: seller.created_at },
+            earnings,
+            payouts,
+        }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-list-seller-payouts") {
+        await ensureSellerSchema(env);
+        const db = getOrderDb(env);
+        const payouts = await getAllResults(db.prepare("SELECT sp.id, sp.seller_id, sp.amount, sp.method, sp.recipient_detail, sp.status, sp.created_at, sp.updated_at, s.name as seller_name, s.display_name as seller_display FROM seller_payouts sp LEFT JOIN sellers s ON sp.seller_id = s.id ORDER BY sp.created_at DESC LIMIT 50").bind());
+        return jsonResponse({ ok: true, payouts: payouts.map((p) => ({ id: p.id, sellerId: p.seller_id, sellerName: p.seller_name || "", sellerDisplay: p.seller_display || "", amount: p.amount, method: p.method, recipientDetail: p.recipient_detail, status: p.status, createdAt: p.created_at, updatedAt: p.updated_at || "" })) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-approve-seller-payout") {
+        await ensureSellerSchema(env);
+        const db = getOrderDb(env);
+        const payoutId = Number(body.payoutId);
+        const newStatus = String(body.status || "paid").trim();
+        const payout = await db.prepare("SELECT id, seller_id, amount FROM seller_payouts WHERE id = ?").bind(payoutId).first();
+        if (!payout) throw new ApiError("Payout not found", 404);
+        const now = new Date().toISOString();
+        await db.prepare("UPDATE seller_payouts SET status = ?, updated_at = ? WHERE id = ?").bind(newStatus, now, payoutId).run();
+        if (newStatus === "paid") {
+            await db.prepare("UPDATE seller_earnings SET status = 'paid', paid_at = ? WHERE seller_id = ? AND status = 'pending'").bind(now, payout.seller_id).run();
+        }
+        return jsonResponse({ ok: true }, 200, corsHeaders);
     }
 
     return jsonResponse({ error: "Unknown admin action" }, 400, corsHeaders);
@@ -2590,6 +2917,61 @@ async function handleTelegramWebhook(body, request, env, corsHeaders) {
     return jsonResponse({ ok: true }, 200, corsHeaders);
 }
 
+async function createCommissionPlaceholders(env, order) {
+    if (!order.referredBy) return;
+    const db = getOrderDb(env);
+    await ensureAffiliateSchema(env);
+    const affiliate = await db.prepare("SELECT ref_code FROM affiliates WHERE ref_code = ? AND active = 1").bind(order.referredBy).first();
+    if (!affiliate) return;
+
+    const [allProducts, allCategories] = await Promise.all([
+        readAllProducts(env),
+        readAllCategories(env),
+    ]);
+    const catMap = {};
+    for (const cat of allCategories) catMap[cat.name] = cat.commissionPercent;
+
+    const commissions = [];
+    const now = new Date().toISOString();
+    const allMarketplaceProducts = await readAllMarketplaceProducts(env);
+
+    for (const item of order.lines) {
+        if (allMarketplaceProducts[item.productId]) continue;
+        const product = allProducts[item.productId];
+        if (!product) continue;
+        const percent = catMap[product.category] || 0;
+        if (percent <= 0) continue;
+        const amount = (item.lineTotal * percent) / 100;
+        if (amount <= 0) continue;
+        commissions.push({ order_id: order.id, ref_code: order.referredBy, product_id: item.productId, commission_amount: amount, created_at: now });
+    }
+    if (!commissions.length) return;
+
+    const stmt = db.prepare("INSERT INTO referral_commissions (order_id, ref_code, product_id, commission_amount, status, created_at) VALUES (?, ?, ?, ?, 'created', ?)");
+    const batchResults = await db.batch(commissions.map((c) => stmt.bind(c.order_id, c.ref_code, c.product_id, c.commission_amount, c.created_at)));
+    const errors = batchResults.map((r, i) => (r.error ? `Statement ${i}: ${r.error}` : null)).filter(Boolean);
+    if (errors.length) console.error("[commission] D1 batch errors in createCommissionPlaceholders:", errors.join("; "));
+}
+
+async function earnCommissionsForOrder(env, orderId) {
+    const db = getOrderDb(env);
+    const record = await getOrderById(env, orderId);
+    if (!record || !record.referred_by) return;
+
+    const pending = await getAllResults(
+        db.prepare("SELECT id, commission_amount FROM referral_commissions WHERE order_id = ? AND status = 'created'").bind(orderId)
+    );
+    if (!pending.length) return;
+
+    const earningsSum = pending.reduce((sum, c) => sum + Number(c.commission_amount), 0);
+    const batchResults = await db.batch([
+        db.prepare("UPDATE referral_commissions SET status = 'pending' WHERE order_id = ? AND status = 'created'").bind(orderId),
+        db.prepare("UPDATE affiliates SET total_earnings = total_earnings + ? WHERE ref_code = ?").bind(earningsSum, record.referred_by),
+    ]);
+    const errors = batchResults.map((r, i) => (r.error ? `Statement ${i}: ${r.error}` : null)).filter(Boolean);
+    if (errors.length) console.error("[commission] D1 batch errors in earnCommissionsForOrder:", errors.join("; "));
+}
+
 async function calculateAndSaveCommissions(env, record) {
     if (!record.referred_by) {
         console.log(`[commission] Order ${record.id}: no referred_by, skipping`);
@@ -2705,6 +3087,12 @@ async function handleAffiliateAction(body, request, env, corsHeaders) {
     const action = body.action;
 
     if (action === "affiliate-register") {
+        const paymentSettings = await readPaymentSettings(env);
+        const affiliateDefaults = DEFAULT_PAYMENT_SETTINGS.affiliate;
+        const affConfig = paymentSettings ? mergePaymentSettings(paymentSettings).affiliate : affiliateDefaults;
+        if (!affConfig.registrationOpen) {
+            return jsonResponse({ error: "Affiliate registration is currently closed" }, 403, corsHeaders);
+        }
         const name = String(body.name || "").trim();
         const phone = String(body.phone || "").trim().replace(/\D/g, "");
         const password = String(body.password || "").trim();
@@ -2728,7 +3116,7 @@ async function handleAffiliateAction(body, request, env, corsHeaders) {
             existing = await db.prepare("SELECT ref_code FROM affiliates WHERE ref_code = ?").bind(refCode).first();
         }
         const now = new Date().toISOString();
-        await db.prepare("INSERT INTO affiliates (ref_code, name, phone, password_hash, total_earnings, active, created_at) VALUES (?, ?, ?, ?, 0, 1, ?)").bind(refCode, name, phone, hashHex, now).run();
+        await db.prepare("INSERT INTO affiliates (ref_code, name, phone, password_hash, total_earnings, active, created_at) VALUES (?, ?, ?, ?, 0, ?, ?)").bind(refCode, name, phone, hashHex, affConfig.autoActivate ? 1 : 0, now).run();
         return jsonResponse({ ok: true, refCode, name }, 200, corsHeaders);
     }
 
@@ -2783,12 +3171,13 @@ async function handleAffiliateAction(body, request, env, corsHeaders) {
         const db = getOrderDb(env);
 
         const [commissions, payouts] = await Promise.all([
-            getAllResults(db.prepare("SELECT id, order_id, product_id, commission_amount, status, created_at, paid_at FROM referral_commissions WHERE ref_code = ? ORDER BY created_at DESC LIMIT 50").bind(affiliate.ref_code)),
+            getAllResults(db.prepare("SELECT rc.id, rc.order_id, rc.product_id, rc.commission_amount, rc.status as commission_status, rc.created_at, rc.paid_at, o.payment_status, o.delivery_status FROM referral_commissions rc LEFT JOIN orders o ON rc.order_id = o.id WHERE rc.ref_code = ? ORDER BY rc.created_at DESC LIMIT 50").bind(affiliate.ref_code)),
             getAllResults(db.prepare("SELECT id, amount, method, recipient_detail, status, created_at, updated_at FROM affiliate_payouts WHERE ref_code = ? ORDER BY created_at DESC LIMIT 20").bind(affiliate.ref_code)),
         ]);
 
-        const totalCommissions = commissions.reduce((sum, c) => sum + Number(c.commission_amount), 0);
-        const pendingCommissions = commissions.filter((c) => c.status === "pending").reduce((sum, c) => sum + Number(c.commission_amount), 0);
+        const earnedCommissions = commissions.filter((c) => c.commission_status !== "created");
+        const totalCommissions = earnedCommissions.reduce((sum, c) => sum + Number(c.commission_amount), 0);
+        const pendingCommissions = earnedCommissions.filter((c) => c.commission_status === "pending").reduce((sum, c) => sum + Number(c.commission_amount), 0);
         const totalOrders = new Set(commissions.map((c) => c.order_id)).size;
 
         const paymentSettings = await readPaymentSettings(env);
@@ -2814,9 +3203,11 @@ async function handleAffiliateAction(body, request, env, corsHeaders) {
                 orderId: c.order_id,
                 productId: c.product_id || "",
                 amount: Number(c.commission_amount),
-                status: c.status,
+                status: c.commission_status,
                 createdAt: c.created_at,
                 paidAt: c.paid_at || "",
+                paymentStatus: c.payment_status || "",
+                deliveryStatus: c.delivery_status || "",
             })),
             payouts: payouts.map((p) => ({
                 id: p.id,
@@ -2871,6 +3262,330 @@ async function handleAffiliateAction(body, request, env, corsHeaders) {
     return jsonResponse({ error: "Unknown affiliate action" }, 400, corsHeaders);
 }
 
+/* ── Seller action handler ──────────────────── */
+
+async function handleSellerAction(body, request, env, corsHeaders) {
+    await ensureOrderSchema(env);
+    await ensureSellerSchema(env);
+
+    const action = body.action;
+
+    if (action === "seller-login") {
+        const phone = String(body.phone || "").trim().replace(/\D/g, "");
+        const password = String(body.password || "").trim();
+        if (!phone || !password) {
+            return jsonResponse({ error: "Enter phone and password" }, 400, corsHeaders);
+        }
+        const clientIp = request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "unknown";
+        if (!checkLoginRateLimit("slr-login-" + clientIp)) {
+            return jsonResponse({ error: "Too many login attempts. Try again later." }, 429, corsHeaders);
+        }
+        const db = getOrderDb(env);
+        const seller = await db.prepare("SELECT id, name, display_name, phone, password_hash, total_earnings, platform_fee_percent, active FROM sellers WHERE phone = ?").bind(phone).first();
+        if (!seller) {
+            return jsonResponse({ error: "Seller not found" }, 404, corsHeaders);
+        }
+        if (!seller.active) {
+            return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+        }
+        const hashHex = await hashPassword(password);
+        if (hashHex !== seller.password_hash) {
+            return jsonResponse({ error: "Invalid password" }, 401, corsHeaders);
+        }
+        const tokenBytes = new Uint8Array(32);
+        crypto.getRandomValues(tokenBytes);
+        const token = Array.from(tokenBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+        const now = new Date().toISOString();
+        await db.prepare("INSERT INTO seller_sessions (token, seller_id, created_at) VALUES (?, ?, ?)").bind(token, seller.id, now).run();
+        return jsonResponse({
+            ok: true, token,
+            seller: {
+                id: seller.id,
+                name: seller.name,
+                displayName: seller.display_name,
+                phone: seller.phone,
+                totalEarnings: seller.total_earnings,
+                platformFeePercent: seller.platform_fee_percent,
+            },
+        }, 200, corsHeaders);
+    }
+
+    if (action === "seller-logout") {
+        const token = String(body.token || "").trim();
+        if (token) {
+            await getOrderDb(env).prepare("DELETE FROM seller_sessions WHERE token = ?").bind(token).run();
+        }
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (action === "seller-stats") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+        const db = getOrderDb(env);
+
+        const [earnings, payouts, allMarketplace] = await Promise.all([
+            getAllResults(db.prepare("SELECT se.id, se.order_id, se.product_id, se.line_total, se.fee_percent, se.earnings_amount, se.status, se.created_at, se.paid_at, o.payment_status, o.delivery_status FROM seller_earnings se LEFT JOIN orders o ON se.order_id = o.id WHERE se.seller_id = ? ORDER BY se.created_at DESC LIMIT 50").bind(seller.id)),
+            getAllResults(db.prepare("SELECT id, amount, method, recipient_detail, status, created_at, updated_at FROM seller_payouts WHERE seller_id = ? ORDER BY created_at DESC LIMIT 20").bind(seller.id)),
+            readAllMarketplaceProducts(env),
+        ]);
+
+        const sellerProducts = Object.entries(allMarketplace)
+            .filter(([, p]) => p.soldBy === seller.display_name)
+            .map(([id, p]) => ({ id, ...p }));
+
+        const pendingEarnings = earnings.filter((e) => e.status === "pending").reduce((sum, e) => sum + Number(e.earnings_amount), 0);
+        const paidEarnings = earnings.filter((e) => e.status === "paid").reduce((sum, e) => sum + Number(e.earnings_amount), 0);
+        const totalRevenue = earnings.reduce((sum, e) => sum + Number(e.line_total), 0);
+        const totalOrders = new Set(earnings.map((e) => e.order_id)).size;
+
+        const paymentSettings = await readPaymentSettings(env);
+        const minimumWithdrawal = seller.min_withdrawal ?? paymentSettings.seller?.minimumWithdrawal ?? 10;
+        const pendingPayouts = payouts.filter((p) => p.status === "requested" || p.status === "pending").reduce((sum, p) => sum + Number(p.amount), 0);
+        const currentBalance = Math.max(0, pendingEarnings - pendingPayouts);
+
+        const allOrders = await getAllResults(
+            db.prepare("SELECT id, payment_status, delivery_status, created_at FROM orders ORDER BY created_at DESC LIMIT 20")
+        );
+        const recentOrders = [];
+        const seenIds = new Set();
+        for (const o of allOrders || []) {
+            if (recentOrders.length >= 10) break;
+            if (seenIds.has(o.id)) continue;
+            seenIds.add(o.id);
+            try {
+                const orderItems = await getOrderItems(env, o.id);
+                const sellerItems = orderItems.filter((i) => i.sold_by === seller.display_name);
+                if (sellerItems.length) {
+                    recentOrders.push({ id: o.id, paymentStatus: o.payment_status, deliveryStatus: o.delivery_status, createdAt: o.created_at, items: sellerItems });
+                }
+            } catch (err) {
+                console.error(`[seller] Error fetching items for order ${o.id}:`, err);
+            }
+        }
+
+        return jsonResponse({
+            ok: true,
+            seller: {
+                id: seller.id,
+                name: seller.name,
+                displayName: seller.display_name,
+                phone: seller.phone,
+                totalEarnings: seller.total_earnings,
+                platformFeePercent: seller.platform_fee_percent,
+            },
+            stats: {
+                totalOrders,
+                totalRevenue,
+                pendingEarnings,
+                paidEarnings,
+                currentBalance,
+            },
+            minimumWithdrawal,
+            products: sellerProducts,
+            recentOrders,
+            earnings: earnings.map((e) => ({
+                id: e.id,
+                orderId: e.order_id,
+                productId: e.product_id,
+                lineTotal: Number(e.line_total),
+                feePercent: Number(e.fee_percent),
+                amount: Number(e.earnings_amount),
+                status: e.status,
+                createdAt: e.created_at,
+                paidAt: e.paid_at || "",
+                paymentStatus: e.payment_status || "",
+                deliveryStatus: e.delivery_status || "",
+            })),
+            payouts: payouts.map((p) => ({
+                id: p.id,
+                amount: Number(p.amount),
+                method: p.method,
+                recipientDetail: p.recipient_detail,
+                status: p.status,
+                createdAt: p.created_at,
+                updatedAt: p.updated_at || "",
+            })),
+        }, 200, corsHeaders);
+    }
+
+    if (action === "seller-products") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+
+        const allMarketplace = await readAllMarketplaceProducts(env);
+        const sellerProducts = Object.entries(allMarketplace)
+            .filter(([, p]) => p.soldBy === seller.display_name)
+            .map(([id, p]) => ({ id, ...p }));
+
+        return jsonResponse({ ok: true, products: sellerProducts }, 200, corsHeaders);
+    }
+
+    if (action === "seller-product-save") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+
+        const productName = String(body.name || "").trim();
+        if (!productName) return jsonResponse({ error: "Product name is required" }, 400, corsHeaders);
+
+        const productId = String(body.productId || "").trim() || productName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+        if (!productId) return jsonResponse({ error: "Could not generate product ID" }, 400, corsHeaders);
+
+        const existingProduct = {
+            id: productId,
+            name: productName,
+            price: Number(body.price) || 0,
+            soldBy: seller.display_name,
+            shortDescription: String(body.shortDescription || "").trim(),
+            description: String(body.description || "").trim(),
+            image: String(body.image || "").trim(),
+            variations: Array.isArray(body.variations) ? body.variations : [],
+            visible: body.visible !== false,
+            inStock: body.inStock !== false,
+            customerInput: body.customerInput ?? { enabled: false, label: "" },
+        };
+
+        await ensureMarketplaceSchema(env);
+        const db = getCatalogDb(env);
+        const now = new Date().toISOString();
+        const existing = await db.prepare("SELECT id FROM marketplace_products WHERE id = ?").bind(productId).first();
+
+        if (existing) {
+            const prev = JSON.parse((await db.prepare("SELECT data FROM marketplace_products WHERE id = ?").bind(productId).first()).data);
+            if (prev.soldBy !== seller.display_name) {
+                return jsonResponse({ error: "You do not own this product" }, 403, corsHeaders);
+            }
+            await db.prepare("UPDATE marketplace_products SET data = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(existingProduct), now, productId).run();
+        } else {
+            await db.prepare("INSERT INTO marketplace_products (id, data, created_at, updated_at) VALUES (?, ?, ?, ?)").bind(productId, JSON.stringify(existingProduct), now, now).run();
+        }
+
+        return jsonResponse({ ok: true, product: { id: productId, ...existingProduct } }, 200, corsHeaders);
+    }
+
+    if (action === "seller-product-delete") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+
+        const productId = String(body.productId || "").trim();
+        if (!productId) return jsonResponse({ error: "Product ID is required" }, 400, corsHeaders);
+
+        const db = getCatalogDb(env);
+        const existing = await db.prepare("SELECT data FROM marketplace_products WHERE id = ?").bind(productId).first();
+        if (!existing) return jsonResponse({ error: "Product not found" }, 404, corsHeaders);
+
+        const data = JSON.parse(existing.data);
+        if (data.soldBy !== seller.display_name) {
+            return jsonResponse({ error: "You do not own this product" }, 403, corsHeaders);
+        }
+
+        await db.prepare("DELETE FROM marketplace_products WHERE id = ?").bind(productId).run();
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (action === "seller-request-payout") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+        const db = getOrderDb(env);
+
+        const amount = Number(body.amount);
+        const method = String(body.method || "").trim() || "d17";
+        const recipientDetail = String(body.recipientDetail || seller.phone || "").trim();
+
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return jsonResponse({ error: "Enter a valid amount" }, 400, corsHeaders);
+        }
+
+        const paymentSettings = await readPaymentSettings(env);
+        const minimumWithdrawal = seller.min_withdrawal ?? paymentSettings.seller?.minimumWithdrawal ?? 10;
+        if (amount < minimumWithdrawal) {
+            return jsonResponse({ error: `Minimum withdrawal is TND ${Number(minimumWithdrawal).toFixed(3)}` }, 400, corsHeaders);
+        }
+
+        const pendingTotal = await getAllResults(
+            db.prepare("SELECT SUM(earnings_amount) as total FROM seller_earnings WHERE seller_id = ? AND status = 'pending'").bind(seller.id)
+        );
+        const pendingPayoutsTotal = await getAllResults(
+            db.prepare("SELECT SUM(amount) as total FROM seller_payouts WHERE seller_id = ? AND status IN ('requested', 'pending')").bind(seller.id)
+        );
+        const available = Math.max(0, Number(pendingTotal[0]?.total || 0) - Number(pendingPayoutsTotal[0]?.total || 0));
+        if (amount > available) {
+            return jsonResponse({ error: `Insufficient pending earnings. Available: ${available.toFixed(3)} TND` }, 400, corsHeaders);
+        }
+
+        const now = new Date().toISOString();
+        await db.prepare(
+            "INSERT INTO seller_payouts (seller_id, amount, method, recipient_detail, status, created_at) VALUES (?, ?, ?, ?, 'requested', ?)"
+        ).bind(seller.id, amount, method, recipientDetail, now).run();
+
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    return jsonResponse({ error: "Unknown seller action" }, 400, corsHeaders);
+}
+
+/* ── Seller earnings on delivery ────────────── */
+
+async function earnSellerForOrder(env, orderId) {
+    const db = getOrderDb(env);
+    await ensureSellerSchema(env);
+    const items = await getOrderItems(env, orderId);
+    if (!items || !items.length) return;
+
+    const allSellers = await getAllResults(db.prepare("SELECT id, display_name, platform_fee_percent FROM sellers WHERE active = 1").bind());
+    const sellerMap = {};
+    for (const s of allSellers) sellerMap[s.display_name] = s;
+
+    const now = new Date().toISOString();
+    const batch = [];
+
+    const existingEarningsBySeller = {};
+    for (const item of items) {
+        if (!item.sold_by) continue;
+        const seller = sellerMap[item.sold_by];
+        if (!seller) continue;
+        if (!existingEarningsBySeller[seller.id]) {
+            existingEarningsBySeller[seller.id] = new Set(
+                (await getAllResults(
+                    db.prepare("SELECT product_id FROM seller_earnings WHERE seller_id = ? AND order_id = ?").bind(seller.id, orderId)
+                )).map((e) => e.product_id)
+            );
+        }
+        if (existingEarningsBySeller[seller.id].has(item.product_id || "")) continue;
+
+        const feePercent = seller.platform_fee_percent;
+        const earningsAmount = Number(item.line_total || 0) * (100 - Number(feePercent)) / 100;
+        if (earningsAmount <= 0) continue;
+
+        batch.push(
+            db.prepare("INSERT INTO seller_earnings (seller_id, order_id, product_id, line_total, fee_percent, earnings_amount, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)")
+                .bind(seller.id, orderId, item.product_id || "", Number(item.line_total || 0), feePercent, earningsAmount, now)
+        );
+        batch.push(
+            db.prepare("UPDATE sellers SET total_earnings = total_earnings + ? WHERE id = ?").bind(earningsAmount, seller.id)
+        );
+    }
+
+    if (!batch.length) return;
+    const batchResults = await db.batch(batch);
+    const errors = batchResults.map((r, i) => (r.error ? `Statement ${i}: ${r.error}` : null)).filter(Boolean);
+    if (errors.length) console.error("[seller] D1 batch errors in earnSellerForOrder:", errors.join("; "));
+}
+
 async function handleOrder(request, env, corsHeaders) {
     cleanupProcessedOrders();
 
@@ -2885,6 +3600,10 @@ async function handleOrder(request, env, corsHeaders) {
 
     if (String(body.action || "").startsWith("affiliate-")) {
         return handleAffiliateAction(body, request, env, corsHeaders);
+    }
+
+    if (String(body.action || "").startsWith("seller-")) {
+        return handleSellerAction(body, request, env, corsHeaders);
     }
 
     if (body.action === "order-status") {
@@ -2975,6 +3694,14 @@ async function handleOrder(request, env, corsHeaders) {
         await markTelegramNotified(env, order.id);
     } catch (error) {
         console.warn("Telegram notification failed, order saved anyway", error);
+    }
+
+    if (order.referredBy) {
+        try {
+            await createCommissionPlaceholders(env, order);
+        } catch (error) {
+            console.error(`Commission placeholder creation failed for order ${order.id}:`, error);
+        }
     }
 
     processedOrders.set(checkoutRequestId, {

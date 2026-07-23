@@ -680,9 +680,9 @@ function productCardTemplate(id, product) {
     const inStock = isProductInStock(product);
 
     return `
-        <div class="col-6 col-md-6 col-xl-3">
+        <div class="col-6 col-md-6 col-lg-4 col-xl-3 hk-reveal">
             <article class="card product-card h-100">
-                <a class="product-art ${art}" href="product.html?product=${encodeURIComponent(id)}" aria-label="View ${escapeHtml(product.name)}">
+                <a class="product-art ${art}${inStock ? "" : " product-art--muted"}" href="product.html?product=${encodeURIComponent(id)}" aria-label="View ${escapeHtml(product.name)}">
                     ${
                         image
                             ? `<img class="product-image" src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" loading="lazy" />`
@@ -691,16 +691,16 @@ function productCardTemplate(id, product) {
                 </a>
                 <div class="card-body d-flex flex-column">
                     <div class="d-flex flex-wrap gap-2 mb-2">
-                        <span class="badge text-bg-dark">${escapeHtml(category)}</span>
-                        <span class="badge ${inStock ? "text-bg-success" : "text-bg-secondary"}">${t(inStock ? "Available" : "Out of stock")}</span>
+                        <span class="badge category-chip chip-angled">${escapeHtml(category)}</span>
+                        <span class="badge ${inStock ? "text-bg-success stock-chip--available" : "text-bg-secondary"}">${t(inStock ? "Available" : "Out of stock")}</span>
                     </div>
-                    <h2 class="h5">
+                    <h2 class="h6 mb-1">
                         <a class="product-title-link" href="product.html?product=${encodeURIComponent(id)}">${escapeHtml(getProductDisplayName(product))}</a>
                     </h2>
-                    <p class="text-secondary flex-grow-1">${escapeHtml(getProductDescription(product))}</p>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <p class="text-secondary small flex-grow-1">${escapeHtml(getProductDescription(product))}</p>
+                    <div class="d-flex justify-content-between align-items-center mt-auto pt-2 border-top border-light-subtle">
                         <strong class="price">${priceLabel}</strong>
-                        <button class="btn btn-primary btn-sm" data-add-to-cart="${escapeHtml(id)}" ${inStock ? "" : "disabled"}>${t(inStock ? "Add" : "Unavailable")}</button>
+                        <button class="btn btn-primary btn-sm rounded-pill" data-add-to-cart="${escapeHtml(id)}" ${inStock ? "" : "disabled"}>${t(inStock ? "Add" : "Unavailable")}</button>
                     </div>
                 </div>
             </article>
@@ -710,11 +710,11 @@ function productCardTemplate(id, product) {
 
 function categoryCardTemplate(category, count, extraClass = "catalog-category-card") {
     return `
-        <div class="col-6 col-lg-3">
+        <div class="col-6 col-lg-3 hk-reveal">
             <a class="category-card ${extraClass}" href="${getCategoryPage(category)}">
                 ${category.photo ? `<img class="category-photo" src="${escapeHtml(category.photo)}" alt="${escapeHtml(category.label || category.name)}" />` : `<i class="bi ${category.icon}"></i>`}
-                <span>${category.label}</span>
-                ${category.teaser ? `<small>${category.teaser}</small>` : ""}
+                <span>${escapeHtml(category.label)}</span>
+                ${category.teaser ? `<small>${escapeHtml(category.teaser)}</small>` : ""}
                 ${extraClass ? `<strong>${formatProductCount(count)}</strong>` : ""}
             </a>
         </div>
@@ -748,6 +748,7 @@ function renderProductsPage(searchTerm = "") {
         const count = catalogProducts.filter(([, product]) => getProductCategory(product) === category.name).length;
         return categoryCardTemplate(category, count);
     }).join("");
+    observeReveal(categoryGrid);
 
     if (!productSections) {
         translatePage();
@@ -794,6 +795,7 @@ function renderProductsPage(searchTerm = "") {
         </div>
     `;
     translatePage();
+    observeReveal(productSections);
 }
 
 function getMarketplaceProducts() {
@@ -813,24 +815,24 @@ function marketplaceCardTemplate(id, product) {
     const shortDesc = product.shortDescription || "";
 
     return `
-        <div class="col-6 col-md-6 col-xl-3">
+        <div class="col-6 col-md-6 col-lg-4 col-xl-3 hk-reveal">
             <article class="card product-card h-100">
-                <a class="product-art ${art}" href="product.html?product=${encodeURIComponent(id)}" aria-label="View ${escapeHtml(product.name)}">
+                <a class="product-art ${art}${inStock ? "" : " product-art--muted"}" href="product.html?product=${encodeURIComponent(id)}" aria-label="View ${escapeHtml(product.name)}">
                     ${image ? `<img class="product-image" src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" loading="lazy" />` : '<i class="bi bi-shop"></i>'}
                 </a>
                 <div class="card-body d-flex flex-column">
                     <div class="d-flex flex-wrap gap-2 mb-2">
-                        ${shortDesc ? `<span class="badge text-bg-dark">${escapeHtml(shortDesc)}</span>` : ""}
-                        <span class="badge ${inStock ? "text-bg-success" : "text-bg-secondary"}">${t(inStock ? "Available" : "Out of stock")}</span>
+                        ${shortDesc ? `<span class="badge category-chip chip-angled">${escapeHtml(shortDesc)}</span>` : ""}
+                        <span class="badge ${inStock ? "text-bg-success stock-chip--available" : "text-bg-secondary"}">${t(inStock ? "Available" : "Out of stock")}</span>
                     </div>
-                    <h2 class="h5">
+                    <h2 class="h6 mb-1">
                         <a class="product-title-link" href="product.html?product=${encodeURIComponent(id)}">${escapeHtml(product.name)}</a>
                     </h2>
                     ${product.soldBy ? `<p class="small text-secondary mb-1"><i class="bi bi-person me-1"></i>${t("Sold by")}: ${escapeHtml(product.soldBy)}</p>` : ""}
                     <p class="text-secondary flex-grow-1 small">${escapeHtml(shortDesc || product.description || "") || "&nbsp;"}</p>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between align-items-center mt-auto pt-2 border-top border-light-subtle">
                         <strong class="price">${priceLabel}</strong>
-                        <button class="btn btn-primary btn-sm" data-add-to-cart="${escapeHtml(id)}" ${inStock ? "" : "disabled"}>${t(inStock ? "Add" : "Unavailable")}</button>
+                        <button class="btn btn-primary btn-sm rounded-pill" data-add-to-cart="${escapeHtml(id)}" ${inStock ? "" : "disabled"}>${t(inStock ? "Add" : "Unavailable")}</button>
                     </div>
                 </div>
             </article>
@@ -859,6 +861,7 @@ function renderMarketplacePage(searchTerm = "") {
             </div>
         `;
     translatePage();
+    observeReveal(container);
 }
 
 function setupMarketplaceSearch() {
@@ -887,6 +890,7 @@ function renderFeaturedProducts() {
         .map(([id, product]) => productCardTemplate(id, product))
         .join("");
     translatePage();
+    observeReveal(featuredProducts);
 }
 
 async function renderFaqPage() {
@@ -898,7 +902,7 @@ async function renderFaqPage() {
     faqList.innerHTML = faqs
         .map(
             (item, index) => `
-                <details class="content-panel faq-item" ${index === 0 ? "open" : ""}>
+                <details class="content-panel faq-item hk-reveal" ${index === 0 ? "open" : ""}>
                     <summary>
                         <span>${escapeHtml(t(item.question || "Question"))}</span>
                         <i class="bi bi-chevron-down"></i>
@@ -908,6 +912,7 @@ async function renderFaqPage() {
             `,
         )
         .join("");
+    observeReveal(faqList);
 }
 
 function renderHomeCategories() {
@@ -922,6 +927,7 @@ function renderHomeCategories() {
         })
         .join("");
     translatePage();
+    observeReveal(homeCategoryGrid);
 }
 
 function renderCategoryPage() {
@@ -954,6 +960,7 @@ function renderCategoryPage() {
             </div>
         </div>`;
     translatePage();
+    observeReveal(categoryProducts);
 }
 
 function getCart() {
@@ -1429,24 +1436,9 @@ function renderPaymentGuide(method) {
     const guide = document.getElementById("paymentGuide");
     if (!guide) return;
 
-    const guides = {
-        d17: {
-            image: "assets/payment-d17-guide.svg",
-            title: "Where to find the authorization number",
-        },
-        flouci: {
-            image: "assets/payment-flouci-guide.svg",
-            title: "Where to find the transaction ID",
-        },
-    };
-    const config = guides[method];
-    guide.classList.toggle("d-none", !config);
-    guide.innerHTML = config
-        ? `
-            <p class="form-label mb-2">${escapeHtml(config.title)}</p>
-            <img src="${escapeHtml(config.image)}" alt="${escapeHtml(config.title)}" loading="lazy" />
-        `
-        : "";
+    const imgs = guide.querySelectorAll("img");
+    imgs.forEach((img) => img.classList.toggle("d-none", !img.src.includes(method)));
+    guide.classList.remove("d-none");
     translatePage();
 }
 
@@ -1595,6 +1587,7 @@ function setupPaymentForm() {
                 items: getCheckoutItems(validCart),
             };
             const result = await submitPaymentOrder(currentSession);
+            saveOrderStatusLookup(String(result.orderId || ""), currentSession.customerPhone);
             localStorage.removeItem(CART_KEY);
             clearCheckoutSession();
             updateCartCount();
@@ -2782,6 +2775,121 @@ async function initSite() {
     setupProductOptions();
     translatePage();
 }
+
+/* ── Scroll Reveal ──────────────────────────── */
+let revealObserver = null;
+
+function initScrollReveal() {
+    revealObserver = new IntersectionObserver(
+        (entries) => {
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add("hk-visible");
+                    revealObserver.unobserve(entry.target);
+                }
+            });
+        },
+        { threshold: 0.05, rootMargin: "0px 0px -40px 0px" }
+    );
+    document.querySelectorAll(".hk-reveal").forEach((el) => revealObserver.observe(el));
+}
+
+function observeReveal(container) {
+    if (!revealObserver) return;
+    (container || document).querySelectorAll(".hk-reveal").forEach((el) => {
+        if (!el.classList.contains("hk-visible")) {
+            revealObserver.observe(el);
+        }
+    });
+}
+
+/* ── Button Ripple ──────────────────────────── */
+function initButtonRipple() {
+    document.addEventListener("click", (event) => {
+        const btn = event.target.closest(".btn-primary, .btn-outline-dark, .hero-primary-cta, .hero-secondary-cta, .whatsapp-order-button");
+        if (!btn) return;
+        const rect = btn.getBoundingClientRect();
+        const ripple = document.createElement("span");
+        ripple.className = "hk-ripple";
+        const size = Math.max(rect.width, rect.height);
+        ripple.style.width = ripple.style.height = size + "px";
+        ripple.style.left = (event.clientX - rect.left - size / 2) + "px";
+        ripple.style.top = (event.clientY - rect.top - size / 2) + "px";
+        btn.style.overflow = "hidden";
+        btn.style.position = "relative";
+        btn.appendChild(ripple);
+        requestAnimationFrame(() => {
+            ripple.classList.add("hk-ripple-anim");
+            setTimeout(() => ripple.remove(), 600);
+        });
+    });
+}
+
+/* ── Toast System ───────────────────────────── */
+function showToast(message, type) {
+    type = type || "info";
+    const container = document.getElementById("toastContainer");
+    if (!container) return;
+    const toast = document.createElement("div");
+    toast.className = "hk-toast hk-toast-" + type;
+    toast.textContent = message;
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add("hk-toast-show"));
+    setTimeout(() => {
+        toast.classList.remove("hk-toast-show");
+        setTimeout(() => toast.remove(), 500);
+    }, 3500);
+}
+
+/* ── Animated Counters ───────────────────────── */
+function animateCounter(el, target, suffix) {
+    suffix = suffix || "";
+    const duration = 1200;
+    const start = performance.now();
+    const startVal = 0;
+    function update(now) {
+        const elapsed = now - start;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        el.textContent = Math.round(startVal + (target - startVal) * eased) + suffix;
+        if (progress < 1) requestAnimationFrame(update);
+    }
+    requestAnimationFrame(update);
+}
+
+/* ── Page Entry Animation ────────────────────── */
+function initPageEntry() {
+    document.querySelectorAll("main > section, main > div").forEach((el, i) => {
+        el.style.opacity = "0";
+        el.style.transform = "translateY(16px)";
+        el.style.transition = "opacity 500ms cubic-bezier(0.16,1,0.3,1), transform 500ms cubic-bezier(0.16,1,0.3,1)";
+        el.style.transitionDelay = (i * 80) + "ms";
+        requestAnimationFrame(() => {
+            el.style.opacity = "1";
+            el.style.transform = "translateY(0)";
+        });
+    });
+}
+
+/* ── Extend initSite ─────────────────────────── */
+(function extendInit() {
+    const orig = window.initSite || function(){};
+    window.initSite = function() {
+        if (typeof orig === "function") orig();
+        document.addEventListener("DOMContentLoaded", () => {
+            initScrollReveal();
+            initButtonRipple();
+            initPageEntry();
+            /* Add toast container if not present */
+            if (!document.getElementById("toastContainer")) {
+                const c = document.createElement("div");
+                c.id = "toastContainer";
+                c.style.cssText = "position:fixed;top:86px;right:18px;z-index:9999;display:grid;gap:10px;max-width:380px;pointer-events:none";
+                document.body.appendChild(c);
+            }
+        });
+    };
+})();
 
 initSite();
 
