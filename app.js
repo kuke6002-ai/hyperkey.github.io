@@ -35,7 +35,7 @@ const LANGUAGE_FILES = {
     ar: "lang/ar.json",
 };
 let savedLanguage = localStorage.getItem(LANGUAGE_KEY);
-let CURRENT_LANGUAGE = SUPPORTED_LANGUAGES.includes(savedLanguage) ? savedLanguage : "fr";
+let CURRENT_LANGUAGE = SUPPORTED_LANGUAGES.includes(savedLanguage) ? savedLanguage : "en";
 let TRANSLATIONS = {};
 let REVERSE_TRANSLATIONS = {};
 let checkoutSubmitting = false;

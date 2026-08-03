@@ -1471,9 +1471,7 @@ input[inputmode="tel"] {
     border-color: var(--gv-violet);
 }
 
-.stock-chip--available {
-    animation: badgePop 2.4s ease-in-out infinite;
-}
+.stock-chip--available {}
 
 @media (min-width: 992px) and (max-width: 1199.98px) {
     #categoryGrid > .col-lg-3 {
