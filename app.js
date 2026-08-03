@@ -1235,6 +1235,63 @@ function getCheckoutItems(cart) {
     });
 }
 
+function getCustomerInputConfigsForProduct(product) {
+    const config = product?.customerInput;
+    if (!config || config.enabled === false) return [];
+
+    const labels = Array.isArray(config.labels) && config.labels.length ? config.labels : [config.label || "Player ID"];
+    const label = String(labels[0] || "Player ID").trim().slice(0, 80) || "Player ID";
+    return [{ enabled: true, label }];
+}
+
+function renderCheckoutCustomerInputs() {
+    const container = document.getElementById("checkoutCustomerInputs");
+    if (!container) return;
+
+    const cart = getCart();
+    const session = getCheckoutSession() || {};
+    const savedInputs = Array.isArray(session.customerInputs) ? session.customerInputs : [];
+    const savedByKey = new Map(savedInputs.map((input) => [makeCartKey(input.productId, input.variationId || ""), input]));
+
+    const fields = Object.entries(cart)
+        .filter(([cartKey]) => getCartLine(cartKey))
+        .flatMap(([cartKey]) => {
+            const line = getCartLine(cartKey);
+            const configs = getCustomerInputConfigsForProduct(line.product);
+            if (!configs.length) return [];
+
+            return configs.map((config, index) => {
+                const fieldId = `checkoutCustomerInput-${slugify(cartKey)}-${index}`;
+                const previous = savedByKey.get(cartKey);
+                return `
+                    <div>
+                        <label class="form-label mt-2" for="${escapeHtml(fieldId)}">
+                            ${escapeHtml(t(config.label))} ${t("for")} ${escapeHtml(line.name)}
+                        </label>
+                        <input
+                            class="form-control"
+                            id="${escapeHtml(fieldId)}"
+                            type="text"
+                            maxlength="120"
+                            autocomplete="off"
+                            placeholder="${escapeHtml(t(config.label))}"
+                            value="${previous ? escapeHtml(previous.value || "") : ""}"
+                            required
+                            data-customer-input
+                            data-product-id="${escapeHtml(line.productId)}"
+                            data-variation-id="${escapeHtml(line.variationId || "")}"
+                            data-label="${escapeHtml(config.label)}"
+                            data-product-name="${escapeHtml(line.name)}"
+                        />
+                    </div>
+                `;
+            });
+        });
+
+    container.innerHTML = fields.join("");
+    translateElement(container);
+}
+
 function saveCheckoutSession(session) {
     sessionStorage.setItem(CHECKOUT_SESSION_KEY, JSON.stringify(session));
 }
@@ -1302,6 +1359,22 @@ function setupCheckoutForm() {
             return;
         }
 
+        const customerInputs = [...document.querySelectorAll("#checkoutCustomerInputs [data-customer-input]")]
+            .map((input) => ({
+                productId: input.dataset.productId || "",
+                variationId: input.dataset.variationId || "",
+                productName: input.dataset.productName || "",
+                label: input.dataset.label || "",
+                value: input.value.trim(),
+            }))
+            .filter((input) => input.value);
+
+        const requiredInputCount = document.querySelectorAll("#checkoutCustomerInputs [data-customer-input]").length;
+        if (requiredInputCount && customerInputs.length !== requiredInputCount) {
+            setAlert("checkoutError", "Fill every delivery information field.");
+            return;
+        }
+
         checkoutSubmitting = true;
         if (button) button.disabled = true;
         if (buttonText) buttonText.textContent = t("Opening payment...");
@@ -1315,6 +1388,7 @@ function setupCheckoutForm() {
             items: getCheckoutItems(validCart),
             customerPhone,
             paymentMethod,
+            customerInputs,
             referredBy: getReferralCode(),
         });
 
@@ -1516,6 +1590,7 @@ async function submitPaymentOrder(session) {
                 paymentMethod: session.paymentMethod,
                 paymentProof: readPaymentProof(session.paymentMethod),
                 customerPhone: session.customerPhone,
+                customerInputs: session.customerInputs || [],
                 referredBy: session.referredBy || getReferralCode(),
             }),
         });
@@ -2440,6 +2515,7 @@ function rerenderDynamicSections() {
     renderCategoryPage();
     renderCartPage();
     renderCheckoutSummary();
+    renderCheckoutCustomerInputs();
     renderPaymentPage().then(() => translatePage()).catch(() => translatePage());
     setupProductDetailPage();
 }
@@ -2766,6 +2842,7 @@ async function initSite() {
     renderCategoryPage();
     renderCartPage();
     renderCheckoutSummary();
+    renderCheckoutCustomerInputs();
     setupCheckoutForm();
     await renderPaymentPage();
     setupPaymentForm();

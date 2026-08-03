@@ -1259,6 +1259,42 @@ function getCustomerInputConfigs(product) {
 function getCustomerInputKey(productId, variationId, label = "") {
     return `${productId}::${variationId || ""}::${slugify(label || "delivery-info")}`;
 }
+
+function normalizeSubmittedCustomerInputs(order, body) {
+    const submitted = new Map(
+        (Array.isArray(body.customerInputs) ? body.customerInputs : []).map((input) => [
+            getCustomerInputKey(
+                String(input?.productId || "").trim(),
+                String(input?.variationId || "").trim(),
+                String(input?.label || "").trim(),
+            ),
+            input,
+        ]),
+    );
+
+    return order.lines.flatMap((line) => {
+        const database = order.database || {};
+        const product = database.marketplaceProducts?.[line.productId] || database.products?.[line.productId];
+        const config = product?.customerInput;
+        if (!config || config.enabled === false) return [];
+
+        const labels = Array.isArray(config.labels) && config.labels.length ? config.labels : [config.label || "Player ID"];
+        const label = String(labels[0] || "Player ID").trim().slice(0, 80) || "Player ID";
+        const key = getCustomerInputKey(line.productId, line.variationId || "", label);
+        return [
+            {
+                key,
+                productId: line.productId,
+                variationId: line.variationId || "",
+                productName: getProductOptionName(line.name, line.optionLabel),
+                optionLabel: line.optionLabel || "",
+                label,
+                value: normalizeCustomerInputValue(submitted.get(key)?.value, label),
+            },
+        ];
+    });
+}
+
 async function getCustomerInputRequirements(env, record, items, savedInputs = null) {
     if (record.payment_status !== "verified" || record.delivery_status !== "waiting") return [];
 
@@ -1302,10 +1338,11 @@ async function getCustomerInputRequirements(env, record, items, savedInputs = nu
         .filter(Boolean);
 }
 async function getSavedOrderForNotification(env, record) {
-    const [items, proofs, deliveries] = await Promise.all([
+    const [items, proofs, deliveries, savedInputs] = await Promise.all([
         getOrderItems(env, record.id),
         getPaymentProofs(env, record.id),
         getOrderDeliveries(env, record.id),
+        getOrderCustomerInputs(env, record.id),
     ]);
     const isTtCard = record.payment_method === "tt-card";
     const latestDelivery = deliveries.length ? deliveries[deliveries.length - 1] : null;
@@ -1347,6 +1384,12 @@ async function getSavedOrderForNotification(env, record) {
             unitPrice: Number(item.unit_price),
             lineTotal: Number(item.line_total),
             soldBy: item.sold_by || "",
+        })),
+        customerInputs: savedInputs.map((input) => ({
+            productName: input.product_name || "",
+            optionLabel: "",
+            label: input.input_label || "Delivery info",
+            value: input.input_value || "",
         })),
         total: Number(record.product_total),
         amountDue: Number(record.amount_due),
@@ -1729,6 +1772,9 @@ async function saveOrderToDatabase(env, checkoutRequestId, order) {
 
         try {
             await db.batch([orderStatement, ...itemStatements, ...proofStatements]);
+            if (Array.isArray(order.customerInputs) && order.customerInputs.length) {
+                await saveOrderCustomerInputs(env, order.id, order.customerInputs);
+            }
             return {
                 duplicate: false,
                 response: getResponsePayload(order),
@@ -1808,6 +1854,14 @@ function formatAdminMessage(order) {
           )
         : [];
 
+    const customerDetailLines = (Array.isArray(order.customerInputs) && order.customerInputs.length
+        ? order.customerInputs
+        : [])
+        .map((input) => {
+            const productLabel = getProductOptionName(input.productName || "", input.optionLabel || "");
+            return `\u2022 ${escapeHtml(productLabel)} \u2014 ${escapeHtml(input.label)}: ${telegramCode(input.value)}`;
+        });
+
     return truncateLines([
         `${ICONS.cart} <b>${escapeHtml(order.id)}</b>`,
         `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`,
@@ -1816,6 +1870,13 @@ function formatAdminMessage(order) {
         "",
         `<b>${escapeHtml(formatTndAmount(order.total))}</b> \u2014 ${order.lines.length} items`,
         products,
+        ...(customerDetailLines.length
+            ? [
+                  "",
+                  `<b>${ICONS.search} Customer details:</b>`,
+                  ...customerDetailLines,
+              ]
+            : []),
         "",
         `<b>Payment:</b> via ${escapeHtml(order.paymentMethodLabel)}`,
         ...formatProofLines(order),
@@ -1853,7 +1914,7 @@ function getAdminOrderKeyboard(order) {
                         },
                         {
                             text: "\u23F3 Not delivered",
-                            callback_data: `hk|delivery|waiting|${order.id}`,
+                            callback_data: `hk|delivery|cancelled|${order.id}`,
                         },
                     ],
                     [
@@ -1912,8 +1973,9 @@ async function callTelegramApi(env, method, payload) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
     });
-    if (!response.ok) {
-        throw new Error(`Telegram ${method} failed: ${await response.text()}`);
+    const result = await response.json();
+    if (!result.ok) {
+        throw new Error(`Telegram ${method} failed: ${result.description || JSON.stringify(result)}`);
     }
 }
 
@@ -3661,6 +3723,7 @@ async function handleOrder(request, env, corsHeaders) {
     };
     const settings = paymentSettings ? mergePaymentSettings(paymentSettings) : clone(DEFAULT_PAYMENT_SETTINGS);
     const order = buildOrder(body, database, settings);
+    order.customerInputs = normalizeSubmittedCustomerInputs(order, body);
 
     processedOrders.set(checkoutRequestId, { createdAt: Date.now(), pending: true });
     const savedOrder = await saveOrderToDatabase(env, checkoutRequestId, order);
