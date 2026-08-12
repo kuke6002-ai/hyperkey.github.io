@@ -2655,7 +2655,11 @@ function setupProductDetailPage() {
                   ),
               )}" target="_blank" rel="noopener">${t("Contact support")}</a>.`;
     }
-    if (productIntro) productIntro.textContent = getProductIntro(product);
+    if (productIntro) {
+        const introText = isMarketplace ? (product.description || "") : getProductIntro(product);
+        productIntro.textContent = introText;
+        productIntro.classList.toggle("d-none", !introText);
+    }
     if (productDetailDescription) productDetailDescription.textContent = getProductDetail(product);
 
     if (productInfoList) {
