@@ -741,5 +741,10 @@
     "Recent orders": "الطلبات الأخيرة",
     "Orders containing your products.": "الطلبات التي تحتوي على منتجاتك.",
     "Earnings history": "سجل الأرباح",
-    "Every sale and earnings record.": "سجل جميع المبيعات والأرباح."
+    "Every sale and earnings record.": "سجل جميع المبيعات والأرباح.",
+    "Shipped by the seller after order confirmation.": "يتم التسليم من البائع بعد تأكيد الطلب.",
+    "Delivery times vary by seller.": "تختلف مدة التسليم حسب البائع.",
+    "Contact the seller for any issues.": "تواصل مع البائع عند وجود أي مشكلة.",
+    "Delivery is handled by the seller. Contact them for estimated delivery times.": "يتولى البائع عملية التسليم. تواصل معه لمعرفة المدة المتوقعة للتسليم.",
+    "reviews": "تقييمات"
 }

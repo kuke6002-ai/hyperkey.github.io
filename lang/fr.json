@@ -740,5 +740,10 @@
     "Recent orders": "Commandes récentes",
     "Orders containing your products.": "Commandes contenant vos produits.",
     "Earnings history": "Historique des gains",
-    "Every sale and earnings record.": "Toutes les ventes et tous les gains enregistrés."
+    "Every sale and earnings record.": "Toutes les ventes et tous les gains enregistrés.",
+    "Shipped by the seller after order confirmation.": "Livré par le vendeur après confirmation de la commande.",
+    "Delivery times vary by seller.": "Les délais de livraison varient selon le vendeur.",
+    "Contact the seller for any issues.": "Contactez le vendeur en cas de problème.",
+    "Delivery is handled by the seller. Contact them for estimated delivery times.": "La livraison est assurée par le vendeur. Contactez-le pour connaître le délai estimé.",
+    "reviews": "avis"
 }
