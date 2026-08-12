@@ -1240,8 +1240,8 @@ function getCustomerInputConfigsForProduct(product) {
     if (!config || config.enabled === false) return [];
 
     const labels = Array.isArray(config.labels) && config.labels.length ? config.labels : [config.label || "Player ID"];
-    const label = String(labels[0] || "Player ID").trim().slice(0, 80) || "Player ID";
-    return [{ enabled: true, label }];
+    const uniqueLabels = [...new Set(labels.map((label) => String(label || "Player ID").trim().slice(0, 80)).filter(Boolean))];
+    return (uniqueLabels.length ? uniqueLabels : ["Player ID"]).map((label) => ({ enabled: true, label }));
 }
 
 function renderCheckoutCustomerInputs() {
@@ -1251,7 +1251,7 @@ function renderCheckoutCustomerInputs() {
     const cart = getCart();
     const session = getCheckoutSession() || {};
     const savedInputs = Array.isArray(session.customerInputs) ? session.customerInputs : [];
-    const savedByKey = new Map(savedInputs.map((input) => [makeCartKey(input.productId, input.variationId || ""), input]));
+    const savedByKey = new Map(savedInputs.map((input) => [`${makeCartKey(input.productId, input.variationId || "")}::${String(input.label || "").toLowerCase()}`, input]));
 
     const fields = Object.entries(cart)
         .filter(([cartKey]) => getCartLine(cartKey))
@@ -1262,7 +1262,7 @@ function renderCheckoutCustomerInputs() {
 
             return configs.map((config, index) => {
                 const fieldId = `checkoutCustomerInput-${slugify(cartKey)}-${index}`;
-                const previous = savedByKey.get(cartKey);
+                const previous = savedByKey.get(`${cartKey}::${String(config.label || "").toLowerCase()}`);
                 return `
                     <div>
                         <label class="form-label mt-2" for="${escapeHtml(fieldId)}">
@@ -2969,4 +2969,3 @@ function initPageEntry() {
 })();
 
 initSite();
-

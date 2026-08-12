@@ -2,6 +2,21 @@ const SLR_API_URL = window.GAMEVAULT_ORDER_API_URL || "";
 const SLR_SESSION_KEY = "hyperkey-seller-session";
 let slrMinWithdrawal = 0;
 let slrEditProductId = null;
+let slrProducts = [];
+let slrSellerDisplayName = "";
+const slrProductEditor = {
+    originalProduct: null,
+    variations: [],
+    customerInputs: [],
+    selectedFile: null,
+    previewUrl: "",
+    dirty: false,
+    uploadId: 0,
+};
+
+function cloneSlrValue(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+}
 
 /* ── Utilities ────────────────────────────── */
 
@@ -40,6 +55,8 @@ function slrTranslateError(msg) {
     if (minWd) return slrT("Minimum withdrawal is") + " TND " + minWd[2];
     const insuff = msg.match(/^(Insufficient pending earnings\. Available: )([\d.]+)( TND)$/);
     if (insuff) return slrT("Insufficient pending commissions. Available:") + " " + insuff[2] + " TND";
+    const variationError = msg.match(/^(Variation ID is invalid:|Duplicate variation ID:|Variation name is required:|Variation price is invalid:)\s*(.+)$/);
+    if (variationError) return `${slrT(variationError[1])} ${variationError[2]}`;
     return msg;
 }
 
@@ -48,7 +65,7 @@ function slrToast(message, type) {
     if (!container) return;
     const el = document.createElement("div");
     el.className = `aff-toast aff-toast--${type || "info"}`;
-    el.innerHTML = slrTranslateError(message);
+    el.textContent = slrTranslateError(message);
     container.appendChild(el);
     requestAnimationFrame(() => el.classList.add("aff-toast--show"));
     setTimeout(() => {
@@ -111,6 +128,27 @@ async function saveSellerProduct(token, product) {
     return result;
 }
 
+async function uploadSellerProductImage(token, file) {
+    const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+    if (!allowedTypes.has(file.type)) throw new Error(slrT("Choose a PNG, JPG, or WebP image."));
+    if (file.size > 4 * 1024 * 1024) throw new Error(slrT("Image must be 4 MB or smaller."));
+
+    const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+        reader.onerror = () => reject(new Error(slrT("Could not read image")));
+        reader.readAsDataURL(file);
+    });
+    const response = await fetch(SLR_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "seller-upload-image", token, base64 }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || slrT("Could not upload image"));
+    return result.path;
+}
+
 async function deleteSellerProduct(token, productId) {
     const response = await fetch(SLR_API_URL, {
         method: "POST",
@@ -132,6 +170,8 @@ function renderSellerDashboard(data) {
     const earnings = data.earnings || [];
     const payouts = data.payouts || [];
 
+    slrProducts = products;
+    slrSellerDisplayName = seller.displayName || seller.name || "Seller";
     document.getElementById("sellerGreeting").textContent = `Welcome, ${slrEscape(seller.name || seller.displayName)}.`;
 
     document.getElementById("slrTotalOrders").textContent = stats.totalOrders;
@@ -233,31 +273,247 @@ function renderSlrProducts(products) {
 
 function openSlrProductModal(product) {
     slrEditProductId = product ? product.id : null;
-    document.getElementById("slrProductModalTitle").textContent = product ? "Edit product" : "Add product";
-    document.getElementById("slrProductName").value = product ? product.name || "" : "";
-    document.getElementById("slrProductPrice").value = product ? product.price || "" : "";
-    document.getElementById("slrProductShortDesc").value = product ? product.shortDescription || "" : "";
-    document.getElementById("slrProductDesc").value = product ? product.description || "" : "";
-    document.getElementById("slrProductVisible").checked = product ? product.visible !== false : true;
-    document.getElementById("slrProductInStock").checked = product ? product.inStock !== false : true;
-    const ci = product ? product.customerInput || {} : {};
-    document.getElementById("slrProductCustomerInput").checked = ci.enabled || false;
-    document.getElementById("slrProductCustomerInputLabel").value = ci.label || "";
-    document.getElementById("slrProductCustomerInputLabelWrap").style.display = ci.enabled ? "" : "none";
+    slrProductEditor.originalProduct = product ? cloneSlrValue(product) : null;
+    slrProductEditor.variations = Array.isArray(product?.variations) ? cloneSlrValue(product.variations) : [];
+    const customerInput = product?.customerInput || {};
+    slrProductEditor.customerInputs = Array.isArray(customerInput.labels)
+        ? [...customerInput.labels]
+        : (customerInput.label ? [customerInput.label] : []);
+    slrProductEditor.selectedFile = null;
+    if (slrProductEditor.previewUrl) URL.revokeObjectURL(slrProductEditor.previewUrl);
+    slrProductEditor.previewUrl = "";
 
-    /* Variations */
-    const varsEl = document.getElementById("slrVariationsList");
-    const variations = product ? product.variations || [] : [];
-    varsEl.innerHTML = variations.map((v, i) => `
-        <div class="row g-2 mb-2 slr-variation-row">
-            <div class="col-5"><input class="form-control form-control-sm" type="text" placeholder="Label" value="${slrEscape(v.label || "")}" data-slr-var-label="${i}" /></div>
-            <div class="col-4"><input class="form-control form-control-sm" type="number" step="0.001" min="0" placeholder="Price" value="${v.price || ""}" data-slr-var-price="${i}" /></div>
-            <div class="col-3"><button class="btn btn-sm btn-outline-danger" type="button" data-slr-var-remove="${i}">Remove</button></div>
-        </div>
-    `).join("");
+    document.getElementById("slrProductModalTitle").textContent = slrT(product ? "Edit marketplace product" : "New marketplace product");
+    const idInput = document.getElementById("slrProductId");
+    idInput.value = product?.id || "";
+    idInput.readOnly = Boolean(product);
+    document.getElementById("slrProductName").value = product?.name || "";
+    document.getElementById("slrProductPrice").value = Number(product?.price ?? 0);
+    document.getElementById("slrProductShortDesc").value = product?.shortDescription || "";
+    document.getElementById("slrProductDesc").value = product?.description || "";
+    document.getElementById("slrProductImage").value = product?.image || "assets/hyperlogo.png";
+    document.getElementById("slrProductPhotoFile").value = "";
+    document.getElementById("slrProductUploadStatus").textContent = "";
+    document.getElementById("slrProductVisible").checked = product?.visible !== false;
+    document.getElementById("slrProductInStock").checked = product?.inStock !== false;
+    document.getElementById("slrProductCustomerInput").checked = customerInput.enabled === true;
+    document.getElementById("slrProductCustomerInputFields").classList.toggle("d-none", customerInput.enabled !== true);
+    document.getElementById("slrProductFormError").classList.add("d-none");
+    renderSlrCustomerInputs();
+    renderSlrVariations(product?.defaultVariation || "");
+    updateSlrImagePreview();
+    renderSlrProductPreview();
+    setSlrProductDirty(false);
+    if (typeof translateElement === "function") translateElement(document.getElementById("slrProductModal"));
+    if (window.matchMedia("(max-width: 767.98px)").matches) {
+        document.querySelectorAll("#slrProductForm .admin-editor-details").forEach((section, index) => {
+            section.open = index === 0;
+        });
+    }
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("slrProductModal")).show();
+}
 
-    const modal = new bootstrap.Modal(document.getElementById("slrProductModal"));
-    modal.show();
+function slrSlugify(value) {
+    return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function regenerateSlrVariationIds() {
+    const productId = slrSlugify(document.getElementById("slrProductName")?.value) || "product";
+    const defaultSelect = document.getElementById("slrDefaultVariation");
+    const selectedIndex = slrProductEditor.variations.findIndex((variation) => variation.id === defaultSelect?.value);
+    const usedIds = new Set();
+
+    slrProductEditor.variations.forEach((variation, index) => {
+        const variationId = slrSlugify(variation.label || variation.name || `option-${index + 1}`) || `option-${index + 1}`;
+        const baseId = `${productId}-${variationId}`.slice(0, 80).replace(/-+$/g, "");
+        let id = baseId;
+        let suffix = 2;
+        while (usedIds.has(id)) {
+            const suffixText = `-${suffix++}`;
+            id = `${baseId.slice(0, 80 - suffixText.length).replace(/-+$/g, "")}${suffixText}`;
+        }
+        variation.id = id;
+        usedIds.add(id);
+    });
+
+    if (!defaultSelect) return;
+    slrProductEditor.variations.forEach((variation, index) => {
+        const option = defaultSelect.options[index + 1];
+        if (option) option.value = variation.id;
+    });
+    defaultSelect.value = selectedIndex >= 0 ? slrProductEditor.variations[selectedIndex].id : "";
+}
+
+function installSlrProductEditor() {
+    const modal = document.getElementById("slrProductModal");
+    if (!modal) return;
+    const dialog = modal.querySelector(".modal-dialog");
+    dialog.className = "modal-dialog modal-xl modal-dialog-scrollable slr-product-modal-dialog";
+    dialog.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <div><p class="eyebrow mb-1">Marketplace editor</p><h2 class="modal-title h4 mb-0" id="slrProductModalTitle">New marketplace product</h2></div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body slr-product-modal-body">
+                <div class="slr-product-editor-layout">
+                    <form id="slrProductForm" class="content-panel admin-panel admin-product-editor" novalidate>
+                        <details class="admin-form-section admin-editor-details" open>
+                            <summary><span class="admin-section-heading"><span class="admin-step">1</span><span><h3 class="h6 mb-1">Basic information</h3><small class="text-secondary">Product identity, price, and description</small></span></span><i class="bi bi-chevron-down"></i></summary>
+                            <div class="admin-form-section-body">
+                                <div class="row g-3">
+                                    <input id="slrProductId" type="hidden" />
+                                    <div class="col-12"><label class="form-label" for="slrProductName">Product name</label><input class="form-control" id="slrProductName" maxlength="120" required /></div>
+                                    <div class="col-md-8"><label class="form-label" for="slrProductShortDesc">Category</label><input class="form-control" id="slrProductShortDesc" maxlength="180" /></div>
+                                    <div class="col-md-4"><label class="form-label" for="slrProductPrice">Base price (TND)</label><input class="form-control" id="slrProductPrice" type="number" min="0" step="0.001" required /></div>
+                                    <div class="col-12"><label class="form-label" for="slrProductDesc">Description</label><textarea class="form-control" id="slrProductDesc" rows="4" maxlength="5000"></textarea></div>
+                                </div>
+                            </div>
+                        </details>
+                        <details class="admin-form-section admin-editor-details" open>
+                            <summary><span class="admin-section-heading"><span class="admin-step">2</span><span><h3 class="h6 mb-1">Display and image</h3><small class="text-secondary">Upload the image shown in the marketplace</small></span></span><i class="bi bi-chevron-down"></i></summary>
+                            <div class="admin-form-section-body">
+                                <div class="row g-3 align-items-start">
+                                    <div class="col-lg-7"><label class="form-label" for="slrProductImage">Photo path</label><input class="form-control" id="slrProductImage" value="assets/hyperlogo.png" readonly /><div class="form-text">Choose an image and upload it before saving.</div><input class="form-control mt-3" id="slrProductPhotoFile" type="file" accept="image/png,image/jpeg,image/webp" /><button class="btn btn-outline-primary mt-2" id="slrUploadProductImageButton" type="button"><i class="bi bi-cloud-arrow-up me-1"></i>Upload image</button><div class="small text-secondary mt-2" id="slrProductUploadStatus"></div></div>
+                                    <div class="col-lg-5"><div class="slr-image-preview" id="slrProductImagePreview"><img id="slrProductImagePreviewImg" alt="Product image preview" /></div></div>
+                                </div>
+                            </div>
+                        </details>
+                        <details class="admin-form-section admin-editor-details" open>
+                            <summary><span class="admin-section-heading"><span class="admin-step">3</span><span><h3 class="h6 mb-1">Availability and customer input</h3><small class="text-secondary">Publishing, stock, and checkout requirements</small></span></span><i class="bi bi-chevron-down"></i></summary>
+                            <div class="admin-form-section-body">
+                                <div class="row g-3">
+                                    <div class="col-md-6"><div class="form-check form-switch admin-switch"><input class="form-check-input" id="slrProductVisible" type="checkbox" checked /><label class="form-check-label" for="slrProductVisible">Visible in marketplace</label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch admin-switch"><input class="form-check-input" id="slrProductInStock" type="checkbox" checked /><label class="form-check-label" for="slrProductInStock">In stock</label></div></div>
+                                    <div class="col-12"><div class="admin-setting-group product-customer-input"><div class="form-check form-switch admin-switch"><input class="form-check-input" id="slrProductCustomerInput" type="checkbox" /><label class="form-check-label" for="slrProductCustomerInput">Require customer information</label></div><div class="p-3 d-none" id="slrProductCustomerInputFields"><div class="admin-variation-list mb-3" id="slrProductCustomerInputs"></div><div class="admin-inline-control"><input class="form-control" id="slrProductCustomerNewInput" maxlength="80" placeholder="Player ID, email, account name..." /><button class="btn btn-outline-primary" id="slrAddCustomerInputButton" type="button">Add field</button></div></div></div></div>
+                                </div>
+                            </div>
+                        </details>
+                        <details class="admin-form-section admin-editor-details" open>
+                            <summary><span class="admin-section-heading"><span class="admin-step">4</span><span><h3 class="h6 mb-1">Variations</h3><small class="text-secondary">Add product options and select the default</small></span></span><i class="bi bi-chevron-down"></i></summary>
+                            <div class="admin-form-section-body"><div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3"><div><label class="form-label" for="slrDefaultVariation">Default variation</label><select class="form-select" id="slrDefaultVariation"><option value="">None</option></select></div><button class="btn btn-outline-primary" id="slrAddVariationBtn" type="button"><i class="bi bi-plus-lg me-1"></i>Add variation</button></div><div class="admin-variation-list" id="slrVariationsList"></div></div>
+                        </details>
+                        <div class="alert alert-danger d-none mt-3" id="slrProductFormError"></div>
+                        <div class="admin-save-bar"><div class="admin-unsaved-indicator" id="slrProductUnsavedIndicator"><span></span>Saved</div><button class="btn btn-outline-secondary" id="slrResetProductButton" type="button">Reset changes</button><button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" id="slrSaveProductButton" type="submit"><i class="bi bi-check-lg me-1"></i>Save product</button></div>
+                    </form>
+                    <aside class="admin-preview-column slr-product-preview-column"><details class="admin-preview-details-shell" open><summary>Live preview <i class="bi bi-chevron-down"></i></summary><div class="content-panel admin-panel admin-preview-body"><div class="admin-sidebar-heading"><div><h3 class="h6 mb-1">Marketplace preview</h3><small>Updates as you edit</small></div></div><div id="slrProductPreviewBody"></div></div></details></aside>
+                </div>
+            </div>
+        </div>`;
+}
+
+function setSlrProductDirty(dirty) {
+    slrProductEditor.dirty = Boolean(dirty);
+    const indicator = document.getElementById("slrProductUnsavedIndicator");
+    if (!indicator) return;
+    indicator.classList.toggle("is-dirty", slrProductEditor.dirty);
+    indicator.innerHTML = `<span></span>${slrT(slrProductEditor.dirty ? "Unsaved changes" : "Saved")}`;
+}
+
+function renderSlrCustomerInputs() {
+    const list = document.getElementById("slrProductCustomerInputs");
+    if (!list) return;
+    list.innerHTML = slrProductEditor.customerInputs.length
+        ? slrProductEditor.customerInputs.map((label, index) => `<div class="admin-inline-control" data-slr-customer-input-index="${index}"><input class="form-control form-control-sm" data-slr-customer-input-field="label" maxlength="80" value="${slrEscape(label)}" /><button class="btn btn-outline-danger btn-sm" type="button" data-remove-slr-customer-input="${index}">${slrEscape(slrT("Remove"))}</button></div>`).join("")
+        : `<div class="text-secondary small">${slrEscape(slrT("No customer inputs added."))}</div>`;
+}
+
+function renderSlrVariations(selectedDefault) {
+    const list = document.getElementById("slrVariationsList");
+    const defaultSelect = document.getElementById("slrDefaultVariation");
+    if (!list || !defaultSelect) return;
+    const currentDefault = selectedDefault ?? defaultSelect.value;
+    list.innerHTML = slrProductEditor.variations.length
+        ? slrProductEditor.variations.map((variation, index) => `
+            <div class="admin-variation-row slr-variation-row" data-slr-variation-index="${index}">
+                <div><label class="form-label">${slrEscape(slrT("Label"))}</label><input class="form-control form-control-sm" data-slr-variation-field="label" value="${slrEscape(variation.label || "")}" /></div>
+                <div><label class="form-label">${slrEscape(slrT("Name"))}</label><input class="form-control form-control-sm" data-slr-variation-field="name" value="${slrEscape(variation.name || "")}" /></div>
+                <div><label class="form-label">${slrEscape(slrT("Price"))}</label><input class="form-control form-control-sm" data-slr-variation-field="price" type="number" min="0" step="0.001" value="${Number(variation.price ?? 0)}" /></div>
+                <button class="btn btn-outline-danger btn-sm" type="button" data-remove-slr-variation="${index}" aria-label="${slrEscape(slrT("Remove variation"))}"><i class="bi bi-x-lg"></i></button>
+            </div>`).join("")
+        : `<div class="empty-state py-3"><p class="text-secondary mb-0">${slrEscape(slrT("No variations for this product."))}</p></div>`;
+    defaultSelect.innerHTML = `<option value="">${slrEscape(slrT("None"))}</option>${slrProductEditor.variations.map((variation) => `<option value="${slrEscape(variation.id || "")}">${slrEscape(variation.label || variation.name || variation.id || slrT("Option"))}</option>`).join("")}`;
+    defaultSelect.value = slrProductEditor.variations.some((variation) => variation.id === currentDefault) ? currentDefault : "";
+}
+
+function updateSlrImagePreview() {
+    const image = document.getElementById("slrProductImagePreviewImg");
+    const container = document.getElementById("slrProductImagePreview");
+    if (!image || !container) return;
+    const source = slrProductEditor.previewUrl || document.getElementById("slrProductImage")?.value.trim();
+    container.classList.toggle("d-none", !source);
+    if (source) image.src = source;
+}
+
+function getSlrPreviewProduct() {
+    return {
+        id: document.getElementById("slrProductId")?.value.trim() || "new-product",
+        name: document.getElementById("slrProductName")?.value.trim() || slrT("New product"),
+        price: Number(document.getElementById("slrProductPrice")?.value || 0),
+        shortDescription: document.getElementById("slrProductShortDesc")?.value.trim() || "",
+        description: document.getElementById("slrProductDesc")?.value.trim() || "",
+        image: document.getElementById("slrProductImage")?.value.trim() || "",
+        visible: document.getElementById("slrProductVisible")?.checked !== false,
+        inStock: document.getElementById("slrProductInStock")?.checked !== false,
+        variations: slrProductEditor.variations,
+    };
+}
+
+function renderSlrProductPreview() {
+    const container = document.getElementById("slrProductPreviewBody");
+    if (!container) return;
+    const product = getSlrPreviewProduct();
+    const firstVariation = product.variations[0];
+    const displayPrice = firstVariation?.price ?? product.price;
+    const imageSource = slrProductEditor.previewUrl || product.image;
+    container.innerHTML = `<article class="card product-card h-100"><span class="product-art gamekey-art">${imageSource ? `<img class="product-image" src="${slrEscape(imageSource)}" alt="${slrEscape(product.name)}" />` : '<i class="bi bi-shop"></i>'}</span><div class="card-body d-flex flex-column"><div class="d-flex flex-wrap gap-2 mb-2">${product.shortDescription ? `<span class="badge text-bg-dark">${slrEscape(product.shortDescription)}</span>` : ""}<span class="badge ${product.inStock ? "text-bg-success" : "text-bg-secondary"}">${slrEscape(slrT(product.inStock ? "Available" : "Out of stock"))}</span></div><h3 class="h5">${slrEscape(product.name)}</h3><p class="small text-secondary mb-1"><i class="bi bi-person me-1"></i>${slrEscape(slrT("Sold by"))}: ${slrEscape(slrSellerDisplayName || slrT("Seller"))}</p><p class="text-secondary flex-grow-1">${slrEscape(product.shortDescription || product.description) || "&nbsp;"}</p><div class="d-flex justify-content-between align-items-center"><strong class="price">${firstVariation ? `${slrEscape(slrT("From"))} ` : ""}${slrMoney(displayPrice)}</strong><button class="btn btn-primary btn-sm" type="button" disabled>${slrEscape(slrT(product.inStock ? "Add" : "Unavailable"))}</button></div></div></article><div class="admin-preview-details mt-3"><details><summary>${slrEscape(slrT("Product info"))}</summary><div class="small text-secondary mt-2">${slrEscape(slrT("ID"))}: ${slrEscape(product.id)}<br>${product.variations.length ? `${slrEscape(slrT("Variations"))}: ${product.variations.length}` : `${slrEscape(slrT("Price"))}: ${slrMoney(product.price)}`}<br>${slrEscape(slrT(product.visible ? "Visible" : "Hidden"))}</div></details></div>`;
+}
+
+function readSlrProductForm() {
+    const productId = document.getElementById("slrProductId").value.trim();
+    const name = document.getElementById("slrProductName").value.trim();
+    const price = Number(document.getElementById("slrProductPrice").value);
+    if (!productId) throw new Error(slrT("Product ID is required."));
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(productId)) throw new Error(slrT("Product ID must use lowercase letters, numbers, and hyphens."));
+    if (!name) throw new Error(slrT("Product name is required."));
+    if (!Number.isFinite(price) || price < 0) throw new Error(slrT("Price must be zero or more."));
+    if (!slrEditProductId && slrProducts.some((product) => product.id === productId)) throw new Error(slrT("Product ID already exists."));
+    regenerateSlrVariationIds();
+
+    const seenIds = new Set();
+    const variations = slrProductEditor.variations.map((variation, index) => {
+        const normalized = {
+            id: String(variation.id || "").trim() || slrSlugify(variation.label || variation.name || `option-${index + 1}`),
+            label: String(variation.label || "").trim(),
+            name: String(variation.name || "").trim(),
+            price: Number(variation.price),
+        };
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(normalized.id)) throw new Error(`Variation ID is invalid: ${normalized.id}`);
+        if (seenIds.has(normalized.id)) throw new Error(`Duplicate variation ID: ${normalized.id}`);
+        if (!normalized.label && !normalized.name) throw new Error(`Variation name is required: ${normalized.id}`);
+        if (!Number.isFinite(normalized.price) || normalized.price < 0) throw new Error(`Variation price is invalid: ${normalized.id}`);
+        seenIds.add(normalized.id);
+        return normalized;
+    });
+    const defaultVariation = document.getElementById("slrDefaultVariation").value;
+    const labels = slrProductEditor.customerInputs.map((label) => String(label || "").trim()).filter(Boolean);
+    const customerInputEnabled = document.getElementById("slrProductCustomerInput").checked;
+    return {
+        originalProductId: slrEditProductId,
+        productId,
+        name,
+        price,
+        image: document.getElementById("slrProductImage").value.trim(),
+        shortDescription: document.getElementById("slrProductShortDesc").value.trim(),
+        description: document.getElementById("slrProductDesc").value.trim(),
+        visible: document.getElementById("slrProductVisible").checked,
+        inStock: document.getElementById("slrProductInStock").checked,
+        variations,
+        defaultVariation: defaultVariation && seenIds.has(defaultVariation) ? defaultVariation : "",
+        customerInput: customerInputEnabled
+            ? { enabled: true, ...(labels.length > 1 ? { labels } : { label: labels[0] || "Customer input" }) }
+            : { enabled: false },
+    };
 }
 
 /* ── Earnings ────────────────────────────────── */
@@ -375,6 +631,7 @@ function showSlrSection(sectionId) {
 /* ── Init ───────────────────────────────────── */
 
 document.addEventListener("DOMContentLoaded", () => {
+    installSlrProductEditor();
     const loginForm = document.getElementById("sellerLoginForm");
     const loginBtn = document.getElementById("sellerLoginButton");
     const loginError = document.getElementById("sellerLoginError");
@@ -491,46 +748,25 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     /* Save product */
-    const saveBtn = document.getElementById("slrSaveProductButton");
-    if (saveBtn) {
-        saveBtn.addEventListener("click", async () => {
+    const productForm = document.getElementById("slrProductForm");
+    if (productForm) {
+        productForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
             const session = getSlrSession();
             if (!session) return;
             const errorEl = document.getElementById("slrProductFormError");
-            const name = document.getElementById("slrProductName").value.trim();
-            const price = Number(document.getElementById("slrProductPrice").value);
-            if (!name || !price) {
-                errorEl.textContent = "Product name and price are required.";
-                errorEl.classList.remove("d-none");
-                return;
-            }
-            const variations = [];
-            document.querySelectorAll(".slr-variation-row").forEach((row) => {
-                const label = row.querySelector("input[data-slr-var-label]")?.value?.trim();
-                const priceVal = Number(row.querySelector("input[data-slr-var-price]")?.value);
-                if (label && priceVal > 0) variations.push({ id: label.toLowerCase().replace(/\s+/g, "-"), label, price: priceVal });
-            });
-            const customerInputEnabled = document.getElementById("slrProductCustomerInput").checked;
+            const saveBtn = document.getElementById("slrSaveProductButton");
             saveBtn.disabled = true;
             errorEl.classList.add("d-none");
             try {
-                await saveSellerProduct(session.token, {
-                    productId: slrEditProductId,
-                    name,
-                    price,
-                    image: "",
-                    shortDescription: document.getElementById("slrProductShortDesc").value.trim(),
-                    description: document.getElementById("slrProductDesc").value.trim(),
-                    visible: document.getElementById("slrProductVisible").checked,
-                    inStock: document.getElementById("slrProductInStock").checked,
-                    variations,
-                    customerInput: customerInputEnabled ? { enabled: true, label: document.getElementById("slrProductCustomerInputLabel").value.trim() || "Customer input" } : { enabled: false, label: "" },
-                });
+                const product = readSlrProductForm();
+                if (slrProductEditor.selectedFile) throw new Error(slrT("Upload the selected image before saving."));
+                await saveSellerProduct(session.token, product);
                 bootstrap.Modal.getInstance(document.getElementById("slrProductModal")).hide();
                 slrToast("Product saved", "success");
                 await refreshSlrDashboard();
             } catch (error) {
-                errorEl.textContent = error.message;
+                errorEl.textContent = slrTranslateError(error.message);
                 errorEl.classList.remove("d-none");
             } finally {
                 saveBtn.disabled = false;
@@ -548,7 +784,7 @@ document.addEventListener("DOMContentLoaded", () => {
             loadSellerStats(session.token).then((data) => {
                 const product = (data.products || []).find((p) => p.id === productId);
                 if (product) openSlrProductModal(product);
-            }).catch(() => {});
+            }).catch((error) => slrToast(error.message || "Could not load product", "danger"));
             return;
         }
         const delBtn = event.target.closest("[data-slr-delete-product]");
@@ -563,9 +799,20 @@ document.addEventListener("DOMContentLoaded", () => {
             }).catch((error) => slrToast(error.message, "danger"));
             return;
         }
-        const removeVar = event.target.closest("[data-slr-var-remove]");
+        const removeVar = event.target.closest("[data-remove-slr-variation]");
         if (removeVar) {
-            removeVar.closest(".slr-variation-row").remove();
+            const index = Number(removeVar.dataset.removeSlrVariation);
+            slrProductEditor.variations.splice(index, 1);
+            renderSlrVariations();
+            renderSlrProductPreview();
+            setSlrProductDirty(true);
+            return;
+        }
+        const removeCustomerInput = event.target.closest("[data-remove-slr-customer-input]");
+        if (removeCustomerInput) {
+            slrProductEditor.customerInputs.splice(Number(removeCustomerInput.dataset.removeSlrCustomerInput), 1);
+            renderSlrCustomerInputs();
+            setSlrProductDirty(true);
         }
     });
 
@@ -573,16 +820,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const addVarBtn = document.getElementById("slrAddVariationBtn");
     if (addVarBtn) {
         addVarBtn.addEventListener("click", () => {
-            const varsEl = document.getElementById("slrVariationsList");
-            const idx = varsEl.children.length;
-            const div = document.createElement("div");
-            div.className = "row g-2 mb-2 slr-variation-row";
-            div.innerHTML = `
-                <div class="col-5"><input class="form-control form-control-sm" type="text" placeholder="Label" data-slr-var-label="${idx}" /></div>
-                <div class="col-4"><input class="form-control form-control-sm" type="number" step="0.001" min="0" placeholder="Price" data-slr-var-price="${idx}" /></div>
-                <div class="col-3"><button class="btn btn-sm btn-outline-danger" type="button" data-slr-var-remove="${idx}">Remove</button></div>
-            `;
-            varsEl.appendChild(div);
+            if (slrProductEditor.variations.length >= 50) {
+                slrToast("A product can have up to 50 variations.", "danger");
+                return;
+            }
+            slrProductEditor.variations.push({ id: "", label: "", name: "", price: Number(document.getElementById("slrProductPrice").value || 0) });
+            regenerateSlrVariationIds();
+            renderSlrVariations();
+            renderSlrProductPreview();
+            setSlrProductDirty(true);
         });
     }
 
@@ -590,9 +836,117 @@ document.addEventListener("DOMContentLoaded", () => {
     const ciToggle = document.getElementById("slrProductCustomerInput");
     if (ciToggle) {
         ciToggle.addEventListener("change", () => {
-            document.getElementById("slrProductCustomerInputLabelWrap").style.display = ciToggle.checked ? "" : "none";
+            document.getElementById("slrProductCustomerInputFields").classList.toggle("d-none", !ciToggle.checked);
+            setSlrProductDirty(true);
+            renderSlrProductPreview();
         });
     }
+
+    document.getElementById("slrAddCustomerInputButton")?.addEventListener("click", () => {
+        const input = document.getElementById("slrProductCustomerNewInput");
+        const value = input.value.trim();
+        if (!value) return;
+        if (slrProductEditor.customerInputs.length >= 10) {
+            slrToast("A product can have up to 10 customer fields.", "danger");
+            return;
+        }
+        slrProductEditor.customerInputs.push(value);
+        input.value = "";
+        renderSlrCustomerInputs();
+        setSlrProductDirty(true);
+    });
+
+    document.getElementById("slrResetProductButton")?.addEventListener("click", () => openSlrProductModal(slrProductEditor.originalProduct));
+
+    productForm?.addEventListener("input", (event) => {
+        if (event.target.id === "slrProductName" && !slrEditProductId) {
+            document.getElementById("slrProductId").value = slrSlugify(event.target.value);
+        }
+        if (event.target.id === "slrProductName") regenerateSlrVariationIds();
+        const variationField = event.target.closest("[data-slr-variation-field]");
+        if (variationField) {
+            const row = variationField.closest("[data-slr-variation-index]");
+            const index = Number(row.dataset.slrVariationIndex);
+            const field = variationField.dataset.slrVariationField;
+            slrProductEditor.variations[index][field] = field === "price" ? Number(variationField.value || 0) : variationField.value;
+            if (field === "label" || field === "name") regenerateSlrVariationIds();
+            const defaultOption = document.getElementById("slrDefaultVariation")?.options[index + 1];
+            if (defaultOption) {
+                defaultOption.value = slrProductEditor.variations[index].id || "";
+                defaultOption.textContent = slrProductEditor.variations[index].label || slrProductEditor.variations[index].name || slrProductEditor.variations[index].id || slrT("Option");
+            }
+        }
+        const customerField = event.target.closest("[data-slr-customer-input-field]");
+        if (customerField) {
+            const row = customerField.closest("[data-slr-customer-input-index]");
+            slrProductEditor.customerInputs[Number(row.dataset.slrCustomerInputIndex)] = customerField.value;
+        }
+        setSlrProductDirty(true);
+        renderSlrProductPreview();
+    });
+    productForm?.addEventListener("change", () => {
+        setSlrProductDirty(true);
+        renderSlrProductPreview();
+    });
+
+    document.getElementById("slrProductPhotoFile")?.addEventListener("change", (event) => {
+        const file = event.target.files?.[0] || null;
+        if (!file) {
+            slrProductEditor.selectedFile = null;
+            if (slrProductEditor.previewUrl) URL.revokeObjectURL(slrProductEditor.previewUrl);
+            slrProductEditor.previewUrl = "";
+            updateSlrImagePreview();
+            renderSlrProductPreview();
+            return;
+        }
+        if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 4 * 1024 * 1024) {
+            event.target.value = "";
+            slrProductEditor.selectedFile = null;
+            if (slrProductEditor.previewUrl) URL.revokeObjectURL(slrProductEditor.previewUrl);
+            slrProductEditor.previewUrl = "";
+            updateSlrImagePreview();
+            renderSlrProductPreview();
+            slrToast("Choose a PNG, JPG, or WebP image up to 4 MB.", "danger");
+            return;
+        }
+        slrProductEditor.selectedFile = file;
+        if (slrProductEditor.previewUrl) URL.revokeObjectURL(slrProductEditor.previewUrl);
+        slrProductEditor.previewUrl = URL.createObjectURL(file);
+        document.getElementById("slrProductUploadStatus").textContent = `${file.name} ${slrT("selected. Click Upload image.")}`;
+        updateSlrImagePreview();
+        renderSlrProductPreview();
+        setSlrProductDirty(true);
+    });
+
+    document.getElementById("slrUploadProductImageButton")?.addEventListener("click", async () => {
+        const session = getSlrSession();
+        const file = slrProductEditor.selectedFile;
+        const button = document.getElementById("slrUploadProductImageButton");
+        const status = document.getElementById("slrProductUploadStatus");
+        if (!session || !file) {
+            status.textContent = slrT("Choose an image first.");
+            return;
+        }
+        button.disabled = true;
+        status.textContent = slrT("Uploading image...");
+        const uploadId = ++slrProductEditor.uploadId;
+        const productId = slrEditProductId;
+        try {
+            const path = await uploadSellerProductImage(session.token, file);
+            if (uploadId !== slrProductEditor.uploadId || productId !== slrEditProductId) return;
+            document.getElementById("slrProductImage").value = path;
+            slrProductEditor.selectedFile = null;
+            status.textContent = slrT("Image uploaded successfully.");
+            renderSlrProductPreview();
+        } catch (error) {
+            if (uploadId === slrProductEditor.uploadId && productId === slrEditProductId) {
+                status.textContent = slrTranslateError(error.message);
+                slrToast(error.message, "danger");
+            }
+        } finally {
+            if (uploadId === slrProductEditor.uploadId && button.isConnected) button.disabled = false;
+        }
+    });
 
     /* Refresh */
     const refreshBtn = document.getElementById("slrRefreshStats");
@@ -609,5 +963,10 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    /* Image upload */
+    document.getElementById("slrProductModal")?.addEventListener("hidden.bs.modal", () => {
+        slrProductEditor.uploadId++;
+        if (slrProductEditor.previewUrl) URL.revokeObjectURL(slrProductEditor.previewUrl);
+        slrProductEditor.previewUrl = "";
+        slrProductEditor.selectedFile = null;
+    });
 });

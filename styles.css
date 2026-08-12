@@ -6157,6 +6157,111 @@ main > section,
     gap: 8px;
 }
 
+/* Seller marketplace editor */
+.slr-product-modal-dialog {
+    max-width: min(1500px, calc(100vw - 2rem));
+}
+
+@media (min-width: 992px) {
+    .slr-product-modal-dialog {
+        margin-left: auto;
+        margin-right: auto;
+        max-width: min(1600px, calc(100vw - 64px));
+        width: auto;
+    }
+}
+
+.slr-product-modal-body {
+    background: var(--bs-body-bg);
+    padding: 16px;
+}
+
+.slr-product-editor-layout {
+    align-items: start;
+    display: grid;
+    gap: 16px;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+}
+
+.slr-product-editor-layout .admin-product-editor,
+.slr-product-preview-column .admin-preview-body {
+    box-shadow: none;
+}
+
+.slr-product-editor-layout .admin-variation-row {
+    grid-template-columns: 1fr 1.35fr 0.8fr auto;
+}
+
+.slr-product-preview-column {
+    position: sticky;
+    top: 0;
+}
+
+.slr-image-preview {
+    align-items: center;
+    aspect-ratio: 16 / 10;
+    background: var(--gv-soft);
+    border: 1px solid var(--gv-border);
+    border-radius: var(--radius-sm);
+    display: flex;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.slr-image-preview img {
+    height: 100%;
+    object-fit: cover;
+    width: 100%;
+}
+
+@media (max-width: 991.98px) {
+    .slr-product-editor-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .slr-product-preview-column {
+        position: static;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .slr-product-modal-dialog {
+        margin: 0;
+        max-width: none;
+        min-height: 100dvh;
+        width: 100%;
+    }
+
+    .slr-product-modal-dialog .modal-content {
+        border: 0;
+        border-radius: 0;
+        min-height: 100dvh;
+    }
+
+    .slr-product-modal-body {
+        padding: 10px;
+    }
+
+    .slr-product-editor-layout .admin-variation-row {
+        align-items: stretch;
+        grid-template-columns: 1fr;
+    }
+
+    .slr-product-editor-layout .admin-editor-details summary {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .slr-product-editor-layout .admin-save-bar {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .slr-product-editor-layout .admin-save-bar .btn {
+        min-height: 46px;
+        width: 100%;
+    }
+}
+
 .admin-order-card.order-priority-pending {
     border-color: rgba(255, 190, 70, 0.52);
     box-shadow: 0 18px 48px rgba(255, 190, 70, 0.12);

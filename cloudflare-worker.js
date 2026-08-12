@@ -340,6 +340,16 @@ async function getSellerByToken(env, token) {
     return db.prepare("SELECT id, name, display_name, phone, total_earnings, platform_fee_percent, min_withdrawal, active FROM sellers WHERE id = ?").bind(session.seller_id).first();
 }
 
+async function sellerOwnsMarketplaceProduct(env, seller, product) {
+    if (product?.sellerId) return product.sellerId === seller.id;
+    if (product?.soldBy !== seller.display_name) return false;
+    const count = await getOrderDb(env)
+        .prepare("SELECT COUNT(*) AS total FROM sellers WHERE display_name = ?")
+        .bind(seller.display_name)
+        .first();
+    return Number(count?.total || 0) === 1;
+}
+
 async function hashPassword(password) {
     const encoder = new TextEncoder();
     const passwordBuffer = encoder.encode(password);
@@ -1278,11 +1288,9 @@ function normalizeSubmittedCustomerInputs(order, body) {
         const config = product?.customerInput;
         if (!config || config.enabled === false) return [];
 
-        const labels = Array.isArray(config.labels) && config.labels.length ? config.labels : [config.label || "Player ID"];
-        const label = String(labels[0] || "Player ID").trim().slice(0, 80) || "Player ID";
-        const key = getCustomerInputKey(line.productId, line.variationId || "", label);
-        return [
-            {
+        return getCustomerInputConfigs(product).map(({ label }) => {
+            const key = getCustomerInputKey(line.productId, line.variationId || "", label);
+            return {
                 key,
                 productId: line.productId,
                 variationId: line.variationId || "",
@@ -1290,8 +1298,8 @@ function normalizeSubmittedCustomerInputs(order, body) {
                 optionLabel: line.optionLabel || "",
                 label,
                 value: normalizeCustomerInputValue(submitted.get(key)?.value, label),
-            },
-        ];
+            };
+        });
     });
 }
 
@@ -1300,7 +1308,8 @@ async function getCustomerInputRequirements(env, record, items, savedInputs = nu
 
     let products = {};
     try {
-        products = await readAllProducts(env);
+        const [catalogProducts, marketplaceProducts] = await Promise.all([readAllProducts(env), readAllMarketplaceProducts(env)]);
+        products = { ...catalogProducts, ...marketplaceProducts };
     } catch (error) {
         console.warn("Could not load product database for customer input requirements", error);
         return [];
@@ -3394,9 +3403,10 @@ async function handleSellerAction(body, request, env, corsHeaders) {
             readAllMarketplaceProducts(env),
         ]);
 
-        const sellerProducts = Object.entries(allMarketplace)
-            .filter(([, p]) => p.soldBy === seller.display_name)
-            .map(([id, p]) => ({ id, ...p }));
+        const sellerProducts = [];
+        for (const [id, product] of Object.entries(allMarketplace)) {
+            if (await sellerOwnsMarketplaceProduct(env, seller, product)) sellerProducts.push({ id, ...product });
+        }
 
         const pendingEarnings = earnings.filter((e) => e.status === "pending").reduce((sum, e) => sum + Number(e.earnings_amount), 0);
         const paidEarnings = earnings.filter((e) => e.status === "paid").reduce((sum, e) => sum + Number(e.earnings_amount), 0);
@@ -3404,7 +3414,7 @@ async function handleSellerAction(body, request, env, corsHeaders) {
         const totalOrders = new Set(earnings.map((e) => e.order_id)).size;
 
         const paymentSettings = await readPaymentSettings(env);
-        const minimumWithdrawal = seller.min_withdrawal ?? paymentSettings.seller?.minimumWithdrawal ?? 10;
+        const minimumWithdrawal = seller.min_withdrawal ?? paymentSettings?.seller?.minimumWithdrawal ?? 10;
         const pendingPayouts = payouts.filter((p) => p.status === "requested" || p.status === "pending").reduce((sum, p) => sum + Number(p.amount), 0);
         const currentBalance = Math.max(0, pendingEarnings - pendingPayouts);
 
@@ -3481,11 +3491,43 @@ async function handleSellerAction(body, request, env, corsHeaders) {
         if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
 
         const allMarketplace = await readAllMarketplaceProducts(env);
-        const sellerProducts = Object.entries(allMarketplace)
-            .filter(([, p]) => p.soldBy === seller.display_name)
-            .map(([id, p]) => ({ id, ...p }));
+        const sellerProducts = [];
+        for (const [id, product] of Object.entries(allMarketplace)) {
+            if (await sellerOwnsMarketplaceProduct(env, seller, product)) sellerProducts.push({ id, ...product });
+        }
 
         return jsonResponse({ ok: true, products: sellerProducts }, 200, corsHeaders);
+    }
+
+    if (action === "seller-upload-image") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+
+        const base64 = String(body.base64 || "").trim();
+        if (!base64 || base64.length > 5_600_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+            return jsonResponse({ error: "Invalid image or image is larger than 4 MB" }, 400, corsHeaders);
+        }
+        let bytes;
+        try {
+            const binary = atob(base64);
+            if (binary.length > 4 * 1024 * 1024) throw new Error("too large");
+            bytes = Array.from(binary.slice(0, 12), (char) => char.charCodeAt(0));
+        } catch {
+            return jsonResponse({ error: "Invalid image or image is larger than 4 MB" }, 400, corsHeaders);
+        }
+        let extension = "";
+        if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) extension = "png";
+        else if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) extension = "jpg";
+        else if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) extension = "webp";
+        if (!extension) return jsonResponse({ error: "Only PNG, JPG, and WebP images are allowed" }, 400, corsHeaders);
+
+        const safeSellerId = String(seller.id).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 50) || "seller";
+        const fileName = `assets/sellers/${safeSellerId}-${crypto.randomUUID()}.${extension}`;
+        const result = await handleAdminUploadImage({ fileName, base64 }, env);
+        return jsonResponse(result, result.ok ? 200 : 500, corsHeaders);
     }
 
     if (action === "seller-product-save") {
@@ -3495,38 +3537,80 @@ async function handleSellerAction(body, request, env, corsHeaders) {
         if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
         if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
 
-        const productName = String(body.name || "").trim();
+        const productName = String(body.name || "").trim().slice(0, 120);
         if (!productName) return jsonResponse({ error: "Product name is required" }, 400, corsHeaders);
 
         const productId = String(body.productId || "").trim() || productName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-        if (!productId) return jsonResponse({ error: "Could not generate product ID" }, 400, corsHeaders);
+        if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(productId)) return jsonResponse({ error: "Product ID must use lowercase letters, numbers, and hyphens" }, 400, corsHeaders);
+        const price = Number(body.price);
+        if (!Number.isFinite(price) || price < 0) return jsonResponse({ error: "Price must be zero or more" }, 400, corsHeaders);
+
+        const variations = [];
+        const variationIds = new Set();
+        if (Array.isArray(body.variations)) {
+            if (body.variations.length > 50) return jsonResponse({ error: "A product can have up to 50 variations" }, 400, corsHeaders);
+            for (let index = 0; index < body.variations.length; index++) {
+                const source = body.variations[index] || {};
+                const label = String(source.label || "").trim().slice(0, 120);
+                const name = String(source.name || "").trim().slice(0, 120);
+                const id = String(source.id || "").trim() || (label || name || `option-${index + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+                const variationPrice = Number(source.price);
+                if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(id)) return jsonResponse({ error: `Variation ID is invalid: ${id}` }, 400, corsHeaders);
+                if (variationIds.has(id)) return jsonResponse({ error: `Duplicate variation ID: ${id}` }, 400, corsHeaders);
+                if (!label && !name) return jsonResponse({ error: `Variation name is required: ${id}` }, 400, corsHeaders);
+                if (!Number.isFinite(variationPrice) || variationPrice < 0) return jsonResponse({ error: `Variation price is invalid: ${id}` }, 400, corsHeaders);
+                variationIds.add(id);
+                variations.push({ id, label, name, price: variationPrice });
+            }
+        }
+        const requestedDefault = String(body.defaultVariation || "").trim();
+        const defaultVariation = requestedDefault && variationIds.has(requestedDefault) ? requestedDefault : "";
+        const image = String(body.image || "").trim().slice(0, 500);
+        const customerInputSource = body.customerInput && typeof body.customerInput === "object" ? body.customerInput : {};
+        const customerLabels = Array.isArray(customerInputSource.labels)
+            ? customerInputSource.labels.map((label) => String(label || "").trim().slice(0, 80)).filter(Boolean).slice(0, 10)
+            : [String(customerInputSource.label || "").trim().slice(0, 80)].filter(Boolean);
+        const customerInput = customerInputSource.enabled === true
+            ? { enabled: true, ...(customerLabels.length > 1 ? { labels: customerLabels } : { label: customerLabels[0] || "Customer input" }) }
+            : { enabled: false };
+        const sellerImagePrefix = `assets/sellers/${String(seller.id).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 50) || "seller"}-`;
 
         const existingProduct = {
             id: productId,
             name: productName,
-            price: Number(body.price) || 0,
+            price,
+            sellerId: seller.id,
             soldBy: seller.display_name,
-            shortDescription: String(body.shortDescription || "").trim(),
-            description: String(body.description || "").trim(),
-            image: String(body.image || "").trim(),
-            variations: Array.isArray(body.variations) ? body.variations : [],
+            shortDescription: String(body.shortDescription || "").trim().slice(0, 180),
+            description: String(body.description || "").trim().slice(0, 5000),
+            image,
+            variations,
+            defaultVariation,
             visible: body.visible !== false,
             inStock: body.inStock !== false,
-            customerInput: body.customerInput ?? { enabled: false, label: "" },
+            customerInput,
         };
 
         await ensureMarketplaceSchema(env);
         const db = getCatalogDb(env);
         const now = new Date().toISOString();
+        const officialProduct = await db.prepare("SELECT id FROM products WHERE id = ?").bind(productId).first();
+        if (officialProduct) return jsonResponse({ error: "Product ID is reserved by the store catalog" }, 409, corsHeaders);
         const existing = await db.prepare("SELECT id FROM marketplace_products WHERE id = ?").bind(productId).first();
 
         if (existing) {
             const prev = JSON.parse((await db.prepare("SELECT data FROM marketplace_products WHERE id = ?").bind(productId).first()).data);
-            if (prev.soldBy !== seller.display_name) {
+            if (!await sellerOwnsMarketplaceProduct(env, seller, prev)) {
                 return jsonResponse({ error: "You do not own this product" }, 403, corsHeaders);
+            }
+            if (!image || (image !== prev.image && image !== "assets/hyperlogo.png" && !image.startsWith(sellerImagePrefix))) {
+                return jsonResponse({ error: "Upload the product image from your seller account" }, 400, corsHeaders);
             }
             await db.prepare("UPDATE marketplace_products SET data = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(existingProduct), now, productId).run();
         } else {
+            if (!image || (image !== "assets/hyperlogo.png" && !image.startsWith(sellerImagePrefix))) {
+                return jsonResponse({ error: "Upload the product image from your seller account" }, 400, corsHeaders);
+            }
             await db.prepare("INSERT INTO marketplace_products (id, data, created_at, updated_at) VALUES (?, ?, ?, ?)").bind(productId, JSON.stringify(existingProduct), now, now).run();
         }
 
@@ -3548,7 +3632,7 @@ async function handleSellerAction(body, request, env, corsHeaders) {
         if (!existing) return jsonResponse({ error: "Product not found" }, 404, corsHeaders);
 
         const data = JSON.parse(existing.data);
-        if (data.soldBy !== seller.display_name) {
+        if (!await sellerOwnsMarketplaceProduct(env, seller, data)) {
             return jsonResponse({ error: "You do not own this product" }, 403, corsHeaders);
         }
 
@@ -3573,7 +3657,7 @@ async function handleSellerAction(body, request, env, corsHeaders) {
         }
 
         const paymentSettings = await readPaymentSettings(env);
-        const minimumWithdrawal = seller.min_withdrawal ?? paymentSettings.seller?.minimumWithdrawal ?? 10;
+        const minimumWithdrawal = seller.min_withdrawal ?? paymentSettings?.seller?.minimumWithdrawal ?? 10;
         if (amount < minimumWithdrawal) {
             return jsonResponse({ error: `Minimum withdrawal is TND ${Number(minimumWithdrawal).toFixed(3)}` }, 400, corsHeaders);
         }

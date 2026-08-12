@@ -3176,6 +3176,7 @@ function readMarketplaceFormProduct() {
     if (id !== marketplaceState.originalId && getMarketplaceProducts()[id]) throw new Error("Product ID already exists");
 
     const product = { name, price };
+    if (getSelectedMarketplaceProduct()?.sellerId) product.sellerId = getSelectedMarketplaceProduct().sellerId;
     if (soldBy) product.soldBy = soldBy;
     if (shortDescription) product.shortDescription = shortDescription;
     if (image) product.image = image;
@@ -4143,4 +4144,3 @@ function initAdminPanel() {
     }
     showLockScreen();
 })();
-
