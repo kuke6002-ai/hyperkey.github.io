@@ -22,7 +22,12 @@ CREATE TABLE IF NOT EXISTS orders (
     delivery_status_reason TEXT,
     updated_at TEXT,
     telegram_notified_at TEXT,
-    referred_by TEXT
+    referred_by TEXT,
+    customer_confirmed_at TEXT,
+    delivered_at TEXT,
+    disputed INTEGER NOT NULL DEFAULT 0,
+    dispute_reported_at TEXT,
+    auto_completed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS affiliates (
@@ -109,6 +114,38 @@ CREATE TABLE IF NOT EXISTS order_customer_inputs (
     FOREIGN KEY (order_id) REFERENCES orders(id)
 );
 
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id TEXT NOT NULL,
+    sender_type TEXT NOT NULL,
+    sender_name TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL,
+    message_type TEXT NOT NULL DEFAULT 'text',
+    image_url TEXT,
+    created_at TEXT NOT NULL,
+    customer_read INTEGER NOT NULL DEFAULT 0,
+    seller_read INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (order_id) REFERENCES orders(id)
+);
+
+CREATE TABLE IF NOT EXISTS chat_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id)
+);
+
+CREATE TABLE IF NOT EXISTS seller_order_deliveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id TEXT NOT NULL,
+    seller_name TEXT NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    value TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
 -- ================================================================
 -- Catalog Database (env.product_db)
 -- Tables: categories, products, store_config, settings
@@ -162,6 +199,10 @@ CREATE INDEX IF NOT EXISTS idx_order_customer_inputs_order_id ON order_customer_
 CREATE INDEX IF NOT EXISTS idx_referral_commissions_order_id ON referral_commissions(order_id);
 CREATE INDEX IF NOT EXISTS idx_referral_commissions_ref_code ON referral_commissions(ref_code);
 CREATE INDEX IF NOT EXISTS idx_affiliate_payouts_ref_code ON affiliate_payouts(ref_code);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_order ON chat_messages(order_id, id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_unread ON chat_messages(sender_type, seller_read);
+CREATE INDEX IF NOT EXISTS idx_chat_images_order ON chat_images(order_id);
+CREATE INDEX IF NOT EXISTS idx_seller_order_deliveries_order ON seller_order_deliveries(order_id);
 
 -- ================================================================
 -- Indexes (Catalog DB)
@@ -175,3 +216,44 @@ CREATE TABLE IF NOT EXISTS marketplace_products (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+-- ================================================================
+-- Community sellers (Orders DB)
+-- ================================================================
+
+CREATE TABLE IF NOT EXISTS public_sellers (
+    id TEXT PRIMARY KEY,
+    phone TEXT NOT NULL UNIQUE,
+    code TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public_products (
+    id TEXT PRIMARY KEY,
+    seller_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    price REAL NOT NULL DEFAULT 0,
+    description TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    stock INTEGER NOT NULL DEFAULT 0,
+    image TEXT,
+    mime TEXT NOT NULL DEFAULT '',
+    approved INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    warranty_days INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_public_products_seller ON public_products(seller_id);
+CREATE TABLE IF NOT EXISTS public_product_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    image TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_public_product_images_product ON public_product_images(product_id);
+

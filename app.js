@@ -5,6 +5,7 @@
 // The selected variation price will update on product.html and in the cart.
 const PRODUCTS = {};
 const MARKETPLACE_PRODUCTS = {};
+let VERIFIED_SELLERS = new Set();
 
 const CART_KEY = "hyperkey-cart";
 const CHECKOUT_SESSION_KEY = "hyperkey-checkout-session";
@@ -274,6 +275,7 @@ function cycleLanguage() {
     localStorage.setItem(LANGUAGE_KEY, CURRENT_LANGUAGE);
     rerenderDynamicSections();
     translatePage();
+    window.dispatchEvent(new CustomEvent("hk-languagechange", { detail: { language: CURRENT_LANGUAGE } }));
 }
 
 function createLanguageToggle(className) {
@@ -330,6 +332,9 @@ async function loadProductDatabase() {
                 if (database.marketplaceProducts && typeof database.marketplaceProducts === "object") {
                     Object.keys(MARKETPLACE_PRODUCTS).forEach((id) => delete MARKETPLACE_PRODUCTS[id]);
                     Object.assign(MARKETPLACE_PRODUCTS, database.marketplaceProducts);
+                }
+                if (Array.isArray(database.verifiedSellers)) {
+                    VERIFIED_SELLERS = new Set(database.verifiedSellers.map((name) => String(name).toLowerCase().trim()));
                 }
                 refreshArtClasses();
                 loaded = true;
@@ -627,7 +632,10 @@ function getProductImage(product) {
 }
 
 function isProductInStock(product) {
-    return product?.inStock !== false;
+    if (!product) return false;
+    if (product.inStock === false) return false;
+    if (product.community && Number(product.stock) <= 0) return false;
+    return true;
 }
 
 function getVariationName(product, variation) {
@@ -802,6 +810,11 @@ function getMarketplaceProducts() {
     return Object.entries(MARKETPLACE_PRODUCTS).filter(([, product]) => product.visible !== false);
 }
 
+function verifiedSellerBadge(name) {
+    if (!name || !VERIFIED_SELLERS.has(String(name).toLowerCase().trim())) return "";
+    return ` <span class="verified-seller-badge" title="${t("Verified")}"><i class="bi bi-patch-check-fill"></i>${t("Verified")}</span>`;
+}
+
 function marketplaceCardTemplate(id, product) {
     const art = product.art || "gamekey-art";
     const image = typeof product.image === "string" ? product.image.trim() : "";
@@ -824,11 +837,12 @@ function marketplaceCardTemplate(id, product) {
                     <div class="d-flex flex-wrap gap-2 mb-2">
                         ${shortDesc ? `<span class="badge category-chip chip-angled">${escapeHtml(shortDesc)}</span>` : ""}
                         <span class="badge ${inStock ? "text-bg-success stock-chip--available" : "text-bg-secondary"}">${t(inStock ? "Available" : "Out of stock")}</span>
+                        ${Number(product.warrantyDays) > 0 ? `<span class="badge text-bg-info"><i class="bi bi-shield-check me-1"></i>${t("Buyer protection")}: ${Number(product.warrantyDays)} ${t("days")}</span>` : ""}
                     </div>
                     <h2 class="h6 mb-1">
                         <a class="product-title-link" href="product.html?product=${encodeURIComponent(id)}">${escapeHtml(product.name)}</a>
                     </h2>
-                    ${product.soldBy ? `<p class="small text-secondary mb-1"><i class="bi bi-person me-1"></i>${t("Sold by")}: ${escapeHtml(product.soldBy)}</p>` : ""}
+                    ${product.soldBy ? `<p class="small text-secondary mb-1"><i class="bi bi-person me-1"></i>${t("Sold by")}: ${escapeHtml(product.soldBy)}${verifiedSellerBadge(product.soldBy)}</p>` : ""}
                     <p class="text-secondary flex-grow-1 small">${escapeHtml(shortDesc || product.description || "") || "&nbsp;"}</p>
                     <div class="d-flex justify-content-between align-items-center mt-auto pt-2 border-top border-light-subtle">
                         <strong class="price">${priceLabel}</strong>
@@ -1210,6 +1224,7 @@ function renderCheckoutSummary() {
                         <span>${line.name} x ${qty}</span>
                         <strong>${line.inStock ? formatMoney(line.price * qty) : "Out of stock"}</strong>
                     </div>
+                    ${Math.floor(Number(line.product?.warrantyDays) || 0) > 0 ? `<p class="small text-secondary mb-1"><i class="bi bi-shield-check me-1"></i>${t("Buyer protection")}: ${Math.floor(Number(line.product.warrantyDays))} ${t("days")}</p>` : ""}
                 `;
             })
             .join("");
@@ -1709,6 +1724,93 @@ async function fetchOrderStatus(orderId, customerPhone) {
     return result.order;
 }
 
+/* ── Order chat (customer <-> seller) ────── */
+
+async function fetchChatMessages(orderId, customerPhone) {
+    const response = await fetch(ORDER_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "chat-messages", orderId, customerPhone }),
+    });
+    const responseText = await response.text();
+    let result = {};
+    try {
+        result = responseText ? JSON.parse(responseText) : {};
+    } catch {
+        throw new Error("Chat backend did not return JSON.");
+    }
+    if (!response.ok || !result.ok) throw new Error(result.error || "Could not load chat.");
+    return result;
+}
+
+async function sendChatMessage(orderId, customerPhone, message) {
+    const response = await fetch(ORDER_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "chat-send", orderId, customerPhone, message }),
+    });
+    const responseText = await response.text();
+    let result = {};
+    try {
+        result = responseText ? JSON.parse(responseText) : {};
+    } catch {
+        throw new Error("Chat backend did not return JSON.");
+    }
+    if (!response.ok || !result.ok) throw new Error(result.error || "Could not send the message.");
+    return result;
+}
+
+async function compressChatImage(file) {
+    const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error(t("Could not read image")));
+        reader.readAsDataURL(file);
+    });
+    const image = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error(t("Could not read image")));
+        img.src = dataUrl;
+    });
+    const MAX_DIMENSION = 1000;
+    let { width, height } = image;
+    const scale = Math.min(1, MAX_DIMENSION / Math.max(width, height));
+    width = Math.max(1, Math.round(width * scale));
+    height = Math.max(1, Math.round(height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error(t("Could not read image"));
+    context.drawImage(image, 0, 0, width, height);
+    let quality = 0.72;
+    let base64 = canvas.toDataURL("image/jpeg", quality).split(",")[1] || "";
+    while (base64.length > 800_000 && quality > 0.35) {
+        quality -= 0.08;
+        base64 = canvas.toDataURL("image/jpeg", quality).split(",")[1] || "";
+    }
+    return base64;
+}
+
+async function uploadChatImage(orderId, customerPhone, file) {
+    const base64 = await compressChatImage(file);
+    const response = await fetch(ORDER_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "chat-upload-image", orderId, customerPhone, base64 }),
+    });
+    const responseText = await response.text();
+    let result = {};
+    try {
+        result = responseText ? JSON.parse(responseText) : {};
+    } catch {
+        throw new Error("Chat backend did not return JSON.");
+    }
+    if (!response.ok || !result.ok) throw new Error(result.error || "Could not send the photo.");
+    return result;
+}
+
 function getStatusTone(status, label = "") {
     const value = String(status || label || "").toLowerCase();
     if (["verified", "delivered"].some((item) => value.includes(item))) return "good";
@@ -2044,7 +2146,13 @@ function renderCurrentStatusPanel(order) {
     const title = order.statusTitle || current.label;
     const message = order.statusMessage || current.action;
     const reason = getOrderStatusReason(order);
-    return `
+    const deliveryStatus = String(order.deliveryStatusCode || "").toLowerCase();
+    const cancelled = deliveryStatus === "cancelled" || deliveryStatus === "canceled";
+    const paymentRejected = String(order.paymentStatusCode || "").toLowerCase() === "rejected";
+    const paymentVerified = String(order.paymentStatusCode || "").toLowerCase() === "verified";
+    const confirmedAt = order.customerConfirmedAt || "";
+    return (
+        `
         <div class="current-status-panel status-${escapeHtml(current.tone)} mb-4">
             <div class="current-status-icon">
                 <i class="bi ${escapeHtml(current.icon)}"></i>
@@ -2061,13 +2169,88 @@ function renderCurrentStatusPanel(order) {
                         </div>`
                         : ""
                 }
+                ${["waiting", "delivered"].includes(deliveryStatus) ? renderSellerDeliveredItems(order) : ""}
+                <div class="confirm-delivery-box mt-3">
+                    ${
+                        !cancelled && !paymentRejected
+                            ? paymentVerified
+                                ? `<p class="mb-2 small text-secondary">${t("Received your product and it works? Confirm delivery.")}</p>`
+                                : `<p class="mb-2 small text-secondary">${t("Confirm delivery is available after payment verification.")}</p>`
+                            : ""
+                    }
+                    <div class="confirm-delivery-actions">
+                        ${
+                            !confirmedAt && !cancelled && !paymentRejected && paymentVerified
+                                ? `<button class="btn confirm-delivery-btn flex-fill" type="button" data-confirm-delivery>
+                                    <i class="bi bi-check-circle me-2"></i>${t("Confirm delivery")}
+                                </button>`
+                                : ""
+                        }
+                        <button class="btn report-admin-btn flex-fill" type="button" data-report-admin>
+                            <i class="bi bi-flag me-2"></i>${t("Report to admin")}
+                        </button>
+                    </div>
+                    <p class="report-admin-feedback d-none mb-0 mt-2" data-report-admin-feedback></p>
+                </div>
+                ${
+                    confirmedAt
+                        ? `<div class="customer-confirmed-box mt-3">
+                            <i class="bi bi-patch-check-fill me-2"></i>${t("Delivery confirmed")}
+                        </div>`
+                        : ""
+                }
             </div>
         </div>
-    `;
+    `
+    );
 }
 
 function getDeliveryLines(order) {
     return (order.deliveries || []).flatMap((delivery) => (Array.isArray(delivery.lines) ? delivery.lines : []));
+}
+
+function renderSellerDeliveredItems(order) {
+    const rows = (order.sellerDeliveries || []).filter((row) => row.seller || row.label || row.value);
+    if (!rows.length) return "";
+
+    const bySeller = {};
+    rows.forEach((row) => {
+        const seller = String(row.seller || "").trim() || "Seller";
+        (bySeller[seller] = bySeller[seller] || []).push(row);
+    });
+    const sellers = Object.keys(bySeller);
+
+    return `
+        <div class="delivered-items-box mt-3">
+            <p class="mb-2 small text-secondary">${t("Copy your delivered item below.")}</p>
+            ${sellers
+                .map((seller) => {
+                    const sellerRows = bySeller[seller];
+                    const showSeller = sellers.length > 1;
+                    return `
+                        <div class="delivery-code-list">
+                            ${sellerRows
+                                .map((row, index) => {
+                                    const code = String(row.value || "").trim();
+                                    const note = String(row.label || "").trim() || `${t("Delivery code")} ${index + 1}`;
+                                    const prefix = showSeller ? `${escapeHtml(seller)} \u2014 ` : "";
+                                    return `
+                                        <div class="delivery-code-row">
+                                            <div>
+                                                <span>${prefix}${escapeHtml(note)}</span>
+                                                ${code ? `<code>${escapeHtml(code)}</code>` : ""}
+                                            </div>
+                                            ${code ? `<button class="btn btn-outline-dark btn-sm" type="button" data-copy-text="${escapeHtml(code)}"><i class="bi bi-clipboard me-1"></i>${t("Copy")}</button>` : ""}
+                                        </div>
+                                    `;
+                                })
+                                .join("")}
+                        </div>
+                    `;
+                })
+                .join("")}
+        </div>
+    `;
 }
 
 function renderDeliveryCodes(order) {
@@ -2227,6 +2410,180 @@ async function submitCustomerInput(form) {
     return result;
 }
 
+/* ── Order chat panel ─────────────────────── */
+
+const chatState = {
+    orderId: "",
+    customerPhone: "",
+    available: false,
+    sellers: [],
+    messages: [],
+    draft: "",
+    timer: null,
+    sending: false,
+    lastRenderId: 0,
+    forceClosed: false,
+};
+
+function formatChatTime(createdAt) {
+    const date = new Date(createdAt);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function renderCustomerChatPanel(order) {
+    return `
+        <div class="order-chat-panel mt-4" id="orderChatPanel">
+            <div class="order-chat-header">
+                <span><i class="bi bi-chat-dots me-2"></i>${t("Chat with seller")}</span>
+                <small>${escapeHtml((order.chatSellers || []).join(", "))}</small>
+            </div>
+            <div class="order-chat-messages" id="orderChatMessages" aria-live="polite"></div>
+            <form class="order-chat-composer" id="orderChatForm" novalidate>
+                <button class="btn btn-outline-secondary chat-photo-btn" type="button" data-chat-photo aria-label="${t("Send photo")}" title="${t("Send photo")}">
+                    <i class="bi bi-image"></i>
+                </button>
+                <input class="d-none" type="file" id="orderChatPhoto" accept="image/png,image/jpeg,image/webp" />
+                <input class="form-control" id="orderChatInput" type="text" maxlength="1000" autocomplete="off" placeholder="${t("Write a message...")}" required />
+                <button class="btn btn-primary" type="submit" aria-label="${t("Send message")}">
+                    <i class="bi bi-send"></i>
+                </button>
+            </form>
+            <div class="alert alert-danger mt-2 mb-0 d-none" id="orderChatAlert" role="alert"></div>
+        </div>
+    `;
+}
+
+function renderCustomerChatMessages() {
+    const container = document.getElementById("orderChatMessages");
+    if (!container) return;
+    const lastId = chatState.messages.length ? chatState.messages[chatState.messages.length - 1].id : 0;
+    container.innerHTML =
+        chatState.messages
+            .map(
+                (message) => `
+                    <div class="chat-bubble ${message.senderType === "customer" ? "chat-bubble--mine" : "chat-bubble--theirs"}">
+                        ${message.senderType !== "customer" ? `<div class="chat-bubble-sender">${escapeHtml(message.senderName)}</div>` : ""}
+                        ${
+                            message.messageType === "image" && message.imageUrl
+                                ? `<a class="chat-bubble-image-link" href="#" data-chat-lightbox="${escapeHtml(message.imageUrl)}"><img class="chat-bubble-image" src="${escapeHtml(message.imageUrl)}" alt="${t("Photo")}" loading="lazy" /></a>`
+                                : `<div class="chat-bubble-text">${escapeHtml(message.message)}</div>`
+                        }
+                        <div class="chat-bubble-time">${escapeHtml(formatChatTime(message.createdAt))}</div>
+                    </div>
+                `,
+            )
+            .join("") ||
+        `<p class="chat-empty text-secondary small mb-0 py-2 text-center">${t("No messages yet. Ask the seller about your order.")}</p>`;
+    container.scrollTop = container.scrollHeight;
+    chatState.lastRenderId = lastId;
+}
+
+async function refreshCustomerChat() {
+    if (!chatState.orderId || !chatState.customerPhone) return;
+    const result = await fetchChatMessages(chatState.orderId, chatState.customerPhone);
+    if (!result.chatAvailable) {
+        chatState.available = false;
+        stopChatPolling();
+        return;
+    }
+    if (result.sellers) chatState.sellers = result.sellers;
+    const lastId = chatState.messages.length ? chatState.messages[chatState.messages.length - 1].id : 0;
+    if (!chatState.messages.length || (result.messages?.length && result.messages[result.messages.length - 1].id > lastId)) {
+        chatState.messages = result.messages || [];
+        renderCustomerChatMessages();
+    }
+}
+
+function stopChatPolling() {
+    if (!chatState.timer) return;
+    window.clearInterval(chatState.timer);
+    chatState.timer = null;
+}
+
+function startChatPolling() {
+    stopChatPolling();
+    refreshCustomerChat().catch(() => {});
+    chatState.timer = window.setInterval(() => {
+        if (document.hidden || !chatState.available) return;
+        refreshCustomerChat().catch(() => {});
+    }, 10000);
+}
+
+async function submitCustomerChat() {
+    const input = document.getElementById("orderChatInput");
+    const sendButton = document.getElementById("orderChatForm")?.querySelector("button[type='submit']");
+    const alertEl = document.getElementById("orderChatAlert");
+    const message = String(input?.value || "").trim();
+    if (!message || chatState.sending) return;
+    if (!chatState.orderId || !chatState.customerPhone) return;
+
+    chatState.sending = true;
+    if (input) input.disabled = true;
+    if (sendButton) sendButton.disabled = true;
+    if (alertEl) {
+        alertEl.textContent = "";
+        alertEl.classList.add("d-none");
+    }
+    try {
+        const result = await sendChatMessage(chatState.orderId, chatState.customerPhone, message);
+        chatState.messages.push(result.message);
+        chatState.draft = "";
+        if (input) input.value = "";
+        renderCustomerChatMessages();
+    } catch (error) {
+        if (alertEl) {
+            alertEl.textContent = t(error.message || "Could not send the message.");
+            alertEl.classList.remove("d-none");
+        }
+    } finally {
+        chatState.sending = false;
+        if (input) input.disabled = false;
+        if (sendButton) sendButton.disabled = false;
+    }
+    if (!chatState.timer) startChatPolling();
+}
+
+async function submitCustomerChatPhoto(file) {
+    const input = document.getElementById("orderChatInput");
+    const sendButton = document.getElementById("orderChatForm")?.querySelector("button[type='submit']");
+    const photoButton = document.querySelector("[data-chat-photo]");
+    const alertEl = document.getElementById("orderChatAlert");
+    if (!file || chatState.sending || !chatState.orderId || !chatState.customerPhone) return;
+    const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+    if (!allowedTypes.has(file.type) || file.size > 4 * 1024 * 1024) {
+        if (alertEl) {
+            alertEl.textContent = t("Choose a PNG, JPG, or WebP image up to 4 MB.");
+            alertEl.classList.remove("d-none");
+        }
+        return;
+    }
+    chatState.sending = true;
+    if (input) input.disabled = true;
+    if (sendButton) sendButton.disabled = true;
+    if (photoButton) photoButton.disabled = true;
+    if (alertEl) {
+        alertEl.textContent = "";
+        alertEl.classList.add("d-none");
+    }
+    try {
+        const result = await uploadChatImage(chatState.orderId, chatState.customerPhone, file);
+        chatState.messages.push(result.message);
+        renderCustomerChatMessages();
+    } catch (error) {
+        if (alertEl) {
+            alertEl.textContent = t(error.message || "Could not send the photo.");
+            alertEl.classList.remove("d-none");
+        }
+    } finally {
+        chatState.sending = false;
+        if (input) input.disabled = false;
+        if (sendButton) sendButton.disabled = false;
+        if (photoButton) photoButton.disabled = false;
+    }
+    if (!chatState.timer) startChatPolling();
+}
+
 function renderOrderStatusResult(order) {
     const result = document.getElementById("orderStatusResult");
     if (!result) return;
@@ -2257,6 +2614,15 @@ function renderOrderStatusResult(order) {
                 </div>
             </div>
             ${renderCurrentStatusPanel(order)}
+            ${order.disputed && !order.customerConfirmedAt ? `<div class="alert alert-warning mt-3 mb-0"><i class="bi bi-exclamation-triangle me-2"></i>${t("A problem was reported on this order. Our team is reviewing it.")}</div>` : ""}
+            ${order.autoCompletedAt ? `<div class="alert alert-info mt-3 mb-0"><i class="bi bi-check-circle me-2"></i>${t("Order completed automatically after 72 hours")}</div>` : ""}
+            ${
+                order.chatAvailable && Array.isArray(order.chatSellers) && order.chatSellers.length && !chatState.forceClosed
+                    ? String(order.paymentStatusCode || "").toLowerCase() === "verified"
+                        ? renderCustomerChatPanel(order)
+                        : `<div class="order-chat-panel mt-4"><div class="order-chat-header"><span><i class="bi bi-lock me-2"></i>${t("Chat with seller")}</span></div><div class="order-chat-messages"><p class="chat-empty text-secondary small mb-0 py-2 text-center">${t("Chat is available after payment verification.")}</p></div></div>`
+                    : ""
+            }
             ${renderOrderProgressBar(order)}
             ${renderOrderProducts(order, products)}
             ${deliveryDetails}
@@ -2268,6 +2634,19 @@ function renderOrderStatusResult(order) {
     `;
     result.classList.remove("d-none");
     document.getElementById("orderStatusEmpty")?.classList.add("d-none");
+
+    chatState.orderId = String(order.id || "");
+    chatState.sellers = Array.isArray(order.chatSellers) ? order.chatSellers : [];
+    chatState.available = Boolean(order.chatAvailable) && chatState.sellers.length > 0 && String(order.paymentStatusCode || "").toLowerCase() === "verified" && !chatState.forceClosed;
+    if (chatState.available) {
+        chatState.messages = [];
+        chatState.lastRenderId = 0;
+        startChatPolling();
+    } else {
+        stopChatPolling();
+    }
+    const chatInput = document.getElementById("orderChatInput");
+    if (chatInput) chatInput.value = chatState.draft;
     translatePage();
 }
 
@@ -2336,11 +2715,26 @@ function setupOrderStatusPage() {
 
         try {
             saveOrderStatusLookup(orderId, customerPhone);
+            chatState.orderId = orderId;
+            chatState.customerPhone = customerPhone;
+            chatState.forceClosed = false;
             const order = await fetchOrderStatus(orderId, customerPhone);
             renderOrderStatusResult(order);
             scheduleAutoRefresh(order);
+            if (!silent) {
+                document.getElementById("orderStatusLookupCol")?.classList.add("d-none");
+                const resultCol = document.getElementById("orderStatusResultCol");
+                resultCol?.classList.remove("col-lg-7");
+                resultCol?.classList.add("col-lg-12");
+            }
         } catch (error) {
             setAlert("orderStatusError", error.message || "Could not check this order.");
+            if (!silent) {
+                document.getElementById("orderStatusLookupCol")?.classList.remove("d-none");
+                const resultCol = document.getElementById("orderStatusResultCol");
+                resultCol?.classList.add("col-lg-7");
+                resultCol?.classList.remove("col-lg-12");
+            }
         } finally {
             if (button) button.disabled = false;
             if (refreshButton) refreshButton.disabled = false;
@@ -2349,6 +2743,13 @@ function setupOrderStatusPage() {
     }
 
     document.getElementById("orderStatusResult")?.addEventListener("submit", async (event) => {
+        const chatForm = event.target.closest("#orderChatForm");
+        if (chatForm) {
+            event.preventDefault();
+            submitCustomerChat();
+            return;
+        }
+
         const inputForm = event.target.closest("[data-customer-input-form]");
         if (!inputForm) return;
 
@@ -2393,10 +2794,114 @@ function setupOrderStatusPage() {
         }
     });
 
+    document.getElementById("orderStatusResult")?.addEventListener("input", (event) => {
+        if (event.target && event.target.id === "orderChatInput") {
+            chatState.draft = event.target.value;
+        }
+    });
+
+async function confirmCustomerDelivery() {
+        const button = document.querySelector("[data-confirm-delivery]");
+        if (!button || !chatState.orderId || !chatState.customerPhone) return;
+        button.disabled = true;
+        setAlert("orderStatusError", "");
+        try {
+            const response = await fetch(ORDER_API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "customer-confirm-delivery",
+                    orderId: chatState.orderId,
+                    customerPhone: chatState.customerPhone,
+                }),
+            });
+            const responseText = await response.text();
+            let result = {};
+            try {
+                result = responseText ? JSON.parse(responseText) : {};
+            } catch {
+                throw new Error("The confirmation service did not respond.");
+            }
+            if (!response.ok || !result.ok) throw new Error(result.error || "Could not confirm delivery.");
+            chatState.forceClosed = true;
+            clearAutoRefresh();
+            renderOrderStatusResult(result.order);
+            scheduleAutoRefresh(result.order);
+        } catch (error) {
+            setAlert("orderStatusError", t(error.message || "Could not confirm delivery."));
+            button.disabled = false;
+        }
+    }
+
+    async function reportToAdmin() {
+        const button = document.querySelector("[data-report-admin]");
+        const feedback = document.querySelector("[data-report-admin-feedback]");
+        if (!button || !chatState.orderId || !chatState.customerPhone) return;
+        button.disabled = true;
+        if (feedback) {
+            feedback.textContent = "";
+            feedback.classList.add("d-none");
+            feedback.classList.remove("text-danger");
+        }
+        try {
+            const response = await fetch(ORDER_API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "customer-report-admin",
+                    orderId: chatState.orderId,
+                    customerPhone: chatState.customerPhone,
+                }),
+            });
+            const responseText = await response.text();
+            let result = {};
+            try {
+                result = responseText ? JSON.parse(responseText) : {};
+            } catch {
+                throw new Error("The report service did not respond.");
+            }
+            if (!response.ok || !result.ok) throw new Error(result.error || "Could not send the report.");
+            if (feedback) {
+                feedback.textContent = t("Report sent to admin.");
+                feedback.classList.remove("d-none");
+            }
+        } catch (error) {
+            if (feedback) {
+                feedback.textContent = t(error.message || "Could not send the report.");
+                feedback.classList.remove("d-none");
+                feedback.classList.add("text-danger");
+            }
+            button.disabled = false;
+        }
+    }
+
     document.getElementById("orderStatusResult")?.addEventListener("click", (event) => {
+        const confirmButton = event.target.closest("[data-confirm-delivery]");
+        if (confirmButton) {
+            confirmCustomerDelivery();
+            return;
+        }
+        const reportButton = event.target.closest("[data-report-admin]");
+        if (reportButton) {
+            reportToAdmin();
+            return;
+        }
+        const photoButton = event.target.closest("[data-chat-photo]");
+        if (photoButton) {
+            document.getElementById("orderChatPhoto")?.click();
+            return;
+        }
         const refreshButton = event.target.closest("[data-refresh-order-status]");
         if (!refreshButton) return;
         checkOrderStatus();
+    });
+
+    document.getElementById("orderStatusResult")?.addEventListener("change", (event) => {
+        if (event.target && event.target.id === "orderChatPhoto") {
+            const file = event.target.files?.[0] || null;
+            submitCustomerChatPhoto(file);
+            event.target.value = "";
+        }
     });
 
     const params = new URLSearchParams(window.location.search);
@@ -2416,6 +2921,8 @@ function setupOrderStatusPage() {
         event.preventDefault();
         checkOrderStatus();
     });
+
+    window.addEventListener("beforeunload", stopChatPolling);
 }
 
 
@@ -2616,6 +3123,28 @@ function setupProductDetailPage() {
             productImage.alt = "";
         }
         productImage.classList.toggle("d-none", !productImageSrc);
+        const galleryImages = Array.isArray(product.images) && product.images.length ? product.images.filter((src) => typeof src === "string" && src.trim()) : [];
+        let gallery = document.getElementById("productImageGallery");
+        if (galleryImages.length > 1) {
+            if (!gallery) {
+                gallery = document.createElement("div");
+                gallery.id = "productImageGallery";
+                gallery.className = "product-image-gallery";
+                productImage.parentNode?.insertBefore(gallery, productImage.nextSibling);
+            }
+            gallery.dataset.sources = JSON.stringify(galleryImages);
+            gallery.innerHTML = galleryImages
+                .map(
+                    (src, index) => `
+                        <button class="product-image-gallery-thumb${index === 0 ? " active" : ""}" type="button" data-gallery-index="${index}" aria-label="${t("Photo")} ${index + 1}">
+                            <img src="${escapeHtml(src)}" alt="${escapeHtml(product.name)} ${index + 1}" loading="lazy" />
+                        </button>
+                    `,
+                )
+                .join("");
+        } else if (gallery) {
+            gallery.remove();
+        }
     }
     if (productCategory) productCategory.textContent = productCategoryText;
     if (productBadge) {
@@ -2627,7 +3156,7 @@ function setupProductDetailPage() {
     // Sold by display
     if (productSoldBy && productSoldByText) {
         if (isMarketplace && product.soldBy) {
-            productSoldByText.textContent = `${t("Sold by")}: ${product.soldBy}`;
+            productSoldByText.innerHTML = `${t("Sold by")}: ${escapeHtml(product.soldBy)}${verifiedSellerBadge(product.soldBy)}`;
             productSoldBy.classList.remove("d-none");
         } else {
             productSoldBy.classList.add("d-none");
@@ -2691,6 +3220,17 @@ function setupProductDetailPage() {
             productDeliveryText.textContent = t("Delivery is handled by the seller. Contact them for estimated delivery times.");
         } else {
             productDeliveryText.textContent = t("Most codes arrive in less than two minutes. Some orders may need manual review for account security.");
+        }
+    }
+
+    const productWarrantyText = document.getElementById("productWarrantyText");
+    if (productWarrantyText) {
+        const warrantyDays = Math.floor(Number(product.warrantyDays) || 0);
+        if (warrantyDays > 0) {
+            productWarrantyText.querySelector("span").textContent = `${t("Buyer protection")}: ${warrantyDays} ${t("days")}`;
+            productWarrantyText.classList.remove("d-none");
+        } else {
+            productWarrantyText.classList.add("d-none");
         }
     }
 
@@ -2973,3 +3513,52 @@ function initPageEntry() {
 })();
 
 initSite();
+
+function openChatImageLightbox(src) {
+    let overlay = document.getElementById("chatImageOverlay");
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "chatImageOverlay";
+        overlay.className = "chat-image-overlay";
+        overlay.innerHTML = `<button type="button" class="chat-image-close" aria-label="${t("Close")}">&times;</button><img class="chat-image-full" alt="" />`;
+        overlay.addEventListener("click", function (event) {
+            if (event.target === overlay || event.target.classList.contains("chat-image-close")) {
+                closeChatImageLightbox();
+            }
+        });
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") closeChatImageLightbox();
+        });
+        document.body.appendChild(overlay);
+    }
+    overlay.querySelector(".chat-image-full").src = src;
+    overlay.classList.add("chat-image-overlay-open");
+}
+
+function closeChatImageLightbox() {
+    const overlay = document.getElementById("chatImageOverlay");
+    if (overlay) overlay.classList.remove("chat-image-overlay-open");
+}
+
+document.addEventListener("click", function (event) {
+    const link = event.target.closest("[data-chat-lightbox]");
+    if (link) {
+        event.preventDefault();
+        openChatImageLightbox(link.getAttribute("data-chat-lightbox"));
+    }
+});
+
+document.addEventListener("click", function (event) {
+    const thumb = event.target.closest("[data-gallery-index]");
+    if (!thumb) return;
+    const gallery = thumb.closest("#productImageGallery");
+    if (!gallery) return;
+    const sources = gallery.dataset.sources ? JSON.parse(gallery.dataset.sources) : [];
+    const index = Number(thumb.getAttribute("data-gallery-index"));
+    const image = document.getElementById("selectedProductImage");
+    if (!image || !sources[index]) return;
+    image.src = sources[index];
+    gallery.querySelectorAll(".product-image-gallery-thumb").forEach((item) => {
+        item.classList.toggle("active", Number(item.getAttribute("data-gallery-index")) === index);
+    });
+});

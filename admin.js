@@ -152,6 +152,13 @@ const state = {
     },
 };
 
+const adminChatState = {
+    orderId: "",
+    timer: null,
+    messages: [],
+    sending: false,
+};
+
 function slugify(value) {
     return String(value || "")
         .toLowerCase()
@@ -770,13 +777,15 @@ function fillForm() {
     const productPhotoFile = document.getElementById("productPhotoFile");
     const productDescription = document.getElementById("productDescription");
     const productVisible = document.getElementById("productVisible");
-    const productInStock = document.getElementById("productInStock");
+const productInStock = document.getElementById("productInStock");
     const productCustomerInputEnabled = document.getElementById("productCustomerInputEnabled");
 
     if (productId) productId.value = state.selectedId || "";
     if (productName) productName.value = product?.name || "";
     if (productCategory) productCategory.value = product?.category || productCategory.options[0]?.value || "";
     if (productPrice) productPrice.value = Number(product?.price ?? 0);
+    const productWarrantyDays = document.getElementById("productWarrantyDays");
+    if (productWarrantyDays) productWarrantyDays.value = Number(product?.warrantyDays || 0) || "";
     if (productImage) productImage.value = product?.image || "assets/hyperlogo.png";
     if (productPhotoFile) productPhotoFile.value = "";
     if (productDescription) productDescription.value = product?.description || "";
@@ -856,14 +865,17 @@ function readFormProduct() {
     if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error("Product ID must use lowercase letters, numbers, and hyphens");
     if (!name) throw new Error("Product name is required");
     if (!category) throw new Error("Choose or add a category");
-    if (!Number.isFinite(price) || price < 0) throw new Error("Price must be zero or more");
+if (!Number.isFinite(price) || price < 0) throw new Error("Price must be zero or more");
     if (id !== state.originalId && getProducts()[id]) throw new Error("Product ID already exists");
+    const warrantyDays = Math.floor(Number(document.getElementById("productWarrantyDays")?.value || 0));
+    if (!Number.isFinite(warrantyDays) || warrantyDays < 0) throw new Error("Warranty must be zero or more");
 
     const product = {
         name,
         category,
         price,
     };
+    if (warrantyDays > 0) product.warrantyDays = Math.min(3650, warrantyDays);
     if (image) product.image = image;
     else if (!state.originalId) product.image = "assets/hyperlogo.png";
     if (description) product.description = description;
@@ -1228,20 +1240,30 @@ ${product.customerInput?.enabled ? "Customer input enabled" : ""}
 function updateImagePreview() {
     const container = document.getElementById("adminImagePreview");
     const img = document.getElementById("adminImagePreviewImg");
-    if (!container || !img) return;
+    if (container && img) {
+        const pathInput = document.getElementById("productImage");
+        const path = pathInput?.value?.trim() || "";
+        const blobUrl = state.previewImages?.[path];
 
-    const pathInput = document.getElementById("productImage");
-    const path = pathInput?.value?.trim() || "";
+        if (blobUrl) {
+            img.src = blobUrl;
+            container.style.display = "";
+        } else if (path) {
+            img.src = path;
+            container.style.display = "";
+        } else {
+            container.style.display = "none";
+        }
+    }
+    const zoneImg = document.querySelector('[data-upload-zone="product"] .admin-upload-zone-preview');
+    if (!zoneImg) return;
+    const path = document.getElementById("productImage")?.value?.trim() || "";
     const blobUrl = state.previewImages?.[path];
-
-    if (blobUrl) {
-        img.src = blobUrl;
-        container.style.display = "";
-    } else if (path) {
-        img.src = path;
-        container.style.display = "";
+    if (blobUrl || path) {
+        zoneImg.src = blobUrl || path;
+        zoneImg.classList.remove("d-none");
     } else {
-        container.style.display = "none";
+        zoneImg.classList.add("d-none");
     }
 }
 
@@ -1740,6 +1762,39 @@ async function adminRequest(body) {
     return result;
 }
 
+function renderAdminSellerDeliveries(order) {
+    const rows = Array.isArray(order.sellerDeliveries) ? order.sellerDeliveries.filter((row) => row.seller || row.label || row.value) : [];
+    if (!rows.length) return "";
+
+    return `
+        <details class="admin-order-details" open>
+            <summary>
+                <span><i class="bi bi-gift me-1"></i>Seller deliveries</span>
+                <small>${escapeHtml(rows.length)}</small>
+                <i class="bi bi-chevron-down"></i>
+            </summary>
+            <div class="admin-order-detail-grid admin-order-detail-grid-single">
+                <div class="admin-seller-deliveries-block">
+                    ${rows
+                        .map(
+                            (row) => `
+                                <div class="admin-seller-delivery-row">
+                                    <span>${escapeHtml(row.seller || "")}</span>
+                                    <b>${escapeHtml(row.label || "")}</b>
+                                    <code>${escapeHtml(row.value || "")}</code>
+                                </div>
+                            `,
+                        )
+                        .join("")}
+                    <button class="btn btn-outline-danger btn-sm mt-2" type="button" data-admin-delete-seller-deliveries="${escapeHtml(order.id)}">
+                        <i class="bi bi-trash me-1"></i>Delete seller deliveries
+                    </button>
+                </div>
+            </div>
+        </details>
+    `;
+}
+
 function renderProofs(proofs) {
     if (!Array.isArray(proofs) || !proofs.length) return `<p class="text-secondary mb-0">No proof saved.</p>`;
     return proofs
@@ -1760,7 +1815,7 @@ function renderOrderItems(items) {
         .map(
             (item) => `
                 <div class="admin-order-line">
-                    <span>${escapeHtml(item.quantity > 1 ? `${item.quantity} x ` : "")}${escapeHtml(item.productName)}${item.soldBy ? ` <small class="text-secondary">(Sold by: ${escapeHtml(item.soldBy)})</small>` : ""}</span>
+                    <span>${escapeHtml(item.quantity > 1 ? `${item.quantity} x ` : "")}${escapeHtml(item.productName)}${item.soldBy ? ` <small class="text-secondary">(Sold by: ${escapeHtml(item.soldBy)}${item.communitySellerPhone ? ` - ${escapeHtml(item.communitySellerPhone)}` : ""})</small>` : ""}</span>
                     <strong>${formatPlainTndAmount(item.lineTotal)}</strong>
                 </div>
             `,
@@ -2027,6 +2082,7 @@ async function loadAdminSellers() {
                             <th>ID</th>
                             <th>Name</th>
                             <th>Display</th>
+                            <th>Store</th>
                             <th>Phone</th>
                             <th>Fee</th>
                             <th>Total earned</th>
@@ -2037,7 +2093,7 @@ async function loadAdminSellers() {
                     </thead>
                     <tbody>
                         ${sellers.map((s) => `
-                             <tr data-seller-id="${escapeHtml(s.id)}" data-min-withdrawal="${escapeHtml(String(s.minWithdrawal ?? ""))}">
+                             <tr data-seller-id="${escapeHtml(s.id)}" data-min-withdrawal="${escapeHtml(String(s.minWithdrawal ?? ""))}" data-store-name="${escapeHtml(s.storeName || "")}" data-verified="${s.verified ? "1" : "0"}" data-notes="${escapeHtml(s.notes || "")}">
                                 <td>
                                     <button class="btn btn-sm btn-outline-secondary border-0" type="button" data-expand-seller="${escapeHtml(s.id)}" title="View details">
                                         <i class="bi bi-chevron-right"></i>
@@ -2046,22 +2102,23 @@ async function loadAdminSellers() {
                                 <td><code>${escapeHtml(s.id)}</code></td>
                                 <td>${escapeHtml(s.name)}</td>
                                 <td>${escapeHtml(s.displayName || "-")}</td>
+                                <td>${escapeHtml(s.storeName || "-")}</td>
                                 <td>${escapeHtml(s.phone)}</td>
                                 <td>${s.platformFeePercent || 0}%</td>
                                 <td class="fw-semibold">${money(s.totalEarnings)}</td>
-                                <td><span class="badge ${s.active ? "text-bg-success" : "text-bg-secondary"}">${s.active ? "Active" : "Inactive"}</span></td>
+<td><span class="badge ${s.active ? "text-bg-success" : "text-bg-danger"}">${s.active ? "Active" : "Blocked"}</span> ${s.verified ? '<span class="badge text-bg-info ms-1">✓ Verified</span>' : ""}</td>
                                 <td>${formatAdminDateTime(s.createdAt)}</td>
                                 <td>
                                     <div class="d-flex gap-1 flex-wrap">
                                         <button class="btn btn-sm btn-outline-primary" type="button" data-edit-seller="${escapeHtml(s.id)}">Edit</button>
-                                        <button class="btn btn-sm ${s.active ? "btn-outline-secondary" : "btn-outline-success"}" type="button" data-toggle-seller="${escapeHtml(s.id)}">${s.active ? "Deactivate" : "Activate"}</button>
+                                        <button class="btn btn-sm ${s.active ? "btn-outline-danger" : "btn-outline-success"}" type="button" data-toggle-seller="${escapeHtml(s.id)}">${s.active ? "Block" : "Unblock"}</button>
                                         <button class="btn btn-sm btn-outline-info" type="button" data-change-pass-seller="${escapeHtml(s.id)}">Pass</button>
                                         <button class="btn btn-sm btn-outline-danger" type="button" data-delete-seller="${escapeHtml(s.id)}">Del</button>
                                     </div>
                                 </td>
                             </tr>
                             <tr class="seller-detail-row" data-detail-seller="${escapeHtml(s.id)}" style="display:none">
-                                <td colspan="10">
+                                <td colspan="11">
                                     <div class="seller-detail-content p-3">
                                         <div class="text-center py-4">
                                             <div class="spinner-border spinner-border-sm text-secondary me-2" role="status"></div>
@@ -2095,10 +2152,11 @@ async function toggleAdminSellerDetail(sellerId) {
     detailRow.style.display = "";
     if (expandBtn) expandBtn.querySelector("i").className = "bi bi-chevron-down";
     try {
-        const result = await adminRequest({ action: "admin-seller-detail", sellerId });
+const result = await adminRequest({ action: "admin-seller-detail", sellerId });
         const stats = result.stats || {};
         const earnings = result.earnings || [];
         const payouts = result.payouts || [];
+        const orders = result.orders || [];
         const content = detailRow.querySelector(".seller-detail-content");
         content.innerHTML = `
             <div class="row g-2 mb-3">
@@ -2126,7 +2184,26 @@ async function toggleAdminSellerDetail(sellerId) {
                         <p class="small text-secondary mb-0">Paid out</p>
                     </div>
                 </div>
-            </div>
+</div>
+            ${orders.length ? `
+                <h5 class="h6 fw-bold mb-2">Order history (${stats.totalOrders ?? orders.length})</h5>
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm">
+                        <thead><tr><th>Order</th><th>Items</th><th>Customer</th><th>Payment</th><th>Delivery</th><th>Amount</th><th>Date</th></tr></thead>
+                        <tbody>${orders.slice(0, 20).map((o) => `
+                            <tr>
+                                <td><code>${escapeHtml(o.id)}</code></td>
+                                <td>${(o.items || []).map((it) => `${escapeHtml(it.productName)} ×${it.quantity}`).join(", ") || "-"}</td>
+                                <td class="small text-secondary">${escapeHtml(o.customerPhoneDisplay || o.customerPhone || "-")}</td>
+                                <td><span class="badge ${o.paymentStatus === "verified" ? "text-bg-success" : o.paymentStatus === "rejected" ? "text-bg-danger" : "text-bg-warning"}">${escapeHtml(o.paymentStatus)}</span></td>
+                                <td><span class="badge ${o.deliveryStatus === "delivered" ? "text-bg-success" : o.deliveryStatus === "cancelled" || o.deliveryStatus === "canceled" || o.deliveryStatus === "rejected" ? "text-bg-danger" : o.deliveryStatus === "waiting" ? "text-bg-info" : "text-bg-secondary"}">${escapeHtml(o.deliveryStatus || "-")}</span></td>
+                                <td class="fw-semibold">${money(o.amountDue)}</td>
+                                <td class="small text-secondary">${new Date(o.createdAt).toLocaleDateString()}</td>
+                            </tr>
+                        `).join("")}</tbody>
+                    </table>
+                </div>
+            ` : `<p class="text-secondary small mb-3">No orders yet.</p>`}
             ${earnings.length ? `
                 <h5 class="h6 fw-bold mb-2">Recent earnings</h5>
                 <div class="table-responsive mb-3">
@@ -2545,6 +2622,9 @@ function resetSellerForm() {
     document.getElementById("sellerPassword").previousElementSibling.style.display = "";
     document.getElementById("sellerPlatformFee").value = "10";
     document.getElementById("sellerMinWithdrawal").value = "10";
+    document.getElementById("sellerStoreName").value = "";
+    document.getElementById("sellerVerified").checked = false;
+    document.getElementById("sellerNotes").value = "";
     const heading = document.querySelector("#addSellerForm h3");
     if (heading) heading.textContent = "Create seller";
     const btn = document.getElementById("saveSellerButton");
@@ -2553,7 +2633,7 @@ function resetSellerForm() {
     if (form) form.style.display = "none";
 }
 
-function populateEditSellerForm(sellerId, name, displayName, phone, platformFeePercent, minWithdrawal) {
+function populateEditSellerForm(sellerId, name, displayName, phone, platformFeePercent, minWithdrawal, storeName, verified, notes) {
     document.getElementById("sellerName").value = name;
     document.getElementById("sellerDisplayName").value = displayName || "";
     document.getElementById("sellerPhone").value = phone;
@@ -2562,6 +2642,9 @@ function populateEditSellerForm(sellerId, name, displayName, phone, platformFeeP
     document.getElementById("sellerPassword").previousElementSibling.style.display = "none";
     document.getElementById("sellerPlatformFee").value = platformFeePercent || 10;
     document.getElementById("sellerMinWithdrawal").value = minWithdrawal || 10;
+    document.getElementById("sellerStoreName").value = storeName || "";
+    document.getElementById("sellerVerified").checked = !!verified;
+    document.getElementById("sellerNotes").value = notes || "";
     const heading = document.querySelector("#addSellerForm h3");
     if (heading) heading.textContent = "Edit seller";
     const btn = document.getElementById("saveSellerButton");
@@ -2638,15 +2721,33 @@ function renderAdminOrders() {
                                 <span><i class="bi bi-credit-card"></i>${escapeHtml(order.paymentMethodLabel)}</span>
                                 <strong>${formatPlainTndAmount(order.amountDue)}</strong>
                                 ${order.referredBy ? `<span><i class="bi bi-megaphone"></i>Referred by: ${escapeHtml(order.referredBy)}</span>` : ""}
+                                ${order.disputed ? `<span class="badge text-bg-danger"><i class="bi bi-exclamation-triangle me-1"></i>Disputed</span>` : ""}
+                                ${order.customerConfirmedAt && order.autoCompletedAt ? `<span class="admin-customer-confirmed"><i class="bi bi-clock-history"></i>Completed automatically (72h)</span>` : ""}
+                                ${order.customerConfirmedAt && !order.autoCompletedAt ? `<span class="admin-customer-confirmed"><i class="bi bi-patch-check-fill"></i>Customer confirmed delivery</span>` : ""}
                             </div>
                         </div>
                         <div class="admin-order-actions">
                             <button class="btn btn-outline-dark btn-sm" type="button" data-copy-admin-text="${escapeHtml(order.customerPhone)}">
                                 <i class="bi bi-clipboard me-1"></i>Phone
                             </button>
-                            <button class="btn btn-outline-danger btn-sm" type="button" data-delete-order="${escapeHtml(order.id)}">
+                            ${
+                                order.chatAvailable
+                                    ? `<button class="btn btn-outline-primary btn-sm" type="button" data-admin-chat="${escapeHtml(order.id)}">
+                                        <i class="bi bi-chat-dots me-1"></i>Chat
+                                        <span class="admin-chat-badge badge rounded-pill text-bg-danger d-none" data-admin-chat-badge="${escapeHtml(order.id)}">0</span>
+                                    </button>`
+                                    : ""
+                            }
+<button class="btn btn-outline-danger btn-sm" type="button" data-delete-order="${escapeHtml(order.id)}">
                                 <i class="bi bi-trash me-1"></i>Delete
                             </button>
+                            ${
+                                order.disputed
+                                    ? `<button class="btn btn-outline-warning btn-sm" type="button" data-admin-resolve-dispute="${escapeHtml(order.id)}">
+                                        <i class="bi bi-shield-check me-1"></i>Resolve dispute
+                                    </button>`
+                                    : ""
+                            }
                         </div>
                     </div>
 
@@ -2732,6 +2833,8 @@ function renderAdminOrders() {
                             </div>
                         </details>
 
+                        ${renderAdminSellerDeliveries(order)}
+
                         ${
                             customerInputHtml
                                 ? `<details class="admin-order-details" open>
@@ -2772,7 +2875,199 @@ async function loadAdminOrders() {
     const result = await adminRequest({ action: "admin-list-orders", limit: 50 });
     state.orders = result.orders || [];
     renderAdminOrders();
+    loadAdminChatUnread().catch(() => {});
     showToast("Loaded orders");
+}
+
+function formatAdminChatTime(createdAt) {
+    const date = new Date(createdAt);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function renderAdminChatMessages() {
+    const container = document.getElementById("adminChatMessages");
+    if (!container) return;
+    container.innerHTML =
+        adminChatState.messages
+            .map(
+                (message) => `
+                    <div class="chat-bubble ${message.senderType === "admin" ? "chat-bubble--mine" : "chat-bubble--theirs"}">
+                        ${message.senderType === "admin" ? "" : `<div class="chat-bubble-sender">${escapeHtml(message.senderType === "seller" ? message.senderName : "Customer")}</div>`}
+                        ${
+                            message.messageType === "image" && message.imageUrl
+                                ? `<a class="chat-bubble-image-link" href="#" data-chat-lightbox="${escapeHtml(message.imageUrl)}"><img class="chat-bubble-image" src="${escapeHtml(message.imageUrl)}" alt="Photo" loading="lazy" /></a>`
+                                : `<div class="chat-bubble-text">${escapeHtml(message.message)}</div>`
+                        }
+                        <div class="chat-bubble-time">${escapeHtml(formatAdminChatTime(message.createdAt))}</div>
+                    </div>
+                `,
+            )
+            .join("") ||
+        `<p class="chat-empty text-secondary small mb-0 py-2 text-center">No messages yet.</p>`;
+    container.scrollTop = container.scrollHeight;
+}
+
+function stopAdminChatPolling() {
+    if (!adminChatState.timer) return;
+    window.clearInterval(adminChatState.timer);
+    adminChatState.timer = null;
+}
+
+async function refreshAdminChat() {
+    if (!adminChatState.orderId) return;
+    try {
+        const result = await adminRequest({ action: "admin-chat-messages", orderId: adminChatState.orderId });
+        const lastId = adminChatState.messages.length ? Number(adminChatState.messages[adminChatState.messages.length - 1].id) : 0;
+        const newLastId = result.messages?.length ? Number(result.messages[result.messages.length - 1].id) : 0;
+        if (newLastId > lastId) {
+            adminChatState.messages = result.messages || [];
+            renderAdminChatMessages();
+        }
+    } catch { /* non-fatal */ }
+}
+
+async function openAdminChat(orderId) {
+    const modalEl = document.getElementById("adminChatModal");
+    const container = document.getElementById("adminChatMessages");
+    const meta = document.getElementById("adminChatMeta");
+    const title = document.getElementById("adminChatModalTitle");
+    const input = document.getElementById("adminChatInput");
+    const alertEl = document.getElementById("adminChatAlert");
+    if (!modalEl) return;
+    adminChatState.orderId = orderId;
+    adminChatState.messages = [];
+    if (title) title.textContent = `Chat - ${orderId}`;
+    if (meta) meta.textContent = "";
+    if (alertEl) {
+        alertEl.textContent = "";
+        alertEl.classList.add("d-none");
+    }
+    if (input) input.value = "";
+    if (container) container.innerHTML = `<p class="text-secondary small text-center py-3 mb-0">Loading chat...</p>`;
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+    try {
+        const result = await adminRequest({ action: "admin-chat-messages", orderId });
+        adminChatState.messages = result.messages || [];
+        if (meta) meta.textContent = (result.sellers || []).join(", ");
+        renderAdminChatMessages();
+    } catch (error) {
+        if (container) container.innerHTML = `<p class="text-danger small text-center py-3 mb-0">${escapeHtml(error.message || "Could not load chat.")}</p>`;
+    } finally {
+        stopAdminChatPolling();
+        refreshAdminChat().catch(() => {});
+        adminChatState.timer = window.setInterval(() => {
+            if (!document.hidden) refreshAdminChat().catch(() => {});
+        }, 10000);
+    }
+}
+
+async function submitAdminChat(event) {
+    event.preventDefault();
+    const input = document.getElementById("adminChatInput");
+    const alertEl = document.getElementById("adminChatAlert");
+    const message = String(input?.value || "").trim();
+    if (!adminChatState.orderId || !message || adminChatState.sending) return;
+    adminChatState.sending = true;
+    if (input) input.disabled = true;
+    if (alertEl) {
+        alertEl.textContent = "";
+        alertEl.classList.add("d-none");
+    }
+    try {
+        const result = await adminRequest({ action: "admin-chat-send", orderId: adminChatState.orderId, message });
+        adminChatState.messages.push(result.message);
+        if (input) input.value = "";
+        renderAdminChatMessages();
+    } catch (error) {
+        if (alertEl) {
+            alertEl.textContent = error.message || "Could not send the message.";
+            alertEl.classList.remove("d-none");
+        }
+} finally {
+        adminChatState.sending = false;
+        if (input) input.disabled = false;
+    }
+}
+
+async function compressChatImage(file) {
+    const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Could not read image"));
+        reader.readAsDataURL(file);
+    });
+    const image = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("Could not read image"));
+        img.src = dataUrl;
+    });
+    const MAX_DIMENSION = 1000;
+    let { width, height } = image;
+    const scale = Math.min(1, MAX_DIMENSION / Math.max(width, height));
+    width = Math.max(1, Math.round(width * scale));
+    height = Math.max(1, Math.round(height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Could not read image");
+    context.drawImage(image, 0, 0, width, height);
+    let quality = 0.72;
+    let base64 = canvas.toDataURL("image/jpeg", quality).split(",")[1] || "";
+    while (base64.length > 800_000 && quality > 0.35) {
+        quality -= 0.08;
+        base64 = canvas.toDataURL("image/jpeg", quality).split(",")[1] || "";
+    }
+    return base64;
+}
+
+async function submitAdminChatPhoto(file) {
+    const input = document.getElementById("adminChatInput");
+    const alertEl = document.getElementById("adminChatAlert");
+    const photoButton = document.querySelector("[data-admin-chat-photo]");
+    if (!adminChatState.orderId || !file || adminChatState.sending) return;
+    const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+    if (!allowedTypes.has(file.type) || file.size > 4 * 1024 * 1024) {
+        if (alertEl) {
+            alertEl.textContent = "Choose a PNG, JPG, or WebP image up to 4 MB.";
+            alertEl.classList.remove("d-none");
+        }
+        return;
+    }
+    adminChatState.sending = true;
+    if (input) input.disabled = true;
+    if (photoButton) photoButton.disabled = true;
+    if (alertEl) {
+        alertEl.textContent = "";
+        alertEl.classList.add("d-none");
+    }
+    try {
+        const base64 = await compressChatImage(file);
+        const result = await adminRequest({ action: "admin-chat-upload-image", orderId: adminChatState.orderId, base64 });
+        adminChatState.messages.push(result.message);
+        renderAdminChatMessages();
+    } catch (error) {
+        if (alertEl) {
+            alertEl.textContent = error.message || "Could not send the photo.";
+            alertEl.classList.remove("d-none");
+        }
+    } finally {
+        adminChatState.sending = false;
+        if (input) input.disabled = false;
+        if (photoButton) photoButton.disabled = false;
+    }
+}
+
+async function loadAdminChatUnread() {
+    const result = await adminRequest({ action: "admin-chat-unread" });
+    document.querySelectorAll("[data-admin-chat-badge]").forEach((el) => {
+        const count = Number((result.byOrder || {})[el.dataset.adminChatBadge] || 0);
+        el.textContent = String(count);
+        el.classList.toggle("d-none", count === 0);
+    });
 }
 
 async function updateAdminOrderStatus(orderId) {
@@ -2843,6 +3138,10 @@ async function quickUpdateAdminOrder(orderId, action) {
     state.orders = state.orders.map((order) => (order.id === result.order.id ? result.order : order));
     renderAdminOrders();
     showToast("Order updated");
+}
+
+async function deleteAdminSellerDeliveries(orderId) {
+    return adminRequest({ action: "admin-delete-seller-deliveries", orderId });
 }
 
 async function saveAdminOrderDelivery(orderId) {
@@ -2996,7 +3295,7 @@ function fillMarketplaceForm() {
     const imageEl = document.getElementById("marketplaceProductImage");
     const photoFileEl = document.getElementById("marketplaceProductPhotoFile");
     const descEl = document.getElementById("marketplaceProductDescription");
-    const visibleEl = document.getElementById("marketplaceProductVisible");
+const visibleEl = document.getElementById("marketplaceProductVisible");
     const inStockEl = document.getElementById("marketplaceProductInStock");
     const customerInputEnabledEl = document.getElementById("marketplaceProductCustomerInputEnabled");
 
@@ -3005,8 +3304,18 @@ function fillMarketplaceForm() {
     if (soldByEl) soldByEl.value = product?.soldBy || "";
     if (shortDescEl) shortDescEl.value = product?.shortDescription || "";
     if (priceEl) priceEl.value = Number(product?.price ?? 0);
+    const marketplaceWarrantyDaysEl = document.getElementById("marketplaceProductWarrantyDays");
+    if (marketplaceWarrantyDaysEl) marketplaceWarrantyDaysEl.value = Number(product?.warrantyDays || 0) || "";
     if (imageEl) imageEl.value = product?.image || "assets/hyperlogo.png";
     if (photoFileEl) photoFileEl.value = "";
+    const extraImages = Array.isArray(product?.images) && product.images.length ? product.images : [];
+    [2, 3, 4].forEach((index) => {
+        const field = document.getElementById(`marketplaceProductImage${index}`);
+        if (field) field.value = extraImages[index - 1] || "";
+        const fileField = document.getElementById(`marketplaceProductPhotoFile${index}`);
+        if (fileField) fileField.value = "";
+    });
+    updateMarketplaceImagePreview();
     if (descEl) descEl.value = product?.description || "";
     if (visibleEl) visibleEl.checked = product?.visible !== false;
     if (inStockEl) inStockEl.checked = product?.inStock !== false;
@@ -3163,6 +3472,10 @@ function readMarketplaceFormProduct() {
     const shortDescription = document.getElementById("marketplaceProductShortDesc").value.trim();
     const price = Number(document.getElementById("marketplaceProductPrice").value || 0);
     const image = document.getElementById("marketplaceProductImage").value.trim();
+    const extraImages = [2, 3, 4]
+        .map((n) => document.getElementById(`marketplaceProductImage${n}`)?.value.trim() || "")
+        .filter(Boolean);
+    const imagesList = image ? [image, ...extraImages] : extraImages;
     const description = document.getElementById("marketplaceProductDescription").value.trim();
     const visible = document.getElementById("marketplaceProductVisible").checked;
     const inStock = document.getElementById("marketplaceProductInStock")?.checked !== false;
@@ -3172,15 +3485,21 @@ function readMarketplaceFormProduct() {
     if (!id) throw new Error("Product ID is required");
     if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error("Product ID must use lowercase letters, numbers, and hyphens");
     if (!name) throw new Error("Product name is required");
-    if (!Number.isFinite(price) || price < 0) throw new Error("Price must be zero or more");
+if (!Number.isFinite(price) || price < 0) throw new Error("Price must be zero or more");
     if (id !== marketplaceState.originalId && getMarketplaceProducts()[id]) throw new Error("Product ID already exists");
+    const warrantyDays = Math.floor(Number(document.getElementById("marketplaceProductWarrantyDays")?.value || 0));
+    if (!Number.isFinite(warrantyDays) || warrantyDays < 0) throw new Error("Warranty must be zero or more");
 
     const product = { name, price };
+    if (warrantyDays > 0) product.warrantyDays = Math.min(3650, warrantyDays);
     if (getSelectedMarketplaceProduct()?.sellerId) product.sellerId = getSelectedMarketplaceProduct().sellerId;
     if (soldBy) product.soldBy = soldBy;
     if (shortDescription) product.shortDescription = shortDescription;
     if (image) product.image = image;
+    else if (extraImages.length) product.image = extraImages[0];
     else if (!marketplaceState.originalId) product.image = "assets/hyperlogo.png";
+    if (imagesList.length > 1) product.images = imagesList;
+    else delete product.images;
     if (description) product.description = description;
     if (!visible) product.visible = false;
     if (!inStock) product.inStock = false;
@@ -3301,25 +3620,53 @@ function toggleMarketplaceProductVisibility(id) {
 function updateMarketplaceImagePreview() {
     const container = document.getElementById("marketplaceAdminImagePreview");
     const img = document.getElementById("marketplaceAdminImagePreviewImg");
-    if (!container || !img) return;
-    const pathInput = document.getElementById("marketplaceProductImage");
-    const path = pathInput?.value?.trim() || "";
-    const blobUrl = marketplaceState.previewImages[path];
-    if (blobUrl) {
-        img.src = blobUrl;
-        container.style.display = "";
-    } else if (path) {
-        img.src = path;
-        container.style.display = "";
-    } else {
-        container.style.display = "none";
+    if (container && img) {
+        const pathInput = document.getElementById("marketplaceProductImage");
+        const path = pathInput?.value?.trim() || "";
+        const blobUrl = marketplaceState.previewImages[path];
+        if (blobUrl) {
+            img.src = blobUrl;
+            container.style.display = "";
+        } else if (path) {
+            img.src = path;
+            container.style.display = "";
+        } else {
+            container.style.display = "none";
+        }
     }
+    [1, 2, 3, 4].forEach((n) => {
+        const zone = document.querySelector(`[data-upload-zone="${n}"]`);
+        if (!zone) return;
+        const path = document.getElementById(`marketplaceProductImage${n === 1 ? "" : n}`)?.value?.trim() || "";
+        const preview = zone.querySelector(".admin-upload-zone-preview");
+        const blobUrl = marketplaceState.previewImages[path];
+        if (preview) {
+            if (blobUrl) {
+                preview.src = blobUrl;
+                preview.classList.remove("d-none");
+            } else {
+                preview.classList.add("d-none");
+            }
+        }
+    });
+    const strip = document.getElementById("marketplaceImagesStrip");
+    if (!strip) return;
+    const paths = [1, 2, 3, 4]
+        .map((n) => document.getElementById(`marketplaceProductImage${n === 1 ? "" : n}`)?.value?.trim() || "")
+        .filter(Boolean);
+    strip.innerHTML = paths
+        .map((path) => {
+            const blobUrl = marketplaceState.previewImages[path];
+            const src = blobUrl || path;
+            return `<img class="admin-image-strip-thumb img-thumbnail" src="${src}" alt="Product photo" style="height: 70px; width: 70px; object-fit: cover;" />`;
+        })
+        .join("");
 }
 
-function handleMarketplacePhotoFile(file) {
+function handleMarketplacePhotoFile(file, targetId) {
     if (!file) return;
     const path = `assets/${safeAssetFileName(file.name)}`;
-    const input = document.getElementById("marketplaceProductImage");
+    const input = document.getElementById(targetId || "marketplaceProductImage");
     if (input) input.value = path;
     if (marketplaceState.previewImages[path]) URL.revokeObjectURL(marketplaceState.previewImages[path]);
     marketplaceState.previewImages[path] = URL.createObjectURL(file);
@@ -3698,7 +4045,27 @@ function bindEvents() {
             return;
         }
 
-        const deleteButton = event.target.closest("[data-delete-order]");
+        const chatButton = event.target.closest("[data-admin-chat]");
+        if (chatButton) {
+            openAdminChat(chatButton.dataset.adminChat).catch((error) => showToast(error.message || "Could not open chat"));
+            return;
+        }
+
+        const deleteSellerDeliveriesButton = event.target.closest("[data-admin-delete-seller-deliveries]");
+        if (deleteSellerDeliveriesButton) {
+            const orderId = deleteSellerDeliveriesButton.dataset.adminDeleteSellerDeliveries;
+            if (!orderId) return;
+            if (!window.confirm("Delete seller delivery items for " + orderId + "? The seller will be able to resend them.")) return;
+            deleteAdminSellerDeliveries(orderId)
+                .then((result) => {
+                    showToast("Deleted " + (result.deleted || 0) + " delivery item(s)");
+                    loadAdminOrders().catch((error) => showToast(error.message || "Could not refresh orders"));
+                })
+                .catch((error) => showToast(error.message || "Could not delete seller deliveries"));
+            return;
+        }
+
+const deleteButton = event.target.closest("[data-delete-order]");
         if (deleteButton) {
             const orderId = deleteButton.dataset.deleteOrder;
             if (!orderId) return;
@@ -3710,6 +4077,24 @@ function bindEvents() {
                     showToast("Order deleted");
                 })
                 .catch((error) => showToast(error.message || "Could not delete order"));
+            return;
+        }
+
+        const resolveDisputeButton = event.target.closest("[data-admin-resolve-dispute]");
+        if (resolveDisputeButton) {
+            const orderId = resolveDisputeButton.dataset.adminResolveDispute;
+            if (!orderId) return;
+            if (!window.confirm(`Resolve the dispute on ${orderId}? Payouts linked to this order will be unlocked.`)) return;
+            adminRequest({ action: "admin-resolve-dispute", orderId })
+                .then((result) => {
+                    if (result.order) {
+                        const index = state.orders.findIndex((o) => o.id === orderId);
+                        if (index >= 0) state.orders[index] = result.order;
+                    }
+                    renderAdminOrders();
+                    showToast("Dispute resolved");
+                })
+                .catch((error) => showToast(error.message || "Could not resolve dispute"));
             return;
         }
     });
@@ -3929,6 +4314,73 @@ function bindEvents() {
         setMarketplaceUnsaved(true);
     });
     document.getElementById("marketplaceProductPhotoFile")?.addEventListener("change", (event) => handleMarketplacePhotoFile(event.target.files[0]));
+    document.addEventListener("click", (event) => {
+        const zone = event.target.closest("[data-upload-zone]");
+        if (!zone) return;
+        const input = zone.querySelector("input[type='file']");
+        if (!input || event.target === input) return;
+        input.click();
+    });
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const zone = event.target.closest("[data-upload-zone]");
+        if (!zone) return;
+        event.preventDefault();
+        const input = zone.querySelector("input[type='file']");
+        if (input) input.click();
+    });
+    document.addEventListener("dragover", (event) => {
+        const zone = event.target.closest("[data-upload-zone]");
+        if (zone) {
+            event.preventDefault();
+            zone.classList.add("dragging");
+        }
+    });
+    document.addEventListener("dragleave", (event) => {
+        const zone = event.target.closest("[data-upload-zone]");
+        if (zone) zone.classList.remove("dragging");
+    });
+    document.addEventListener("drop", (event) => {
+        const zone = event.target.closest("[data-upload-zone]");
+        if (!zone) return;
+        event.preventDefault();
+        zone.classList.remove("dragging");
+        const file = event.dataTransfer?.files?.[0];
+        const input = zone.querySelector("input[type='file']");
+        if (!file || !input) return;
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        input.files = transfer.files;
+        input.dispatchEvent(new Event("change"));
+    });
+    [2, 3, 4].forEach((index) => {
+        document.getElementById(`marketplaceProductImage${index}`)?.addEventListener("input", () => {
+            updateMarketplaceImagePreview();
+            renderMarketplacePreview();
+            setMarketplaceUnsaved(true);
+        });
+        document.getElementById(`marketplaceProductPhotoFile${index}`)?.addEventListener("change", (event) => handleMarketplacePhotoFile(event.target.files[0], `marketplaceProductImage${index}`));
+    });
+    document.addEventListener("click", (event) => {
+        const uploadButton = event.target.closest("[data-mp-upload-button]");
+        if (!uploadButton) return;
+        const index = uploadButton.getAttribute("data-mp-upload-button");
+        const fileInput = document.getElementById(`marketplaceProductPhotoFile${index}`);
+        const file = fileInput?.files?.[0];
+        if (!file) {
+            showToast("Select a photo file first.");
+            return;
+        }
+        uploadToGitHub(file)
+            .then((result) => {
+                document.getElementById(`marketplaceProductImage${index}`).value = result.path;
+                updateMarketplaceImagePreview();
+                renderMarketplacePreview();
+                setMarketplaceUnsaved(true);
+                showToast(`Uploaded to ${result.path}`);
+            })
+            .catch((error) => showToast(error.message || "Upload failed"));
+    });
     document.getElementById("marketplaceUploadToGitHubButton")?.addEventListener("click", async () => {
         const fileInput = document.getElementById("marketplaceProductPhotoFile");
         const file = fileInput?.files?.[0];
@@ -4043,16 +4495,19 @@ function bindEvents() {
         const password = document.getElementById("sellerPassword").value;
         const platformFeePercent = Number(document.getElementById("sellerPlatformFee").value) || 0;
         const minWithdrawal = Number(document.getElementById("sellerMinWithdrawal").value) || 0;
+        const storeName = document.getElementById("sellerStoreName").value.trim();
+        const verified = document.getElementById("sellerVerified").checked;
+        const notes = document.getElementById("sellerNotes").value.trim();
         if (!name || !phone) { showToast("Name and phone are required."); return; }
         const form = document.getElementById("addSellerForm");
         const editSellerId = form?.dataset.editSellerId;
         try {
             if (editSellerId) {
-                await updateAdminSellerFn(editSellerId, { name, displayName, phone, platformFeePercent, minWithdrawal });
+                await updateAdminSellerFn(editSellerId, { name, displayName, phone, platformFeePercent, minWithdrawal, storeName, verified, notes });
                 showToast(`Updated seller: ${editSellerId}`);
             } else {
                 if (!password || password.length < 4) { showToast("Password must be at least 4 characters"); return; }
-                await adminRequest({ action: "admin-create-seller", name, displayName, phone, password, platformFeePercent, minWithdrawal });
+                await adminRequest({ action: "admin-create-seller", name, displayName, phone, password, platformFeePercent, minWithdrawal, storeName, verified, notes });
                 showToast("Seller created");
             }
             resetSellerForm();
@@ -4064,9 +4519,11 @@ function bindEvents() {
 
     /* Seller list actions */
     document.getElementById("adminSellersList")?.addEventListener("click", async (event) => {
-        const toggleBtn = event.target.closest("[data-toggle-seller]");
+const toggleBtn = event.target.closest("[data-toggle-seller]");
         if (toggleBtn) {
             const sellerId = toggleBtn.dataset.toggleSeller;
+            const blocking = toggleBtn.textContent.trim().toLowerCase().startsWith("block");
+            if (blocking && !window.confirm("Block this seller? Their sessions will be ended and they will be unable to log in, chat, or manage orders.")) return;
             try {
                 await adminRequest({ action: "admin-toggle-seller", sellerId });
                 await loadAdminSellers();
@@ -4104,10 +4561,13 @@ function bindEvents() {
             const cells = row ? row.querySelectorAll("td") : [];
             const name = cells[2]?.textContent?.trim() || "";
             const displayName = cells[3]?.textContent?.trim() || "";
-            const phone = cells[4]?.textContent?.trim() || "";
-            const fee = parseFloat(cells[5]?.textContent) || 10;
+            const phone = cells[5]?.textContent?.trim() || "";
+            const fee = parseFloat(cells[6]?.textContent) || 10;
             const minWithdrawal = parseFloat(row?.dataset.minWithdrawal) || 10;
-            populateEditSellerForm(sellerId, name, displayName, phone, fee, minWithdrawal);
+            const storeName = row?.dataset.storeName || "";
+            const verified = row?.dataset.verified === "1";
+            const notes = row?.dataset.notes || "";
+            populateEditSellerForm(sellerId, name, displayName, phone, fee, minWithdrawal, storeName, verified, notes);
             document.getElementById("addSellerForm").scrollIntoView({ behavior: "smooth", block: "start" });
             return;
         }
@@ -4119,7 +4579,164 @@ function bindEvents() {
         }
     });
 
+    document.getElementById("adminChatModal")?.addEventListener("hidden.bs.modal", () => {
+        stopAdminChatPolling();
+        adminChatState.orderId = "";
+        adminChatState.messages = [];
+        adminChatState.sending = false;
+    });
+
+    document.getElementById("adminChatForm")?.addEventListener("submit", submitAdminChat);
+
+    document.getElementById("adminChatForm")?.addEventListener("click", (event) => {
+        const photoButton = event.target.closest("[data-admin-chat-photo]");
+        if (!photoButton) return;
+        document.getElementById("adminChatPhoto")?.click();
+    });
+
+    document.getElementById("adminChatPhoto")?.addEventListener("change", (event) => {
+        const file = event.target.files?.[0] || null;
+        submitAdminChatPhoto(file);
+        event.target.value = "";
+    });
+
+    window.addEventListener("beforeunload", stopAdminChatPolling);
 }
+
+function loadAdminPublicProducts() {
+    const tbody = document.getElementById("adminPublicProductsList");
+    if (tbody) tbody.innerHTML = `<tr><td colspan="10" class="text-center text-secondary py-4">Loading public products...</td></tr>`;
+    adminRequest({ action: "admin-list-public-products" })
+        .then((result) => {
+            const products = result.products || [];
+            if (!tbody) return;
+            if (!products.length) {
+                tbody.innerHTML = `<tr><td colspan="10" class="text-center text-secondary py-4">No public products yet.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = products
+                .map(
+                    (product) => `
+                        <tr>
+                            <td>${escapeHtml(product.name)}${product.approved ? "" : " <span class=\"badge text-bg-warning\">Pending</span>"}</td>
+                            <td>${formatPlainTndAmount(product.price)}</td>
+                            <td>${Number(product.stock) || 0}</td>
+                            <td>${Number(product.warrantyDays) || 0}</td>
+                            <td>${escapeHtml(product.category || "-")}</td>
+                            <td>${escapeHtml(product.sellerPhone || "-")}</td>
+                            <td>${Number(product.soldCount) || 0}</td>
+                            <td>${Number(product.deliveredCount) || 0}</td>
+                            <td>${product.approved ? `<span class="badge text-bg-success">Live</span>` : `<span class="badge text-bg-warning">Pending</span>`}</td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-sm ${product.approved ? "btn-outline-danger" : "btn-outline-success"}" data-admin-public-approve="${escapeHtml(product.id)}" data-approve="${product.approved ? "0" : "1"}">${product.approved ? "Unpublish" : "Approve"}</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" data-admin-public-delete="${escapeHtml(product.id)}">Delete</button>
+                            </td>
+                        </tr>
+                    `,
+                )
+                .join("");
+        })
+        .catch((error) => {
+            if (tbody) tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-4">${escapeHtml(error.message || "Could not load public products")}</td></tr>`;
+        });
+}
+
+async function setAdminPublicProduct(productId, approve) {
+    try {
+        await adminRequest({ action: "admin-set-public-product", productId, approved: approve });
+        loadAdminPublicProducts();
+    } catch (error) {
+        alert(error.message || "Could not update the product");
+    }
+}
+
+async function deleteAdminPublicProduct(productId) {
+    if (!confirm("Delete this public product permanently?")) return;
+    try {
+        await adminRequest({ action: "admin-delete-public-product", productId });
+        loadAdminPublicProducts();
+    } catch (error) {
+        alert(error.message || "Could not delete the product");
+    }
+}
+
+function loadAdminPublicPayouts() {
+    const tbody = document.getElementById("adminPublicPayoutsList");
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="text-center text-secondary py-4">Loading payout requests...</td></tr>`;
+    adminRequest({ action: "admin-list-public-payouts" })
+        .then((result) => {
+            const payouts = result.payouts || [];
+            if (!tbody) return;
+            if (!payouts.length) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center text-secondary py-4">No payout requests yet.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = payouts
+                .map(
+                    (payout) => `
+                        <tr>
+                            <td>${escapeHtml(payout.orderId)}</td>
+                            <td>${escapeHtml(payout.sellerPhone || "-")}</td>
+                            <td>${escapeHtml(payout.d17Number || "-")}</td>
+                            <td>${formatPlainTndAmount(payout.amount)}</td>
+                            <td>${
+                                payout.status === "approved"
+                                    ? `<span class="badge text-bg-success">Approved</span>`
+                                    : payout.status === "rejected"
+                                    ? `<span class="badge text-bg-danger">Rejected</span>`
+                                    : `<span class="badge text-bg-warning">Pending</span>`
+                            }</td>
+                            <td class="text-end">
+                                ${payout.status === "pending"
+                                    ? `<button type="button" class="btn btn-sm btn-outline-success" data-admin-payout-set="${escapeHtml(payout.orderId)}" data-payout-status="approved"><i class="bi bi-telegram me-1"></i>Approve & notify</button>
+                                       <button type="button" class="btn btn-sm btn-outline-danger" data-admin-payout-set="${escapeHtml(payout.orderId)}" data-payout-status="rejected"><i class="bi bi-telegram me-1"></i>Reject & notify</button>`
+                                    : `<button type="button" class="btn btn-sm btn-outline-secondary" data-admin-payout-set="${escapeHtml(payout.orderId)}" data-payout-status="pending">Reopen</button>`}
+                            </td>
+                        </tr>
+                    `,
+                )
+                .join("");
+        })
+        .catch((error) => {
+            if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">${escapeHtml(error.message || "Could not load payout requests")}</td></tr>`;
+        });
+}
+
+async function setAdminPublicPayout(orderId, status) {
+    try {
+        await adminRequest({ action: "admin-update-public-payout", orderId, status });
+        loadAdminPublicPayouts();
+    } catch (error) {
+        alert(error.message || "Could not update the payout request");
+    }
+}
+
+document.addEventListener("click", function (event) {
+    const approveButton = event.target.closest("[data-admin-public-approve]");
+    if (approveButton) {
+        setAdminPublicProduct(approveButton.getAttribute("data-admin-public-approve"), approveButton.getAttribute("data-approve") === "1");
+        return;
+    }
+    const deleteButton = event.target.closest("[data-admin-public-delete]");
+    if (deleteButton) {
+        deleteAdminPublicProduct(deleteButton.getAttribute("data-admin-public-delete"));
+        return;
+    }
+    const payoutButton = event.target.closest("[data-admin-payout-set]");
+    if (payoutButton) {
+        setAdminPublicPayout(payoutButton.getAttribute("data-admin-payout-set"), payoutButton.getAttribute("data-payout-status"));
+    }
+});
+
+document.addEventListener("click", function (event) {
+    if (event.target.closest("#loadPublicProductsButton")) {
+        loadAdminPublicProducts();
+        loadAdminPublicPayouts();
+    }
+    if (event.target.closest("#loadAdminPublicPayoutsButton")) {
+        loadAdminPublicPayouts();
+    }
+});
 
 bindEvents();
 
@@ -4127,6 +4744,7 @@ function initAdminPanel() {
     loadDatabase();
     loadSettings();
     loadAdminPayouts();
+    loadAdminPublicProducts();
 }
 
 // start locked; check if already verified this session
@@ -4144,3 +4762,37 @@ function initAdminPanel() {
     }
     showLockScreen();
 })();
+
+function openAdminChatImageLightbox(src) {
+    let overlay = document.getElementById("chatImageOverlay");
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "chatImageOverlay";
+        overlay.className = "chat-image-overlay";
+        overlay.innerHTML = '<button type="button" class="chat-image-close" aria-label="Close">&times;</button><img class="chat-image-full" alt="" />';
+        overlay.addEventListener("click", function (event) {
+            if (event.target === overlay || event.target.classList.contains("chat-image-close")) {
+                closeAdminChatImageLightbox();
+            }
+        });
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") closeAdminChatImageLightbox();
+        });
+        document.body.appendChild(overlay);
+    }
+    overlay.querySelector(".chat-image-full").src = src;
+    overlay.classList.add("chat-image-overlay-open");
+}
+
+function closeAdminChatImageLightbox() {
+    const overlay = document.getElementById("chatImageOverlay");
+    if (overlay) overlay.classList.remove("chat-image-overlay-open");
+}
+
+document.addEventListener("click", function (event) {
+    const link = event.target.closest("[data-chat-lightbox]");
+    if (link) {
+        event.preventDefault();
+        openAdminChatImageLightbox(link.getAttribute("data-chat-lightbox"));
+    }
+});
