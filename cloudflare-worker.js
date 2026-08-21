@@ -1,4 +1,4 @@
-const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
+﻿const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 const MAX_QUANTITY = 99;
 const LOGIN_RATE_LIMIT_WINDOW_MS = 10_000;
 const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 5;
@@ -10,6 +10,8 @@ let orderSchemaReady = false;
 let marketplaceSchemaReady = false;
 let affiliateSchemaReady = false;
 let sellerSchemaReady = false;
+let sellerDeliverySchemaReady = false;
+let chatSchemaReady = false;
 
 const loginAttempts = new Map();
 function checkLoginRateLimit(key) {
@@ -113,6 +115,7 @@ const ICONS = {
     key: "\uD83D\uDD11",
     game: "\uD83C\uDFAE",
     link: "\uD83D\uDD17",
+    gift: "\uD83C\uDF81",
 };
 
 function jsonResponse(body, status = 200, corsHeaders = {}) {
@@ -164,6 +167,11 @@ async function ensureOrderSchema(env) {
         "ALTER TABLE orders ADD COLUMN payment_status_reason TEXT",
         "ALTER TABLE orders ADD COLUMN delivery_status_reason TEXT",
         "ALTER TABLE orders ADD COLUMN updated_at TEXT",
+        "ALTER TABLE orders ADD COLUMN customer_confirmed_at TEXT",
+        "ALTER TABLE orders ADD COLUMN delivered_at TEXT",
+        "ALTER TABLE orders ADD COLUMN disputed INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE orders ADD COLUMN dispute_reported_at TEXT",
+        "ALTER TABLE orders ADD COLUMN auto_completed_at TEXT",
     ];
 
     for (const migration of migrations) {
@@ -176,6 +184,7 @@ async function ensureOrderSchema(env) {
     }
 
     await ensureAffiliateSchema(env);
+    await ensureSellerDeliverySchema(env);
 
     orderSchemaReady = true;
 }
@@ -318,6 +327,9 @@ async function ensureSellerSchema(env) {
         "ALTER TABLE seller_earnings ADD COLUMN paid_at TEXT",
         "ALTER TABLE seller_payouts ADD COLUMN updated_at TEXT",
         "ALTER TABLE sellers ADD COLUMN min_withdrawal REAL",
+        "ALTER TABLE sellers ADD COLUMN store_name TEXT",
+        "ALTER TABLE sellers ADD COLUMN verified INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE sellers ADD COLUMN notes TEXT",
     ];
 
     for (const migration of alterMigrations) {
@@ -332,12 +344,578 @@ async function ensureSellerSchema(env) {
     sellerSchemaReady = true;
 }
 
+let publicSchemaReady = false;
+
+async function ensurePublicSchema(env) {
+    if (publicSchemaReady) return;
+    const db = getOrderDb(env);
+    const migrations = [
+        "CREATE TABLE IF NOT EXISTS public_sellers (id TEXT PRIMARY KEY, phone TEXT NOT NULL UNIQUE, code TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS public_products (id TEXT PRIMARY KEY, seller_id TEXT NOT NULL, name TEXT NOT NULL, price REAL NOT NULL DEFAULT 0, description TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT '', stock INTEGER NOT NULL DEFAULT 0, image TEXT, mime TEXT NOT NULL DEFAULT '', approved INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+        "CREATE INDEX IF NOT EXISTS idx_public_products_seller ON public_products(seller_id)",
+        "CREATE TABLE IF NOT EXISTS public_product_images (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0, image TEXT NOT NULL, mime TEXT NOT NULL, created_at TEXT NOT NULL)",
+        "CREATE INDEX IF NOT EXISTS idx_public_product_images_product ON public_product_images(product_id)",
+        "CREATE TABLE IF NOT EXISTS public_payout_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id TEXT NOT NULL UNIQUE, seller_id TEXT NOT NULL, d17_number TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+        "CREATE INDEX IF NOT EXISTS idx_public_payout_requests_seller ON public_payout_requests(seller_id)",
+    ];
+    for (const migration of migrations) {
+        try {
+            await db.prepare(migration).run();
+        } catch (error) {
+            if (/already exists/i.test(String(error?.message || ""))) continue;
+            throw error;
+        }
+    }
+    try {
+        await db.prepare("ALTER TABLE public_products ADD COLUMN warranty_days INTEGER NOT NULL DEFAULT 0").run();
+    } catch (error) {
+        if (!/duplicate column|already exists/i.test(String(error?.message || ""))) throw error;
+    }
+    publicSchemaReady = true;
+}
+
+function generatePublicCode() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const out = new Array(6);
+    const buf = new Uint8Array(6);
+    crypto.getRandomValues(buf);
+    for (let i = 0; i < 6; i++) out[i] = chars[buf[i] % chars.length];
+    return out.join("");
+}
+
+async function createUniquePublicCode(env) {
+    await ensurePublicSchema(env);
+    const db = getOrderDb(env);
+    for (let attempt = 0; attempt < 10; attempt++) {
+        const code = generatePublicCode();
+        const existing = await db.prepare("SELECT 1 FROM public_sellers WHERE code = ? LIMIT 1").bind(code).first();
+        if (!existing) return code;
+    }
+    throw new Error("Could not generate a unique seller code");
+}
+
+async function createUniquePublicProductId(env) {
+    await ensurePublicSchema(env);
+    const db = getOrderDb(env);
+    for (let attempt = 0; attempt < 10; attempt++) {
+        const id = "CM-" + generatePublicCode();
+        const existing = await db.prepare("SELECT 1 FROM public_products WHERE id = ? LIMIT 1").bind(id).first();
+        if (!existing) return id;
+    }
+    throw new Error("Could not generate a unique product ID");
+}
+
+async function getPublicSellerByCodeAndPhone(env, code, phone) {
+    await ensurePublicSchema(env);
+    const normalizedCode = String(code || "").trim().toUpperCase();
+    const normalizedPhone = String(phone || "").trim();
+    if (!normalizedCode || !normalizedPhone) return null;
+    return getOrderDb(env)
+        .prepare("SELECT id, phone, code, created_at FROM public_sellers WHERE code = ? AND phone = ? LIMIT 1")
+        .bind(normalizedCode, normalizedPhone)
+        .first();
+}
+
+async function publicSellerOwnsOrder(env, sellerId, orderId) {
+    await ensurePublicSchema(env);
+    const row = await getOrderDb(env)
+        .prepare("SELECT 1 FROM order_items oi JOIN public_products p ON p.id = oi.product_id WHERE oi.order_id = ? AND p.seller_id = ? LIMIT 1")
+        .bind(orderId, sellerId)
+        .first();
+    return !!row;
+}
+
+async function readPublicProductsMap(env) {
+    try {
+        await ensurePublicSchema(env);
+    } catch (error) {
+        console.warn("ensurePublicSchema failed in readPublicProductsMap", error);
+        return {};
+    }
+    try {
+        const rows = await getAllResults(getOrderDb(env).prepare("SELECT id, name, price, description, category, stock, approved, active, image, mime, warranty_days FROM public_products WHERE approved = 1 AND active = 1"));
+        const map = {};
+        for (const row of rows) {
+            map[row.id] = {
+                id: row.id,
+                name: row.name,
+                price: Number(row.price),
+                description: row.description || "",
+                category: row.category || "Community",
+                stock: Number(row.stock) || 0,
+                image: row.image || "",
+                mime: row.mime || "",
+                warrantyDays: Number(row.warranty_days) || 0,
+            };
+        }
+        return map;
+    } catch (error) {
+        console.warn("readPublicProductsMap failed", error);
+        return {};
+    }
+}
+
+function parsePublicImagesArray(rawImages) {
+    if (!Array.isArray(rawImages)) return null;
+    if (rawImages.length > 4) return null;
+    const parsed = [];
+    for (const item of rawImages) {
+        const b64 = String(item || "").trim();
+        if (!b64) continue;
+        const detected = parsePublicImageBase64(b64);
+        if (!detected) return null;
+        parsed.push({ image: b64, mime: detected });
+    }
+    return parsed;
+}
+
+async function savePublicProductImages(env, productId, images) {
+    await ensurePublicSchema(env);
+    const db = getOrderDb(env);
+    await db.prepare("DELETE FROM public_product_images WHERE product_id = ?").bind(productId).run();
+    if (!images || !images.length) return;
+    const now = new Date().toISOString();
+    await db.batch(
+        images.map((img, index) =>
+            db
+                .prepare("INSERT INTO public_product_images (product_id, position, image, mime, created_at) VALUES (?, ?, ?, ?, ?)")
+                .bind(productId, index, img.image, img.mime, now),
+        ),
+    );
+}
+
+async function deletePublicProductImages(env, productId) {
+    try {
+        await ensurePublicSchema(env);
+        await getOrderDb(env).prepare("DELETE FROM public_product_images WHERE product_id = ?").bind(productId).run();
+    } catch (error) {
+        console.warn("deletePublicProductImages failed", error);
+    }
+}
+
+async function getPublicProductPositions(env, productIds) {
+    const ids = (productIds || []).filter(Boolean);
+    if (!ids.length) return {};
+    try {
+        await ensurePublicSchema(env);
+        const placeholders = ids.map(() => "?").join(",");
+        const rows = await getAllResults(
+            getOrderDb(env)
+                .prepare("SELECT product_id, position FROM public_product_images WHERE product_id IN (" + placeholders + ") ORDER BY position ASC")
+                .bind(...ids),
+        );
+        const map = {};
+        for (const row of rows || []) {
+            if (!map[row.product_id]) map[row.product_id] = [];
+            map[row.product_id].push(Number(row.position) || 0);
+        }
+        return map;
+    } catch (error) {
+        console.warn("getPublicProductPositions failed", error);
+        return {};
+    }
+}
+
+async function getCommunitySellerPhones(env, items) {
+    const ids = (items || []).map((item) => item.product_id).filter(Boolean);
+    if (!ids.length) return {};
+    try {
+        await ensurePublicSchema(env);
+        const placeholders = ids.map(() => "?").join(",");
+        const rows = await getAllResults(getOrderDb(env)
+            .prepare("SELECT p.id, s.phone FROM public_products p JOIN public_sellers s ON s.id = p.seller_id WHERE p.id IN (" + placeholders + ")")
+            .bind(...ids));
+        const map = {};
+        for (const row of rows) map[row.id] = row.phone;
+        return map;
+    } catch (error) {
+        console.warn("getCommunitySellerPhones failed", error);
+        return {};
+    }
+}
+
+async function consumePublicProductStock(env, order) {
+    const lines = (order?.lines || []).filter((line) => line.productId && line.quantity > 0);
+    if (!lines.length) return;
+    await ensurePublicSchema(env);
+    const db = getOrderDb(env);
+    for (const line of lines) {
+        const product = await db.prepare("SELECT 1 FROM public_products WHERE id = ? AND approved = 1 AND active = 1 LIMIT 1").bind(line.productId).first();
+        if (!product) continue;
+        await db.prepare("UPDATE public_products SET stock = stock - ?, updated_at = ? WHERE id = ?").bind(line.quantity, new Date().toISOString(), line.productId).run();
+    }
+}
+
+async function notifyCommunityDelivery(env, orderId) {
+    if (!env.TELEGRAM_ADMIN_CHAT_ID) return;
+    await ensurePublicSchema(env);
+    const items = await getOrderItems(env, orderId);
+    const communityItems = items.filter((item) => {
+        const id = item.product_id;
+        return id && id.length > 2 && String(id).slice(0, 3) === "CM-";
+    });
+    if (!communityItems.length) return;
+    const phones = await getCommunitySellerPhones(env, communityItems);
+    const lines = communityItems
+        .map((item) => "- " + escapeHtml(item.product_name) + " x" + item.quantity + " = " + Number(item.line_total) + (phones[item.product_id] ? " (seller " + escapeHtml(formatTunisianPhone(phones[item.product_id])) + ")" : ""))
+        .join("\n");
+    await sendTelegramMessage(
+        env,
+        env.TELEGRAM_ADMIN_CHAT_ID,
+        "\uD83C\uDF89 Community sale delivered\n\u2014 " + escapeHtml(orderId) + "\n" + lines + "\nPay the seller(s) off-platform."
+    );
+}
+
+function parsePublicImageBase64(base64) {
+    if (!base64 || base64.length > 1_400_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return null;
+    try {
+        const binary = atob(base64);
+        if (binary.length > 1024 * 1024) return null;
+        const bytes = Array.from(binary.slice(0, 12), (char) => char.charCodeAt(0));
+        if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
+        if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+        if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return "image/webp";
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+
+async function ensureSellerDeliverySchema(env) {
+    if (sellerDeliverySchemaReady) return;
+    const db = getOrderDb(env);
+    try {
+        await db
+            .prepare(
+                `CREATE TABLE IF NOT EXISTS seller_order_deliveries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id TEXT NOT NULL,
+                    seller_name TEXT NOT NULL,
+                    label TEXT NOT NULL DEFAULT '',
+                    value TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL
+                )`,
+            )
+            .run();
+        await db.prepare("CREATE INDEX IF NOT EXISTS idx_seller_order_deliveries_order ON seller_order_deliveries(order_id)").run();
+    } catch (error) {
+        const message = String(error?.message || "");
+        if (!/already exists/i.test(message)) throw error;
+    }
+    sellerDeliverySchemaReady = true;
+}
+
+async function ensureChatSchema(env) {
+    if (chatSchemaReady) return;
+    const db = getOrderDb(env);
+    try {
+        await db.prepare(
+            `CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT NOT NULL,
+                sender_type TEXT NOT NULL,
+                sender_name TEXT NOT NULL DEFAULT '',
+                message TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                customer_read INTEGER NOT NULL DEFAULT 0,
+                seller_read INTEGER NOT NULL DEFAULT 0
+            )`,
+        ).run();
+        await db.prepare("CREATE INDEX IF NOT EXISTS idx_chat_messages_order ON chat_messages(order_id, id)").run();
+        await db.prepare("CREATE INDEX IF NOT EXISTS idx_chat_messages_unread ON chat_messages(sender_type, seller_read)").run();
+    } catch (error) {
+        const message = String(error?.message || "");
+        if (/already exists/i.test(message)) {
+            chatSchemaReady = true;
+            return;
+        }
+        throw error;
+    }
+
+    try {
+        await db.prepare(
+            `CREATE TABLE IF NOT EXISTS chat_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT NOT NULL,
+                mime TEXT NOT NULL,
+                data TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )`,
+        ).run();
+        await db.prepare("CREATE INDEX IF NOT EXISTS idx_chat_images_order ON chat_images(order_id)").run();
+    } catch (error) {
+        const message = String(error?.message || "");
+        if (!/already exists/i.test(message)) throw error;
+    }
+
+    const alterMigrations = [
+        "ALTER TABLE chat_messages ADD COLUMN message_type TEXT NOT NULL DEFAULT 'text'",
+        "ALTER TABLE chat_messages ADD COLUMN image_url TEXT",
+    ];
+    for (const migration of alterMigrations) {
+        try {
+            await db.prepare(migration).run();
+        } catch (error) {
+            const message = String(error?.message || "");
+            if (!/duplicate column|already exists/i.test(message)) throw error;
+        }
+    }
+
+    chatSchemaReady = true;
+}
+
+const chatSendTimes = new Map();
+const CHAT_SEND_MIN_INTERVAL_MS = 3000;
+const CHAT_MESSAGE_MAX_LENGTH = 1000;
+function checkChatRateLimit(key) {
+    const now = Date.now();
+    const lastSend = chatSendTimes.get(key) || 0;
+    if (now - lastSend < CHAT_SEND_MIN_INTERVAL_MS) return false;
+    chatSendTimes.set(key, now);
+    return true;
+}
+
+const adminReportSendTimes = new Map();
+const ADMIN_REPORT_MIN_INTERVAL_MS = 60000;
+function checkAdminReportRateLimit(key) {
+    const now = Date.now();
+    const lastSend = adminReportSendTimes.get(key) || 0;
+    if (now - lastSend < ADMIN_REPORT_MIN_INTERVAL_MS) return false;
+    adminReportSendTimes.set(key, now);
+    return true;
+}
+
+async function getOrderChatSellers(env, orderId) {
+    const items = await getOrderItems(env, orderId);
+    const sellers = [];
+    for (const item of items) {
+        const soldBy = String(item.sold_by || "").trim();
+        if (soldBy && !sellers.includes(soldBy)) sellers.push(soldBy);
+    }
+    return sellers;
+}
+
+async function getChatMessages(env, orderId) {
+    return getAllResults(
+        getOrderDb(env)
+            .prepare("SELECT id, order_id, sender_type, sender_name, message, message_type, image_url, created_at FROM chat_messages WHERE order_id = ? ORDER BY id ASC LIMIT 500")
+            .bind(orderId),
+    );
+}
+
+function formatChatMessages(messages) {
+    return (messages || []).map((message) => ({
+        id: Number(message.id),
+        orderId: message.order_id,
+        senderType: message.sender_type,
+        senderName: message.sender_type === "customer" ? "" : message.sender_name || "",
+        message: message.message,
+        messageType: message.message_type || "text",
+        imageUrl: message.image_url || "",
+        createdAt: message.created_at,
+    }));
+}
+
+function parseChatImageBase64(base64) {
+    if (!base64 || base64.length > 1_400_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return null;
+    try {
+        const binary = atob(base64);
+        if (binary.length > 1024 * 1024) return null;
+        const bytes = Array.from(binary.slice(0, 12), (char) => char.charCodeAt(0));
+        if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "png";
+        if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpg";
+        if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return "webp";
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+async function uploadChatImage(env, origin, orderId, base64) {
+    const extension = parseChatImageBase64(base64);
+    if (!extension) throw new Error("Invalid image or image is larger than 4 MB");
+    const mime = extension === "jpg" ? "image/jpeg" : "image/" + extension;
+    const now = new Date().toISOString();
+    const db = getOrderDb(env);
+    const insert = await db
+        .prepare("INSERT INTO chat_images (order_id, mime, data, created_at) VALUES (?, ?, ?, ?)")
+        .bind(String(orderId), mime, base64, now)
+        .run();
+    if (!insert?.success) {
+        console.error("[chat] image insert failed:", insert?.error || "unknown");
+        throw new Error("Could not store the image.");
+    }
+    return `${origin}/api/chat-image?id=${insert.meta.last_row_id}`;
+}
+
+async function handlePublicProductImage(request, env, corsHeaders) {
+    const params = new URL(request.url).searchParams;
+    const id = String(params.get("id") || "").trim();
+    if (!id) {
+        return jsonResponse({ error: "Missing product ID" }, 400, corsHeaders);
+    }
+    const pos = Number(params.get("pos") || "0");
+    try {
+        await ensurePublicSchema(env);
+    } catch (error) {
+        console.warn("ensurePublicSchema failed in handlePublicProductImage", error);
+        return jsonResponse({ error: "Not found" }, 404, corsHeaders);
+    }
+    let row = null;
+    if (Number.isInteger(pos) && pos >= 0) {
+        row = await getOrderDb(env).prepare("SELECT image, mime FROM public_product_images WHERE product_id = ? AND position = ?").bind(id, pos).first();
+    }
+    if (!row && pos === 0) {
+        row = await getOrderDb(env).prepare("SELECT image, mime FROM public_products WHERE id = ?").bind(id).first();
+    }
+    if (!row?.image) {
+        return jsonResponse({ error: "Not found" }, 404, corsHeaders);
+    }
+    try {
+        const bytes = Uint8Array.from(atob(row.image), (char) => char.charCodeAt(0));
+        return new Response(bytes, {
+            status: 200,
+            headers: {
+                "Content-Type": row.mime || "image/jpeg",
+                "Cache-Control": "public, max-age=86400",
+                ...corsHeaders,
+            },
+        });
+    } catch (error) {
+        return jsonResponse({ error: "Invalid image data" }, 500, corsHeaders);
+    }
+}
+
+async function handleChatImageGet(request, env, corsHeaders) {
+    const id = Number(new URL(request.url).searchParams.get("id"));
+    if (!Number.isInteger(id) || id < 1) {
+        return jsonResponse({ error: "Invalid image ID" }, 400, corsHeaders);
+    }
+    const row = await getOrderDb(env).prepare("SELECT mime, data FROM chat_images WHERE id = ?").bind(id).first();
+    if (!row) {
+        return jsonResponse({ error: "Image not found" }, 404, corsHeaders);
+    }
+    try {
+        const bytes = Uint8Array.from(atob(row.data), (char) => char.charCodeAt(0));
+        return new Response(bytes, {
+            status: 200,
+            headers: {
+                "Content-Type": row.mime,
+                "Cache-Control": "public, max-age=86400",
+                "Access-Control-Allow-Origin": "*",
+            },
+        });
+    } catch {
+        return jsonResponse({ error: "Image data is corrupted" }, 500, corsHeaders);
+    }
+}
+
+async function insertChatImageMessage(env, orderId, senderType, senderName, imageUrl) {
+    const now = new Date().toISOString();
+    const insert = await getOrderDb(env)
+        .prepare("INSERT INTO chat_messages (order_id, sender_type, sender_name, message, message_type, image_url, created_at) VALUES (?, ?, ?, '', 'image', ?, ?)")
+        .bind(orderId, senderType, senderName, imageUrl, now)
+        .run();
+    if (!insert?.success) {
+        console.error("[chat] image message insert failed:", insert?.error || "unknown");
+        throw new Error("Could not send the image.");
+    }
+    return { id: insert.meta.last_row_id, orderId, senderType, senderName, message: "", messageType: "image", imageUrl, createdAt: now };
+}
+
+async function handleCustomerChat(body, request, env, corsHeaders) {
+    await ensureOrderSchema(env);
+    await ensureChatSchema(env);
+
+    const origin = new URL(request.url).origin;
+    const action = body.action;
+    const orderId = normalizeOrderId(body.orderId);
+    if (!ORDER_ID_REGEX.test(orderId)) {
+        return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+    }
+
+    const record = await getOrderByIdAndPhone(env, orderId, body.customerPhone);
+    if (!record) {
+        return jsonResponse({ error: "Order was not found. Check the order ID and WhatsApp number." }, 404, corsHeaders);
+    }
+
+    if (record.payment_status !== "verified") {
+        return jsonResponse({ error: "Chat is available after payment verification." }, 403, corsHeaders);
+    }
+
+    const sellers = await getOrderChatSellers(env, orderId);
+    const chatAvailable = sellers.length > 0;
+
+    if (action === "chat-messages") {
+        if (!chatAvailable) {
+            return jsonResponse({ ok: true, chatAvailable: false, sellers: [], messages: [] }, 200, corsHeaders);
+        }
+        const db = getOrderDb(env);
+        const [messages, markResult] = await Promise.all([
+            getChatMessages(env, orderId),
+            db.prepare("UPDATE chat_messages SET customer_read = 1 WHERE order_id = ? AND sender_type = 'seller'").bind(orderId).run(),
+        ]);
+        if (markResult?.error) console.error("[chat] mark customer read failed:", markResult.error);
+        return jsonResponse({ ok: true, chatAvailable: true, sellers, messages: formatChatMessages(messages) }, 200, corsHeaders);
+    }
+
+    if (action === "chat-upload-image") {
+        if (!chatAvailable) {
+            return jsonResponse({ error: "Chat is not available for this order." }, 400, corsHeaders);
+        }
+        if (!checkChatRateLimit("chat-customer-" + orderId)) {
+            return jsonResponse({ error: "You are sending messages too quickly." }, 429, corsHeaders);
+        }
+        try {
+            const imageUrl = await uploadChatImage(env, origin, orderId, String(body.base64 || "").trim());
+            const message = await insertChatImageMessage(env, orderId, "customer", "Customer", imageUrl);
+            return jsonResponse({ ok: true, message }, 200, corsHeaders);
+        } catch (error) {
+            return jsonResponse({ error: error.message || "Could not send the image." }, 400, corsHeaders);
+        }
+    }
+
+    if (action === "chat-send") {
+        if (!chatAvailable) {
+            return jsonResponse({ error: "Chat is not available for this order." }, 400, corsHeaders);
+        }
+        if (!checkChatRateLimit("chat-customer-" + orderId)) {
+            return jsonResponse({ error: "You are sending messages too quickly." }, 429, corsHeaders);
+        }
+        const message = String(body.message || "").trim().replace(/\r?\n/g, " ").replace(/\s+/g, " ").slice(0, CHAT_MESSAGE_MAX_LENGTH);
+        if (!message) {
+            return jsonResponse({ error: "Message cannot be empty." }, 400, corsHeaders);
+        }
+        const now = new Date().toISOString();
+        const insert = await getOrderDb(env)
+            .prepare("INSERT INTO chat_messages (order_id, sender_type, sender_name, message, created_at) VALUES (?, 'customer', 'Customer', ?, ?)")
+            .bind(orderId, message, now)
+            .run();
+        if (!insert?.success) {
+            console.error("[chat] customer insert failed:", insert?.error || "unknown");
+            return jsonResponse({ error: "Could not send the message." }, 500, corsHeaders);
+        }
+        return jsonResponse({
+            ok: true,
+            message: { id: insert.meta.last_row_id, orderId, senderType: "customer", senderName: "", message, createdAt: now },
+        }, 200, corsHeaders);
+    }
+
+    return jsonResponse({ error: "Unknown chat action" }, 400, corsHeaders);
+}
+
+async function sellerCanChatOnOrder(env, seller, orderId) {
+    const items = await getOrderItems(env, orderId);
+    return items.some((item) => String(item.sold_by || "").trim() === seller.display_name);
+}
+
 async function getSellerByToken(env, token) {
     if (!token) return null;
     const db = getOrderDb(env);
     const session = await db.prepare("SELECT seller_id FROM seller_sessions WHERE token = ?").bind(token).first();
     if (!session) return null;
-    return db.prepare("SELECT id, name, display_name, phone, total_earnings, platform_fee_percent, min_withdrawal, active FROM sellers WHERE id = ?").bind(session.seller_id).first();
+    return db.prepare("SELECT id, name, display_name, phone, total_earnings, platform_fee_percent, min_withdrawal, store_name, verified, active FROM sellers WHERE id = ?").bind(session.seller_id).first();
 }
 
 async function sellerOwnsMarketplaceProduct(env, seller, product) {
@@ -582,20 +1160,58 @@ async function readPaymentSettings(env) {
     }
 }
 
-async function getCatalogData(env) {
-    const [products, categories, config, marketplaceProducts] = await Promise.all([
+async function getCatalogData(env, origin = "") {
+    const [products, categories, config, marketplaceProducts, publicProducts] = await Promise.all([
         readAllProducts(env),
         readAllCategories(env),
         readStoreConfig(env),
         readAllMarketplaceProducts(env),
+        readPublicProductsMap(env),
     ]);
+
+    let verifiedSellers = [];
+    try {
+        await ensureSellerSchema(env);
+        const rows = await getAllResults(
+            getOrderDb(env).prepare("SELECT display_name FROM sellers WHERE verified = 1 AND active = 1"),
+        );
+        verifiedSellers = rows.map((row) => String(row.display_name || "").trim()).filter(Boolean);
+    } catch (error) {
+        console.warn("Could not load verified sellers", error);
+    }
+
+    const mergedMarketplace = { ...marketplaceProducts };
+    const publicIds = Object.keys(publicProducts || {});
+    const positionsByProduct = await getPublicProductPositions(env, publicIds);
+    for (const [id, product] of Object.entries(publicProducts || {})) {
+        const positions = positionsByProduct[id];
+        const imageUrl = product.image ? `${origin}/api/public-product-image?id=${encodeURIComponent(id)}&pos=0` : "";
+        const images = product.image
+            ? positions && positions.length
+                ? positions.map((p) => `${origin}/api/public-product-image?id=${encodeURIComponent(id)}&pos=${p}`)
+                : [imageUrl]
+            : [];
+        mergedMarketplace[id] = {
+            id,
+            name: product.name,
+            price: product.price,
+            description: product.description || "",
+            category: product.category || "Community",
+            stock: product.stock,
+            community: true,
+            soldBy: "Community",
+            image: imageUrl,
+            images,
+        };
+    }
 
     return {
         products,
         categories,
         currency: config.currency || "TND",
         routes: config.routes || {},
-        marketplaceProducts,
+        marketplaceProducts: mergedMarketplace,
+        verifiedSellers,
     };
 }
 
@@ -857,12 +1473,16 @@ function buildOrderLines(items, database) {
         }
 
         const marketplaceProduct = marketplaceProducts[productId];
-        const product = marketplaceProduct || products[productId];
+        const publicProduct = database.publicProducts?.[productId];
+        const product = marketplaceProduct || publicProduct || products[productId];
         if (!product) {
             throw new Error(`Invalid product: ${productId}. Make sure the product exists in the D1 catalog database.`);
         }
         if (product.visible === false) throw new Error(`Product is hidden: ${productId}`);
         if (product.inStock === false) throw new Error(`Product is out of stock: ${productId}`);
+        if (publicProduct && Number(publicProduct.stock) < quantity) {
+            throw new Error(`Product is out of stock: ${productId}`);
+        }
 
         const variations = getProductVariations(product);
         let variation = null;
@@ -882,7 +1502,7 @@ function buildOrderLines(items, database) {
             throw new Error(`Invalid server price for product: ${productId}`);
         }
 
-        const soldBy = marketplaceProduct ? (product.soldBy || "") : "";
+        const soldBy = publicProduct ? "Community" : (marketplaceProduct ? (product.soldBy || "") : "");
         lines.push({
             productId,
             variationId,
@@ -982,7 +1602,12 @@ async function getOrderByCheckoutRequestId(env, checkoutRequestId) {
                 delivery_status_reason,
                 updated_at,
                 telegram_notified_at,
-                referred_by
+                referred_by,
+                customer_confirmed_at,
+                delivered_at,
+                disputed,
+                dispute_reported_at,
+                auto_completed_at
             FROM orders
             WHERE checkout_request_id = ?`,
         )
@@ -1014,7 +1639,12 @@ async function getOrderByIdAndPhone(env, orderId, customerPhone) {
                 payment_status_reason,
                 delivery_status_reason,
                 updated_at,
-                referred_by
+                referred_by,
+                customer_confirmed_at,
+                delivered_at,
+                disputed,
+                dispute_reported_at,
+                auto_completed_at
             FROM orders
             WHERE id = ? AND customer_phone IN (?, ?, ?)`,
         )
@@ -1043,7 +1673,12 @@ async function getOrderById(env, orderId) {
                 delivery_status_reason,
                 updated_at,
                 telegram_notified_at,
-                referred_by
+                referred_by,
+                customer_confirmed_at,
+                delivered_at,
+                disputed,
+                dispute_reported_at,
+                auto_completed_at
             FROM orders
             WHERE id = ?`,
         )
@@ -1054,6 +1689,35 @@ async function getOrderById(env, orderId) {
 async function getAllResults(statement) {
     const result = await statement.all();
     return result.results || [];
+}
+
+const AUTO_COMPLETE_DELIVERY_MS = 72 * 60 * 60 * 1000;
+
+async function applyAutoCompletion(env, record) {
+    if (!record || record.customer_confirmed_at || record.auto_completed_at) return record;
+    if (Number(record.disputed)) return record;
+    if (!record.delivered_at || record.delivery_status !== "delivered") return record;
+    const deliveredMs = Date.parse(record.delivered_at);
+    if (!Number.isFinite(deliveredMs) || Date.now() - deliveredMs < AUTO_COMPLETE_DELIVERY_MS) return record;
+    const now = new Date().toISOString();
+    const db = getOrderDb(env);
+    await db
+        .prepare(
+            "UPDATE orders SET customer_confirmed_at = ?, auto_completed_at = ?, updated_at = ? WHERE id = ? AND customer_confirmed_at IS NULL AND auto_completed_at IS NULL AND disputed = 0",
+        )
+        .bind(now, now, now, record.id)
+        .run();
+    for (const earn of [earnCommissionsForOrder, earnSellerForOrder]) {
+        try {
+            await earn(env, record.id);
+        } catch (error) {
+            console.error(`Auto-completion earnings failed for order ${record.id}:`, error);
+        }
+    }
+    record.customer_confirmed_at = now;
+    record.auto_completed_at = now;
+    record.delivery_status = "delivered";
+    return record;
 }
 
 async function ensureCustomerInputsTable(env) {
@@ -1186,6 +1850,45 @@ async function getPaymentProofs(env, orderId) {
             )
             .bind(orderId),
     );
+}
+
+async function getSellerOrderDeliveries(env, orderId) {
+    const db = getOrderDb(env);
+    try {
+        return await getAllResults(
+            db
+                .prepare(
+                    `SELECT
+                        id,
+                        seller_name,
+                        label,
+                        value,
+                        created_at
+                    FROM seller_order_deliveries
+                    WHERE order_id = ?
+                    ORDER BY id`,
+                )
+                .bind(orderId),
+        );
+    } catch (error) {
+        if (/no such table/i.test(String(error?.message || ""))) {
+            console.warn("seller_order_deliveries table is missing. Run schema.sql in Cloudflare D1.");
+            return [];
+        }
+        throw error;
+    }
+}
+
+function parseSellerDeliveryItems(items) {
+    const rows = Array.isArray(items) ? items : [];
+    if (rows.length > 50) throw new Error("Too many delivery items");
+    return rows
+        .map((row) => {
+            const label = String(row?.label || "").replace(/\s+/g, " ").trim().slice(0, 120);
+            const value = String(row?.value || "").trim().slice(0, 2000);
+            return { label, value };
+        })
+        .filter((row) => row.label || row.value);
 }
 
 async function getOrderDeliveries(env, orderId) {
@@ -1347,10 +2050,11 @@ async function getCustomerInputRequirements(env, record, items, savedInputs = nu
         .filter(Boolean);
 }
 async function getSavedOrderForNotification(env, record) {
-    const [items, proofs, deliveries, savedInputs] = await Promise.all([
+    const [items, proofs, deliveries, sellerDeliveries, savedInputs] = await Promise.all([
         getOrderItems(env, record.id),
         getPaymentProofs(env, record.id),
         getOrderDeliveries(env, record.id),
+        getSellerOrderDeliveries(env, record.id),
         getOrderCustomerInputs(env, record.id),
     ]);
     const isTtCard = record.payment_method === "tt-card";
@@ -1407,9 +2111,11 @@ async function getSavedOrderForNotification(env, record) {
 }
 
 async function getOrderStatusPayload(env, record) {
-    const [items, deliveries, savedInputs, settings] = await Promise.all([
+    record = await applyAutoCompletion(env, record);
+    const [items, deliveries, sellerDeliveries, savedInputs, settings] = await Promise.all([
         getOrderItems(env, record.id),
         getOrderDeliveries(env, record.id),
+        getSellerOrderDeliveries(env, record.id),
         getOrderCustomerInputs(env, record.id),
         readPaymentSettings(env).then((s) => (s ? mergePaymentSettings(s) : clone(DEFAULT_PAYMENT_SETTINGS))),
     ]);
@@ -1445,8 +2151,23 @@ async function getOrderStatusPayload(env, record) {
                 soldBy: item.sold_by || "",
             })),
             deliveries: record.payment_status === "verified" ? formatDeliveryPayload(deliveries) : [],
+            sellerDeliveries: record.payment_status === "verified"
+                ? sellerDeliveries.map((row) => ({
+                      seller: row.seller_name || "",
+                      label: row.label || "",
+                      value: row.value || "",
+                      createdAt: row.created_at || "",
+                  }))
+                : [],
             customerInputs,
             referredBy: record.referred_by || "",
+            customerConfirmedAt: record.customer_confirmed_at || "",
+            deliveredAt: record.delivered_at || "",
+            disputed: !!Number(record.disputed),
+            disputeReportedAt: record.dispute_reported_at || "",
+            autoCompletedAt: record.auto_completed_at || "",
+            chatAvailable: items.some((item) => String(item.sold_by || "").trim()),
+            chatSellers: [...new Set(items.map((item) => String(item.sold_by || "").trim()).filter(Boolean))],
         },
     };
 }
@@ -1460,12 +2181,15 @@ function formatAdminProofs(proofs) {
 }
 
 async function getAdminOrderPayload(env, record) {
-    const [items, proofs, deliveries, savedInputs] = await Promise.all([
+    record = await applyAutoCompletion(env, record);
+    const [items, proofs, deliveries, sellerDeliveries, savedInputs] = await Promise.all([
         getOrderItems(env, record.id),
         getPaymentProofs(env, record.id),
         getOrderDeliveries(env, record.id),
+        getSellerOrderDeliveries(env, record.id),
         getOrderCustomerInputs(env, record.id),
     ]);
+    const communityPhones = await getCommunitySellerPhones(env, items);
     return {
         id: record.id,
         createdAt: record.created_at,
@@ -1485,6 +2209,11 @@ async function getAdminOrderPayload(env, record) {
         deliveryStatusReason: record.delivery_status_reason || "",
         telegramNotifiedAt: record.telegram_notified_at,
         referredBy: record.referred_by || "",
+        customerConfirmedAt: record.customer_confirmed_at || "",
+        deliveredAt: record.delivered_at || "",
+        disputed: !!Number(record.disputed),
+        disputeReportedAt: record.dispute_reported_at || "",
+        autoCompletedAt: record.auto_completed_at || "",
         items: items.map((item) => ({
             productId: item.product_id,
             variationId: item.variation_id || "",
@@ -1494,11 +2223,19 @@ async function getAdminOrderPayload(env, record) {
             unitPrice: Number(item.unit_price),
             lineTotal: Number(item.line_total),
             soldBy: item.sold_by || "",
+            communitySellerPhone: communityPhones[item.product_id] || "",
         })),
         proofs: formatAdminProofs(proofs),
         deliveries: formatDeliveryPayload(deliveries),
+        sellerDeliveries: sellerDeliveries.map((row) => ({
+            seller: row.seller_name || "",
+            label: row.label || "",
+            value: row.value || "",
+            createdAt: row.created_at || "",
+        })),
         customerInputs: formatCustomerInputPayload(savedInputs),
         customerInputRequirements: await getCustomerInputRequirements(env, record, items, savedInputs),
+        chatAvailable: items.some((item) => String(item.sold_by || "").trim()),
     };
 }
 
@@ -1524,8 +2261,13 @@ async function listAdminOrders(env, limit = 50) {
                     payment_status_reason,
                     delivery_status_reason,
                     updated_at,
-                    telegram_notified_at,
-                    referred_by
+                telegram_notified_at,
+                referred_by,
+                customer_confirmed_at,
+                delivered_at,
+                disputed,
+                dispute_reported_at,
+                auto_completed_at
                 FROM orders
                 ORDER BY created_at DESC
                 LIMIT ?`,
@@ -1544,6 +2286,7 @@ async function updateAdminOrder(env, body) {
     const allowedDelivery = new Set(["waiting", "delivered", "cancelled"]);
     const updates = [];
     const values = [];
+    const now = new Date().toISOString();
 
     if (typeof body.paymentStatus === "string" && body.paymentStatus) {
         if (!allowedPayment.has(body.paymentStatus)) throw new Error("Invalid payment status");
@@ -1563,6 +2306,11 @@ async function updateAdminOrder(env, body) {
         const reason = normalizeStatusReason(body.deliveryStatusReason);
         updates.push("delivery_status_reason = ?");
         values.push(body.deliveryStatus === "cancelled" ? reason || getDefaultStatusReason("delivery", body.deliveryStatus) : "");
+
+        if (body.deliveryStatus === "delivered") {
+            updates.push("delivered_at = ?");
+            values.push(now);
+        }
     }
 
     if (body.paymentStatus === "rejected") {
@@ -1572,7 +2320,7 @@ async function updateAdminOrder(env, body) {
 
     if (!updates.length) throw new Error("No status update was provided");
     updates.push("updated_at = ?");
-    values.push(new Date().toISOString());
+    values.push(now);
     values.push(orderId);
 
     const db = getOrderDb(env);
@@ -1593,6 +2341,11 @@ async function updateAdminOrder(env, body) {
             await earnSellerForOrder(env, orderId);
         } catch (err) {
             console.error(`Seller earnings failed for order ${orderId}:`, err);
+        }
+        try {
+            await notifyCommunityDelivery(env, orderId);
+        } catch (err) {
+            console.error(`Community delivery notification failed for order ${orderId}:`, err);
         }
     }
 
@@ -1650,7 +2403,10 @@ async function deleteAdminOrder(env, body) {
     const db = getOrderDb(env);
     try {
         await db.batch([
+            db.prepare("DELETE FROM chat_messages WHERE order_id = ?").bind(orderId),
+            db.prepare("DELETE FROM chat_images WHERE order_id = ?").bind(orderId),
             db.prepare("DELETE FROM order_deliveries WHERE order_id = ?").bind(orderId),
+            db.prepare("DELETE FROM seller_order_deliveries WHERE order_id = ?").bind(orderId),
             db.prepare("DELETE FROM order_customer_inputs WHERE order_id = ?").bind(orderId),
             db.prepare("DELETE FROM payment_proofs WHERE order_id = ?").bind(orderId),
             db.prepare("DELETE FROM order_items WHERE order_id = ?").bind(orderId),
@@ -1972,6 +2728,23 @@ function getAdminOrderKeyboard(order) {
     };
 }
 
+function getPayoutKeyboard(orderId) {
+    return {
+        inline_keyboard: [
+            [
+                {
+                    text: "\u2705 Approve",
+                    callback_data: `hk|payout|approved|${orderId}`,
+                },
+                {
+                    text: "\u274C Reject",
+                    callback_data: `hk|payout|rejected|${orderId}`,
+                },
+            ],
+        ],
+    };
+}
+
 async function callTelegramApi(env, method, payload) {
     if (!env.TELEGRAM_BOT_TOKEN) {
         throw new ApiError("Telegram bot token is not configured", 500);
@@ -2037,7 +2810,7 @@ async function sendCustomerTelegramNotification(env, order, type) {
         const isDelivered = type === "delivered";
         const status = isDelivered ? "Delivered" : "Payment verified";
         const icon = isDelivered ? ICONS.delivery : ICONS.verify;
-        await sendTelegramMessage(env, chatId, `${icon} Your order ${telegramCode(order.id)} — ${status}.`);
+        await sendTelegramMessage(env, chatId, `${icon} Your order ${telegramCode(order.id)} â€” ${status}.`);
     } catch (error) {
         console.warn(`Telegram customer notification (${type}) failed for ${username}`, error);
     }
@@ -2063,6 +2836,113 @@ async function handleOrderStatus(body, env, corsHeaders) {
     }
 
     return jsonResponse(await getOrderStatusPayload(env, record), 200, corsHeaders);
+}
+
+async function handleCustomerConfirmDelivery(body, env, corsHeaders) {
+    await ensureOrderSchema(env);
+    const orderId = normalizeOrderId(body.orderId);
+    if (!ORDER_ID_REGEX.test(orderId)) {
+        return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+    }
+
+    const record = await getOrderByIdAndPhone(env, orderId, body.customerPhone);
+    if (!record) {
+        return jsonResponse({ error: "Order was not found. Check the order ID and WhatsApp number." }, 404, corsHeaders);
+    }
+
+    if (record.delivery_status === "cancelled") {
+        return jsonResponse({ error: "A cancelled order cannot be confirmed." }, 400, corsHeaders);
+    }
+
+    if (record.payment_status === "rejected") {
+        return jsonResponse({ error: "A rejected order cannot be confirmed." }, 400, corsHeaders);
+    }
+
+    if (record.payment_status !== "verified") {
+        return jsonResponse({ error: "Payment is not verified yet." }, 400, corsHeaders);
+    }
+
+    if (record.customer_confirmed_at) {
+        return jsonResponse(await getOrderStatusPayload(env, record), 200, corsHeaders);
+    }
+
+    const now = new Date().toISOString();
+    const db = getOrderDb(env);
+    await db
+        .prepare("UPDATE orders SET customer_confirmed_at = ?, delivered_at = COALESCE(delivered_at, ?), delivery_status = 'delivered', delivery_status_reason = '', updated_at = ? WHERE id = ?")
+        .bind(now, now, now, orderId)
+        .run();
+
+    if (record.referred_by) {
+        try {
+            await earnCommissionsForOrder(env, orderId);
+        } catch (error) {
+            console.error(`Commission earning failed for customer-confirmed order ${orderId}:`, error);
+        }
+    }
+    try {
+        await earnSellerForOrder(env, orderId);
+    } catch (error) {
+        console.error(`Seller earnings failed for customer-confirmed order ${orderId}:`, error);
+    }
+    try {
+        await notifyCommunityDelivery(env, orderId);
+    } catch (error) {
+        console.error(`Community delivery notification failed for customer-confirmed order ${orderId}:`, error);
+    }
+
+    try {
+        if (env.TELEGRAM_ADMIN_CHAT_ID) {
+            await sendTelegramMessage(
+                env,
+                env.TELEGRAM_ADMIN_CHAT_ID,
+                `${ICONS.verify} Customer confirmed delivery\n\u2014 ${escapeHtml(record.id)}\n${ICONS.phone} WhatsApp: ${escapeHtml(formatTunisianPhone(record.customer_phone))}\n${ICONS.verify} ${escapeHtml(now)}`,
+            );
+        }
+    } catch (error) {
+        console.warn("Customer confirmation Telegram notification failed", error);
+    }
+
+    const updated = await getOrderByIdAndPhone(env, orderId, body.customerPhone);
+    return jsonResponse(await getOrderStatusPayload(env, updated || record), 200, corsHeaders);
+}
+
+async function handleCustomerReportAdmin(body, env, corsHeaders) {
+    await ensureOrderSchema(env);
+    const orderId = normalizeOrderId(body.orderId);
+    if (!ORDER_ID_REGEX.test(orderId)) {
+        return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+    }
+
+    const record = await getOrderByIdAndPhone(env, orderId, body.customerPhone);
+    if (!record) {
+        return jsonResponse({ error: "Order was not found. Check the order ID and WhatsApp number." }, 404, corsHeaders);
+    }
+
+    if (!checkAdminReportRateLimit(orderId)) {        return jsonResponse({ error: "Please wait a moment before reporting again." }, 429, corsHeaders);
+    }
+
+    const now = new Date().toISOString();
+    const db = getOrderDb(env);
+    await db
+        .prepare("UPDATE orders SET disputed = 1, dispute_reported_at = ? WHERE id = ?")
+        .bind(now, orderId)
+        .run();
+
+    try {
+        if (env.TELEGRAM_ADMIN_CHAT_ID) {
+            await sendTelegramMessage(
+                env,
+                env.TELEGRAM_ADMIN_CHAT_ID,
+                `${ICONS.warning} <b>Admin action required</b> \u2014 ${escapeHtml(record.id)}\n${ICONS.search} Customer reported this order from the Check Order page\n${ICONS.phone} WhatsApp: <code>+216 ${escapeHtml(formatTunisianPhone(record.customer_phone))}</code>\n${ICONS.warning} This order is now flagged as <b>disputed</b>. Seller/affiliate payouts for it are blocked until you resolve it (Orders panel \u2192 Resolve dispute).`,
+            );
+        }
+    } catch (error) {
+        console.warn("Customer report Telegram notification failed", error);
+        throw new Error("Could not send the report.");
+    }
+
+    return jsonResponse({ ok: true }, 200, corsHeaders);
 }
 
 function normalizeCustomerInputValue(value, label) {
@@ -2380,6 +3260,13 @@ async function approveAdminPayout(env, body) {
 
     const now = new Date().toISOString();
     if (newStatus === "paid") {
+        const disputedCommissions = await db
+            .prepare("SELECT COUNT(*) AS n FROM referral_commissions rc JOIN orders o ON rc.order_id = o.id WHERE rc.ref_code = ? AND rc.status = 'pending' AND o.disputed = 1")
+            .bind(payout.ref_code)
+            .first();
+        if (Number(disputedCommissions?.n || 0) > 0) {
+            throw new Error("Some commissions are linked to disputed orders. Resolve those disputes in the Orders panel first.");
+        }
         const pendingCommissions = await getAllResults(
             db.prepare("SELECT id, commission_amount FROM referral_commissions WHERE ref_code = ? AND status = 'pending' ORDER BY created_at ASC").bind(payout.ref_code)
         );
@@ -2422,6 +3309,7 @@ async function approveAdminPayout(env, body) {
 async function handleAdminAction(body, request, env, corsHeaders) {
     requireAdmin(request, env);
     await ensureOrderSchema(env);
+    const origin = new URL(request.url).origin;
 
     if (body.action === "admin-list-orders") {
         return jsonResponse({ ok: true, orders: await listAdminOrders(env, body.limit) }, 200, corsHeaders);
@@ -2431,6 +3319,71 @@ async function handleAdminAction(body, request, env, corsHeaders) {
         return jsonResponse({ ok: true, order: await updateAdminOrder(env, body) }, 200, corsHeaders);
     }
 
+    if (body.action === "admin-list-public-products") {
+        await ensurePublicSchema(env);
+        const rows = await getAllResults(getOrderDb(env)
+            .prepare("SELECT p.id, p.name, p.price, p.description, p.category, p.stock, p.warranty_days, p.approved, p.active, p.created_at, p.updated_at, s.phone AS seller_phone, (SELECT COUNT(*) FROM order_items oi WHERE oi.product_id = p.id) AS sold_count, (SELECT COUNT(*) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.product_id = p.id AND o.delivery_status = 'delivered') AS delivered_count FROM public_products p JOIN public_sellers s ON s.id = p.seller_id ORDER BY p.created_at DESC"));
+        return jsonResponse({ ok: true, products: rows.map((row) => ({ id: row.id, name: row.name, price: Number(row.price), description: row.description || "", category: row.category || "", stock: Number(row.stock) || 0, warrantyDays: Number(row.warranty_days) || 0, approved: row.approved === 1, active: row.active === 1, sellerPhone: row.seller_phone || "", soldCount: Number(row.sold_count) || 0, deliveredCount: Number(row.delivered_count) || 0, createdAt: row.created_at || "", updatedAt: row.updated_at || "" })) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-set-public-product") {
+        const productId = String(body.productId || "").trim();
+        const approved = body.approved ? 1 : 0;
+        await ensurePublicSchema(env);
+        const update = await getOrderDb(env).prepare("UPDATE public_products SET approved = ?, updated_at = ? WHERE id = ?").bind(approved, new Date().toISOString(), productId).run();
+        if (!update?.success) return jsonResponse({ error: "Could not update the product" }, 500, corsHeaders);
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-delete-public-product") {
+        const productId = String(body.productId || "").trim();
+        await ensurePublicSchema(env);
+        const db = getOrderDb(env);
+        const result = await db.batch([
+            db.prepare("DELETE FROM public_product_images WHERE product_id = ?").bind(productId),
+            db.prepare("DELETE FROM public_products WHERE id = ?").bind(productId),
+        ]);
+        if (result?.some((r) => r?.error)) return jsonResponse({ error: "Could not delete the product" }, 500, corsHeaders);
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-list-public-payouts") {
+        await ensurePublicSchema(env);
+        const rows = await getAllResults(getOrderDb(env)
+            .prepare("SELECT r.order_id, r.d17_number, r.status, r.created_at, r.updated_at, s.phone AS seller_phone, o.payment_status, o.delivery_status, COALESCE((SELECT SUM(oi.line_total) FROM order_items oi JOIN public_products p ON p.id = oi.product_id WHERE oi.order_id = r.order_id AND p.seller_id = r.seller_id), 0) AS amount FROM public_payout_requests r JOIN public_sellers s ON s.id = r.seller_id LEFT JOIN orders o ON o.id = r.order_id ORDER BY r.created_at DESC"));
+        return jsonResponse({ ok: true, payouts: rows.map((row) => ({ orderId: row.order_id, sellerPhone: row.seller_phone || "", d17Number: row.d17_number || "", status: row.status || "pending", amount: Number(row.amount) || 0, paymentStatus: row.payment_status || "", deliveryStatus: row.delivery_status || "", createdAt: row.created_at || "", updatedAt: row.updated_at || "" })) }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-update-public-payout") {
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        const status = body.status === "approved" ? "approved" : body.status === "rejected" ? "rejected" : "";
+        if (!status) return jsonResponse({ error: "Invalid status" }, 400, corsHeaders);
+        await ensurePublicSchema(env);
+        const db = getOrderDb(env);
+        const existing = await db.prepare("SELECT seller_id, d17_number FROM public_payout_requests WHERE order_id = ?").bind(orderId).first();
+        if (!existing) return jsonResponse({ error: "Payout request was not found." }, 404, corsHeaders);
+        const update = await db.prepare("UPDATE public_payout_requests SET status = ?, updated_at = ? WHERE order_id = ?").bind(status, new Date().toISOString(), orderId).run();
+        if (!update?.success) return jsonResponse({ error: "Could not update the payout request" }, 500, corsHeaders);
+        if (env.TELEGRAM_ADMIN_CHAT_ID) {
+            try {
+                const [seller, amountRow] = await Promise.all([
+                    db.prepare("SELECT phone FROM public_sellers WHERE id = ?").bind(existing.seller_id).first(),
+                    db.prepare("SELECT COALESCE(SUM(oi.line_total), 0) AS amount FROM order_items oi JOIN public_products p ON p.id = oi.product_id WHERE oi.order_id = ? AND p.seller_id = ?").bind(orderId, existing.seller_id).first(),
+                ]);
+                const icon = status === "approved" ? "\u2705" : "\u274C";
+                await sendTelegramMessage(
+                    env,
+                    env.TELEGRAM_ADMIN_CHAT_ID,
+                    icon + " Community payout " + (status === "approved" ? "approved" : "rejected") + "\n\u2014 " + escapeHtml(orderId) + "\nD17: " + escapeHtml(existing.d17_number || "") + "\nSeller: " + escapeHtml(formatTunisianPhone(seller?.phone || "")) + "\nAmount: " + Number(amountRow?.amount || 0).toFixed(3) + " TND"
+                );
+            } catch (error) {
+                console.error("[payout] telegram notify failed:", error);
+            }
+        }
+        return jsonResponse({ ok: true, status }, 200, corsHeaders);
+    }
+
     if (body.action === "admin-save-delivery") {
         return jsonResponse({ ok: true, order: await saveAdminOrderDelivery(env, body) }, 200, corsHeaders);
     }
@@ -2438,6 +3391,17 @@ async function handleAdminAction(body, request, env, corsHeaders) {
     if (body.action === "admin-delete-order") {
         const result = await deleteAdminOrder(env, body);
         return jsonResponse({ ok: true, deleted: result.id }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-delete-seller-deliveries") {
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        const record = await getOrderById(env, orderId);
+        if (!record) return jsonResponse({ error: "Order was not found." }, 404, corsHeaders);
+        const db = getOrderDb(env);
+        const result = await db.prepare("DELETE FROM seller_order_deliveries WHERE order_id = ?").bind(orderId).run();
+        await db.prepare("UPDATE orders SET updated_at = ? WHERE id = ?").bind(new Date().toISOString(), orderId).run();
+        return jsonResponse({ ok: true, deleted: Number(result?.meta?.changes || 0) }, 200, corsHeaders);
     }
 
     if (body.action === "admin-save-data") {
@@ -2454,6 +3418,79 @@ async function handleAdminAction(body, request, env, corsHeaders) {
 
     if (body.action === "admin-verify") {
         return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-chat-messages") {
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        const record = await getOrderById(env, orderId);
+        if (!record) return jsonResponse({ error: "Order was not found" }, 404, corsHeaders);
+        await ensureChatSchema(env);
+        return jsonResponse({
+            ok: true,
+            orderId,
+            sellers: await getOrderChatSellers(env, orderId),
+            messages: formatChatMessages(await getChatMessages(env, orderId)),
+        }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-chat-send") {
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        const record = await getOrderById(env, orderId);
+        if (!record) return jsonResponse({ error: "Order was not found" }, 404, corsHeaders);
+        if (!checkChatRateLimit("chat-admin-" + orderId)) {
+            return jsonResponse({ error: "You are sending messages too quickly." }, 429, corsHeaders);
+        }
+        const message = String(body.message || "").trim().replace(/\r?\n/g, " ").replace(/\s+/g, " ").slice(0, CHAT_MESSAGE_MAX_LENGTH);
+        if (!message) return jsonResponse({ error: "Message cannot be empty." }, 400, corsHeaders);
+
+        await ensureChatSchema(env);
+        const now = new Date().toISOString();
+        const insert = await getOrderDb(env)
+            .prepare("INSERT INTO chat_messages (order_id, sender_type, sender_name, message, created_at) VALUES (?, 'admin', 'Admin', ?, ?)")
+            .bind(orderId, message, now)
+            .run();
+        if (!insert?.success) {
+            console.error("[chat] admin insert failed:", insert?.error || "unknown");
+            return jsonResponse({ error: "Could not send the message." }, 500, corsHeaders);
+        }
+        return jsonResponse({
+            ok: true,
+            message: { id: insert.meta.last_row_id, orderId, senderType: "admin", senderName: "Admin", message, createdAt: now },
+        }, 200, corsHeaders);
+    }
+
+    if (body.action === "admin-chat-upload-image") {
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        const record = await getOrderById(env, orderId);
+        if (!record) return jsonResponse({ error: "Order was not found" }, 404, corsHeaders);
+        if (!checkChatRateLimit("chat-admin-" + orderId)) {
+            return jsonResponse({ error: "You are sending messages too quickly." }, 429, corsHeaders);
+        }
+        try {
+            const imageUrl = await uploadChatImage(env, origin, orderId, String(body.base64 || "").trim());
+            const message = await insertChatImageMessage(env, orderId, "admin", "Admin", imageUrl);
+            return jsonResponse({ ok: true, message }, 200, corsHeaders);
+        } catch (error) {
+            return jsonResponse({ error: error.message || "Could not send the image." }, 400, corsHeaders);
+        }
+    }
+
+    if (body.action === "admin-chat-unread") {
+        await ensureChatSchema(env);
+        const rows = await getAllResults(
+            getOrderDb(env)
+                .prepare("SELECT order_id, COUNT(*) AS total FROM chat_messages WHERE sender_type = 'customer' AND seller_read = 0 GROUP BY order_id"),
+        );
+        const byOrder = {};
+        let total = 0;
+        for (const row of rows || []) {
+            byOrder[row.order_id] = Number(row.total || 0);
+            total += Number(row.total || 0);
+        }
+        return jsonResponse({ ok: true, total, byOrder }, 200, corsHeaders);
     }
 
     if (body.action === "admin-list-affiliates") {
@@ -2498,11 +3535,21 @@ async function handleAdminAction(body, request, env, corsHeaders) {
         return jsonResponse({ ok: true, payout: await approveAdminPayout(env, body) }, 200, corsHeaders);
     }
 
+    if (body.action === "admin-resolve-dispute") {
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) throw new Error("Enter a valid order ID");
+        const db = getOrderDb(env);
+        await db.prepare("UPDATE orders SET disputed = 0, dispute_reported_at = '' WHERE id = ?").bind(orderId).run();
+        const record = await getOrderById(env, orderId);
+        if (!record) throw new Error("Order was not found");
+        return jsonResponse({ ok: true, order: await getAdminOrderPayload(env, record) }, 200, corsHeaders);
+    }
+
     if (body.action === "admin-list-sellers") {
         await ensureSellerSchema(env);
         const db = getOrderDb(env);
-        const sellers = await getAllResults(db.prepare("SELECT id, name, display_name, phone, total_earnings, platform_fee_percent, min_withdrawal, active, created_at FROM sellers ORDER BY created_at DESC").bind());
-        return jsonResponse({ ok: true, sellers: sellers.map((s) => ({ id: s.id, name: s.name, displayName: s.display_name, phone: s.phone, totalEarnings: s.total_earnings, platformFeePercent: s.platform_fee_percent, minWithdrawal: s.min_withdrawal, active: s.active, createdAt: s.created_at })) }, 200, corsHeaders);
+        const sellers = await getAllResults(db.prepare("SELECT id, name, display_name, phone, total_earnings, platform_fee_percent, min_withdrawal, store_name, verified, notes, active, created_at FROM sellers ORDER BY created_at DESC").bind());
+        return jsonResponse({ ok: true, sellers: sellers.map((s) => ({ id: s.id, name: s.name, displayName: s.display_name, phone: s.phone, totalEarnings: s.total_earnings, platformFeePercent: s.platform_fee_percent, minWithdrawal: s.min_withdrawal, storeName: s.store_name || "", verified: !!s.verified, notes: s.notes || "", active: s.active, createdAt: s.created_at })) }, 200, corsHeaders);
     }
 
     if (body.action === "admin-create-seller") {
@@ -2514,6 +3561,9 @@ async function handleAdminAction(body, request, env, corsHeaders) {
         const password = String(body.password || "").trim();
         const platformFeePercent = Number(body.platformFeePercent) || 10;
         const minWithdrawal = Number(body.minWithdrawal);
+        const storeName = String(body.storeName || "").trim();
+        const verified = body.verified ? 1 : 0;
+        const notes = String(body.notes || "").trim();
         if (!name) throw new ApiError("Name is required", 400);
         if (!phone || phone.length !== 8) throw new ApiError("Enter a valid 8-digit phone number", 400);
         if (!password || password.length < 4) throw new ApiError("Password must be at least 4 characters", 400);
@@ -2528,8 +3578,8 @@ async function handleAdminAction(body, request, env, corsHeaders) {
         }
         const hashHex = await hashPassword(password);
         const now = new Date().toISOString();
-        await db.prepare("INSERT INTO sellers (id, name, display_name, phone, password_hash, total_earnings, platform_fee_percent, min_withdrawal, active, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, 1, ?)").bind(id, name, displayName, phone, hashHex, platformFeePercent, Number.isFinite(minWithdrawal) ? minWithdrawal : null, now).run();
-        return jsonResponse({ ok: true, seller: { id, name, displayName, phone, platformFeePercent, minWithdrawal: Number.isFinite(minWithdrawal) ? minWithdrawal : null, active: true, createdAt: now } }, 200, corsHeaders);
+        await db.prepare("INSERT INTO sellers (id, name, display_name, phone, password_hash, total_earnings, platform_fee_percent, min_withdrawal, store_name, verified, notes, active, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 1, ?)").bind(id, name, displayName, phone, hashHex, platformFeePercent, Number.isFinite(minWithdrawal) ? minWithdrawal : null, storeName || null, verified, notes || null, now).run();
+        return jsonResponse({ ok: true, seller: { id, name, displayName, phone, platformFeePercent, minWithdrawal: Number.isFinite(minWithdrawal) ? minWithdrawal : null, storeName, verified: !!verified, notes, active: true, createdAt: now } }, 200, corsHeaders);
     }
 
     if (body.action === "admin-toggle-seller") {
@@ -2540,6 +3590,9 @@ async function handleAdminAction(body, request, env, corsHeaders) {
         if (!seller) throw new ApiError("Seller not found", 404);
         const newActive = seller.active ? 0 : 1;
         await db.prepare("UPDATE sellers SET active = ? WHERE id = ?").bind(newActive, sellerId).run();
+        if (newActive === 0) {
+            await db.prepare("DELETE FROM seller_sessions WHERE seller_id = ?").bind(sellerId).run();
+        }
         return jsonResponse({ ok: true, seller: { id: sellerId, active: newActive } }, 200, corsHeaders);
     }
 
@@ -2579,6 +3632,9 @@ async function handleAdminAction(body, request, env, corsHeaders) {
         if (Number.isFinite(platformFeePercent) && platformFeePercent >= 0) { updates.push("platform_fee_percent = ?"); params.push(platformFeePercent); }
         const minWithdrawal = Number(body.minWithdrawal);
         if (Number.isFinite(minWithdrawal)) { updates.push("min_withdrawal = ?"); params.push(minWithdrawal); }
+        if (body.storeName !== undefined) { updates.push("store_name = ?"); params.push(String(body.storeName).trim() || null); }
+        if (body.verified !== undefined) { updates.push("verified = ?"); params.push(body.verified ? 1 : 0); }
+        if (body.notes !== undefined) { updates.push("notes = ?"); params.push(String(body.notes).trim() || null); }
         if (!updates.length) throw new ApiError("Nothing to update", 400);
         params.push(sellerId);
         await db.prepare(`UPDATE sellers SET ${updates.join(", ")} WHERE id = ?`).bind(...params).run();
@@ -2589,7 +3645,7 @@ async function handleAdminAction(body, request, env, corsHeaders) {
         await ensureSellerSchema(env);
         const db = getOrderDb(env);
         const sellerId = String(body.sellerId || "").trim();
-        const seller = await db.prepare("SELECT id, name, display_name, phone, total_earnings, platform_fee_percent, min_withdrawal, active, created_at FROM sellers WHERE id = ?").bind(sellerId).first();
+        const seller = await db.prepare("SELECT id, name, display_name, phone, total_earnings, platform_fee_percent, min_withdrawal, store_name, verified, notes, active, created_at FROM sellers WHERE id = ?").bind(sellerId).first();
         if (!seller) throw new ApiError("Seller not found", 404);
 
         const [earnings, payouts] = await Promise.all([
@@ -2597,11 +3653,61 @@ async function handleAdminAction(body, request, env, corsHeaders) {
             getAllResults(db.prepare("SELECT id, amount, method, recipient_detail, status, created_at, updated_at FROM seller_payouts WHERE seller_id = ? ORDER BY created_at DESC LIMIT 20").bind(sellerId)),
         ]);
 
+        const [statsRow, ordersCountRow] = await Promise.all([
+            db.prepare(
+                `SELECT
+                    COALESCE(SUM(CASE WHEN status = 'pending' THEN earnings_amount ELSE 0 END), 0) AS pendingEarnings,
+                    COALESCE(SUM(CASE WHEN status = 'paid' THEN earnings_amount ELSE 0 END), 0) AS paidEarnings,
+                    COALESCE(SUM(earnings_amount), 0) AS totalEarnings
+                 FROM seller_earnings WHERE seller_id = ?`
+            ).bind(sellerId).first(),
+            db.prepare("SELECT COUNT(DISTINCT order_id) AS totalOrders FROM order_items WHERE sold_by = ?").bind(seller.display_name).first(),
+        ]);
+
+        const orderRows = await getAllResults(
+            db.prepare(
+                `SELECT DISTINCT oi.order_id, o.created_at, o.payment_status, o.delivery_status,
+                        o.product_total, o.amount_due, o.customer_phone
+                 FROM order_items oi
+                 JOIN orders o ON oi.order_id = o.id
+                 WHERE oi.sold_by = ?
+                 ORDER BY o.created_at DESC
+                 LIMIT 100`,
+            ).bind(seller.display_name),
+        );
+        const orders = [];
+        for (const row of orderRows || []) {
+            const items = await getOrderItems(env, row.order_id);
+            const sellerItems = items.filter((i) => String(i.sold_by || "").trim() === seller.display_name);
+            orders.push({
+                id: row.order_id,
+                createdAt: row.created_at,
+                paymentStatus: row.payment_status,
+                deliveryStatus: row.delivery_status,
+                customerPhone: row.customer_phone,
+                customerPhoneDisplay: formatTunisianPhone(row.customer_phone),
+                productTotal: Number(row.product_total),
+                amountDue: Number(row.amount_due),
+                items: sellerItems.map((i) => ({
+                    productName: getProductOptionName(i.product_name, i.option_label),
+                    quantity: Number(i.quantity),
+                    lineTotal: Number(i.line_total),
+                })),
+            });
+        }
+
         return jsonResponse({
             ok: true,
-            seller: { id: seller.id, name: seller.name, displayName: seller.display_name, phone: seller.phone, totalEarnings: seller.total_earnings, platformFeePercent: seller.platform_fee_percent, minWithdrawal: seller.min_withdrawal, active: seller.active, createdAt: seller.created_at },
+            seller: { id: seller.id, name: seller.name, displayName: seller.display_name, phone: seller.phone, totalEarnings: seller.total_earnings, platformFeePercent: seller.platform_fee_percent, minWithdrawal: seller.min_withdrawal, storeName: seller.store_name || "", verified: !!seller.verified, notes: seller.notes || "", active: seller.active, createdAt: seller.created_at },
+            stats: {
+                totalOrders: Number(ordersCountRow?.totalOrders ?? 0),
+                totalEarnings: Number(statsRow?.totalEarnings ?? 0),
+                pendingEarnings: Number(statsRow?.pendingEarnings ?? 0),
+                paidEarnings: Number(statsRow?.paidEarnings ?? 0),
+            },
             earnings,
             payouts,
+            orders,
         }, 200, corsHeaders);
     }
 
@@ -2620,6 +3726,15 @@ async function handleAdminAction(body, request, env, corsHeaders) {
         const payout = await db.prepare("SELECT id, seller_id, amount FROM seller_payouts WHERE id = ?").bind(payoutId).first();
         if (!payout) throw new ApiError("Payout not found", 404);
         const now = new Date().toISOString();
+        if (newStatus === "paid") {
+            const disputedEarnings = await db
+                .prepare("SELECT COUNT(*) AS n FROM seller_earnings se JOIN orders o ON se.order_id = o.id WHERE se.seller_id = ? AND se.status = 'pending' AND o.disputed = 1")
+                .bind(payout.seller_id)
+                .first();
+            if (Number(disputedEarnings?.n || 0) > 0) {
+                return jsonResponse({ error: "Some of this seller's earnings belong to disputed orders. Resolve those disputes in the Orders panel before approving this payout." }, 409, corsHeaders);
+            }
+        }
         await db.prepare("UPDATE seller_payouts SET status = ?, updated_at = ? WHERE id = ?").bind(newStatus, now, payoutId).run();
         if (newStatus === "paid") {
             await db.prepare("UPDATE seller_earnings SET status = 'paid', paid_at = ? WHERE seller_id = ? AND status = 'pending'").bind(now, payout.seller_id).run();
@@ -2820,6 +3935,19 @@ function parseTelegramAction(data) {
         };
     }
 
+    if (target === "payout") {
+        const status = parts[2];
+        const orderId = normalizeOrderId(parts[3]);
+        if (!["approved", "rejected"].includes(status) || !ORDER_ID_REGEX.test(orderId)) {
+            throw new Error("Unknown Telegram action");
+        }
+        return {
+            orderId,
+            target,
+            status,
+        };
+    }
+
     const [, , status, orderIdValue] = parts;
     const orderId = normalizeOrderId(orderIdValue);
     if (!["payment", "delivery"].includes(target) || !ORDER_ID_REGEX.test(orderId)) {
@@ -2939,6 +4067,49 @@ async function handleTelegramWebhook(body, request, env, corsHeaders) {
         return jsonResponse({ ok: true }, 200, corsHeaders);
     }
 
+    if (action.target === "payout") {
+        try {
+            await ensurePublicSchema(env);
+            const db = getOrderDb(env);
+            const existing = await db.prepare("SELECT id, status, d17_number FROM public_payout_requests WHERE order_id = ?").bind(action.orderId).first();
+            if (!existing) throw new Error("Payout request was not found");
+            if (existing.status === action.status) {
+                await answerTelegramCallback(env, callbackQuery.id, "Payout is already " + existing.status);
+                return jsonResponse({ ok: true }, 200, corsHeaders);
+            }
+            if (existing.status === "approved" && action.status === "rejected") {
+                await answerTelegramCallback(env, callbackQuery.id, "Payout was already approved", true);
+                return jsonResponse({ ok: true }, 200, corsHeaders);
+            }
+            const now = new Date().toISOString();
+            const update = await db.prepare("UPDATE public_payout_requests SET status = ?, updated_at = ? WHERE id = ?").bind(action.status, now, existing.id).run();
+            if (!update?.success) throw new Error("Could not update the payout request");
+            const icon = action.status === "approved" ? "\u2705" : "\u274C";
+            const label = action.status === "approved" ? "approved" : "rejected";
+            await answerTelegramCallback(env, callbackQuery.id, "Payout " + label + ": " + action.orderId);
+            if (chatId && messageId) {
+                try {
+                    await editTelegramMessage(
+                        env,
+                        chatId,
+                        messageId,
+                        "\uD83D\uDCB0 Community payout request\n\u2014 " + escapeHtml(action.orderId) + "\nD17: " + escapeHtml(existing.d17_number || "") + "\nStatus: " + icon + " " + (action.status === "approved" ? "Approved" : "Rejected"),
+                        undefined,
+                    );
+                } catch (error) {
+                    console.warn("Telegram payout message edit failed", error);
+                }
+            }
+        } catch (error) {
+            try {
+                await answerTelegramCallback(env, callbackQuery.id, error.message || "Could not update payout", true);
+            } catch (err) {
+                console.warn("Telegram callback answer failed", err);
+            }
+        }
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
     const updateBody = {};
     updateBody.orderId = action.orderId;
     if (action.target === "payment") {
@@ -2992,6 +4163,7 @@ async function createCommissionPlaceholders(env, order) {
     if (!order.referredBy) return;
     const db = getOrderDb(env);
     await ensureAffiliateSchema(env);
+    await ensureSellerDeliverySchema(env);
     const affiliate = await db.prepare("SELECT ref_code FROM affiliates WHERE ref_code = ? AND active = 1").bind(order.referredBy).first();
     if (!affiliate) return;
 
@@ -3056,6 +4228,7 @@ async function calculateAndSaveCommissions(env, record) {
     }
 
     await ensureAffiliateSchema(env);
+    await ensureSellerDeliverySchema(env);
 
     const affiliate = await db.prepare("SELECT ref_code, total_earnings FROM affiliates WHERE ref_code = ? AND active = 1").bind(record.referred_by).first();
     if (!affiliate) {
@@ -3081,7 +4254,7 @@ async function calculateAndSaveCommissions(env, record) {
 
     for (const item of items) {
         if (allMarketplaceProducts[item.product_id]) {
-            console.log(`[commission] Order ${record.id}: item="${item.product_id}" — marketplace product, skipping commission`);
+            console.log(`[commission] Order ${record.id}: item="${item.product_id}" â€” marketplace product, skipping commission`);
             continue;
         }
         const product = allProducts[item.product_id];
@@ -3092,13 +4265,13 @@ async function calculateAndSaveCommissions(env, record) {
         const commissionPercent = catMap[product.category] || 0;
         console.log(`[commission] Order ${record.id}: item="${item.product_id}" product.category="${product.category}" commissionPercent=${commissionPercent} line_total=${item.line_total}`);
         if (commissionPercent <= 0) {
-            console.log(`[commission] Order ${record.id}: skipping item "${item.product_id}" — commissionPercent is 0`);
+            console.log(`[commission] Order ${record.id}: skipping item "${item.product_id}" â€” commissionPercent is 0`);
             continue;
         }
         const lineTotal = Number(item.line_total);
         const amount = (lineTotal * commissionPercent) / 100;
         if (amount <= 0) {
-            console.log(`[commission] Order ${record.id}: skipping item "${item.product_id}" — calculated amount is 0`);
+            console.log(`[commission] Order ${record.id}: skipping item "${item.product_id}" â€” calculated amount is 0`);
             continue;
         }
         commissions.push({
@@ -3333,12 +4506,13 @@ async function handleAffiliateAction(body, request, env, corsHeaders) {
     return jsonResponse({ error: "Unknown affiliate action" }, 400, corsHeaders);
 }
 
-/* ── Seller action handler ──────────────────── */
+/* â”€â”€ Seller action handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 async function handleSellerAction(body, request, env, corsHeaders) {
     await ensureOrderSchema(env);
     await ensureSellerSchema(env);
 
+    const origin = new URL(request.url).origin;
     const action = body.action;
 
     if (action === "seller-login") {
@@ -3352,7 +4526,7 @@ async function handleSellerAction(body, request, env, corsHeaders) {
             return jsonResponse({ error: "Too many login attempts. Try again later." }, 429, corsHeaders);
         }
         const db = getOrderDb(env);
-        const seller = await db.prepare("SELECT id, name, display_name, phone, password_hash, total_earnings, platform_fee_percent, active FROM sellers WHERE phone = ?").bind(phone).first();
+        const seller = await db.prepare("SELECT id, name, display_name, phone, password_hash, total_earnings, platform_fee_percent, store_name, verified, active FROM sellers WHERE phone = ?").bind(phone).first();
         if (!seller) {
             return jsonResponse({ error: "Seller not found" }, 404, corsHeaders);
         }
@@ -3377,6 +4551,8 @@ async function handleSellerAction(body, request, env, corsHeaders) {
                 phone: seller.phone,
                 totalEarnings: seller.total_earnings,
                 platformFeePercent: seller.platform_fee_percent,
+                storeName: seller.store_name || "",
+                verified: !!seller.verified,
             },
         }, 200, corsHeaders);
     }
@@ -3447,6 +4623,8 @@ async function handleSellerAction(body, request, env, corsHeaders) {
                 phone: seller.phone,
                 totalEarnings: seller.total_earnings,
                 platformFeePercent: seller.platform_fee_percent,
+                storeName: seller.store_name || "",
+                verified: !!seller.verified,
             },
             stats: {
                 totalOrders,
@@ -3481,6 +4659,633 @@ async function handleSellerAction(body, request, env, corsHeaders) {
                 updatedAt: p.updated_at || "",
             })),
         }, 200, corsHeaders);
+    }
+
+    if (action === "public-seller-register") {
+        const phone = normalizePhone(String(body.phone || "").trim());
+        if (!/^[2459]\d{7}$/.test(phone)) return jsonResponse({ error: "Enter a valid Tunisian mobile number (8 digits starting with 2, 4, 5 or 9)" }, 400, corsHeaders);
+        await ensurePublicSchema(env);
+        const db = getOrderDb(env);
+        const existing = await db.prepare("SELECT 1 FROM public_sellers WHERE phone = ? LIMIT 1").bind(phone).first();
+        if (existing) return jsonResponse({ error: "This phone is already registered. Log in with your existing code." }, 409, corsHeaders);
+        const code = await createUniquePublicCode(env);
+        const id = "PS-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+        const now = new Date().toISOString();
+        const insert = await db.prepare("INSERT INTO public_sellers (id, phone, code, created_at) VALUES (?, ?, ?, ?)").bind(id, phone, code, now).run();
+        if (!insert?.success) return jsonResponse({ error: "Could not register the seller" }, 500, corsHeaders);
+        return jsonResponse({ ok: true, code, phone }, 200, corsHeaders);
+    }
+
+    if (action === "public-seller-login") {
+        const phone = normalizePhone(String(body.phone || "").trim());
+        const seller = await getPublicSellerByCodeAndPhone(env, body.code, phone);
+        if (!seller) return jsonResponse({ error: "Invalid code or phone" }, 401, corsHeaders);
+        const rows = await getAllResults(getOrderDb(env)
+            .prepare("SELECT id, name, price, description, category, stock, image, mime, warranty_days, approved, active, created_at, updated_at FROM public_products WHERE seller_id = ? AND active = 1 ORDER BY created_at DESC")
+            .bind(seller.id));
+        const origin = new URL(request.url).origin;
+        const positionsByProduct = await getPublicProductPositions(env, rows.map((row) => row.id));
+        const products = rows.map((row) => {
+            const positions = positionsByProduct[row.id];
+            const imageUrl = row.image ? origin + "/api/public-product-image?id=" + encodeURIComponent(row.id) + "&pos=0" : "";
+            const images = row.image
+                ? positions && positions.length
+                    ? positions.map((p) => origin + "/api/public-product-image?id=" + encodeURIComponent(row.id) + "&pos=" + p)
+                    : [imageUrl]
+                : [];
+            return {
+                id: row.id,
+                name: row.name,
+                price: Number(row.price),
+                description: row.description || "",
+                category: row.category || "",
+                stock: Number(row.stock) || 0,
+                image: imageUrl,
+                images,
+                warrantyDays: Number(row.warranty_days) || 0,
+                approved: row.approved === 1,
+                createdAt: row.created_at || "",
+            };
+        });
+        return jsonResponse({ ok: true, seller: { id: seller.id, phone: seller.phone, code: seller.code }, products }, 200, corsHeaders);
+    }
+
+    if (action === "public-product-create") {
+        const phone = normalizePhone(String(body.phone || "").trim());
+        const seller = await getPublicSellerByCodeAndPhone(env, body.code, phone);
+        if (!seller) return jsonResponse({ error: "Invalid code or phone" }, 401, corsHeaders);
+        const name = String(body.name || "").trim().slice(0, 120);
+        if (!name) return jsonResponse({ error: "Product name is required" }, 400, corsHeaders);
+        const price = Number(body.price);
+        if (!Number.isFinite(price) || price <= 0) return jsonResponse({ error: "Enter a valid price" }, 400, corsHeaders);
+        const stock = Number(body.stock);
+        if (!Number.isInteger(stock) || stock < 0) return jsonResponse({ error: "Enter a valid stock quantity" }, 400, corsHeaders);
+        const description = String(body.description || "").trim().slice(0, 1000);
+        const category = String(body.category || "").trim().slice(0, 60);
+        const warrantyDays = Math.max(0, Math.min(3650, Math.floor(Number(body.warrantyDays) || 0)));
+        let image = "";
+        let mime = "";
+        let images = [];
+        if (Array.isArray(body.images)) {
+            const parsed = parsePublicImagesArray(body.images);
+            if (parsed === null) return jsonResponse({ error: "Invalid image. Use PNG, JPG or WebP under 1 MB, up to 4 photos." }, 400, corsHeaders);
+            images = parsed;
+        } else {
+            const rawImage = String(body.image || "");
+            if (rawImage) {
+                const detected = parsePublicImageBase64(rawImage);
+                if (!detected) return jsonResponse({ error: "Invalid image. Use PNG, JPG or WebP under 1 MB." }, 400, corsHeaders);
+                images = [{ image: rawImage, mime: detected }];
+            }
+        }
+        const first = images[0] || {};
+        image = first.image || "";
+        mime = first.mime || "";
+        const id = await createUniquePublicProductId(env);
+        const now = new Date().toISOString();
+        const db = getOrderDb(env);
+        const insert = await db
+            .prepare("INSERT INTO public_products (id, seller_id, name, price, description, category, stock, image, mime, warranty_days, approved, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?)")
+            .bind(id, seller.id, name, price, description, category, stock, image, mime, warrantyDays, now, now)
+            .run();
+        if (!insert?.success) return jsonResponse({ error: "Could not save the product" }, 500, corsHeaders);
+        try {
+            await savePublicProductImages(env, id, images);
+        } catch (error) {
+            console.warn("savePublicProductImages failed on create", error);
+        }
+        const origin = new URL(request.url).origin;
+        const imageUrls = images.map((img, index) => origin + "/api/public-product-image?id=" + encodeURIComponent(id) + "&pos=" + index);
+        return jsonResponse({ ok: true, product: { id, name, price, description, category, stock, warrantyDays, image: imageUrls[0] || "", images: imageUrls, approved: false, createdAt: now } }, 200, corsHeaders);
+    }
+
+    if (action === "public-product-update") {
+        const phone = normalizePhone(String(body.phone || "").trim());
+        const seller = await getPublicSellerByCodeAndPhone(env, body.code, phone);
+        if (!seller) return jsonResponse({ error: "Invalid code or phone" }, 401, corsHeaders);
+        const productId = String(body.productId || "").trim();
+        const db = getOrderDb(env);
+        const existing = await db.prepare("SELECT 1 FROM public_products WHERE id = ? AND seller_id = ? AND active = 1 LIMIT 1").bind(productId, seller.id).first();
+        if (!existing) return jsonResponse({ error: "Product was not found" }, 404, corsHeaders);
+        const name = String(body.name || "").trim().slice(0, 120);
+        if (!name) return jsonResponse({ error: "Product name is required" }, 400, corsHeaders);
+        const price = Number(body.price);
+        if (!Number.isFinite(price) || price <= 0) return jsonResponse({ error: "Enter a valid price" }, 400, corsHeaders);
+        const stock = Number(body.stock);
+        if (!Number.isInteger(stock) || stock < 0) return jsonResponse({ error: "Enter a valid stock quantity" }, 400, corsHeaders);
+        const description = String(body.description || "").trim().slice(0, 1000);
+        const category = String(body.category || "").trim().slice(0, 60);
+        const warrantyDays = Math.max(0, Math.min(3650, Math.floor(Number(body.warrantyDays) || 0)));
+        let image = "";
+        let mime = "";
+        let replaceImages = null;
+        if (Array.isArray(body.images)) {
+            const parsed = parsePublicImagesArray(body.images);
+            if (parsed === null) return jsonResponse({ error: "Invalid image. Use PNG, JPG or WebP under 1 MB, up to 4 photos." }, 400, corsHeaders);
+            replaceImages = parsed;
+        }
+        const current = await db.prepare("SELECT image, mime FROM public_products WHERE id = ?").bind(productId).first();
+        if (replaceImages) {
+            const first = replaceImages[0] || {};
+            image = first.image || "";
+            mime = first.mime || "";
+        } else {
+            image = current?.image || "";
+            mime = current?.mime || "";
+        }
+        const now = new Date().toISOString();
+        const update = await db
+            .prepare("UPDATE public_products SET name = ?, price = ?, description = ?, category = ?, stock = ?, image = ?, mime = ?, warranty_days = ?, approved = 0, updated_at = ? WHERE id = ? AND seller_id = ? AND active = 1")
+            .bind(name, price, description, category, stock, image, mime, warrantyDays, now, productId, seller.id)
+            .run();
+        if (!update?.success) return jsonResponse({ error: "Could not update the product" }, 500, corsHeaders);
+        if (replaceImages) {
+            try {
+                await savePublicProductImages(env, productId, replaceImages);
+            } catch (error) {
+                console.warn("savePublicProductImages failed on update", error);
+            }
+        }
+        return jsonResponse({ ok: true, approved: false }, 200, corsHeaders);
+    }
+
+    if (action === "public-product-delete") {
+        const phone = normalizePhone(String(body.phone || "").trim());
+        const seller = await getPublicSellerByCodeAndPhone(env, body.code, phone);
+        if (!seller) return jsonResponse({ error: "Invalid code or phone" }, 401, corsHeaders);
+        const productId = String(body.productId || "").trim();
+        const update = await getOrderDb(env)
+            .prepare("UPDATE public_products SET active = 0, updated_at = ? WHERE id = ? AND seller_id = ?")
+            .bind(new Date().toISOString(), productId, seller.id)
+            .run();
+        if (!update?.success) return jsonResponse({ error: "Could not delete the product" }, 500, corsHeaders);
+        return jsonResponse({ ok: true }, 200, corsHeaders);
+    }
+
+    if (action === "public-seller-chat-unread") {
+        const phone = normalizePhone(String(body.phone || "").trim());
+        const seller = await getPublicSellerByCodeAndPhone(env, body.code, phone);
+        if (!seller) return jsonResponse({ error: "Invalid code or phone" }, 401, corsHeaders);
+        await ensureChatSchema(env);
+        const rows = await getAllResults(
+            getOrderDb(env)
+                .prepare(
+                    `SELECT order_id, COUNT(*) AS total FROM chat_messages
+                     WHERE sender_type = 'customer' AND seller_read = 0
+                       AND order_id IN (
+                           SELECT DISTINCT oi.order_id FROM order_items oi
+                           JOIN public_products p ON p.id = oi.product_id
+                           WHERE p.seller_id = ?
+                       )
+                     GROUP BY order_id`,
+                )
+                .bind(seller.id),
+        );
+        const byOrder = {};
+        let total = 0;
+        for (const row of rows || []) {
+            byOrder[row.order_id] = Number(row.total || 0);
+            total += Number(row.total || 0);
+        }
+        return jsonResponse({ ok: true, total, byOrder }, 200, corsHeaders);
+    }
+
+    if (action === "public-seller-orders") {
+        const phone = normalizePhone(String(body.phone || "").trim());
+        const seller = await getPublicSellerByCodeAndPhone(env, body.code, phone);
+        if (!seller) return jsonResponse({ error: "Invalid code or phone" }, 401, corsHeaders);
+        const rows = await getAllResults(getOrderDb(env)
+            .prepare("SELECT DISTINCT o.id, o.created_at, o.payment_status, o.delivery_status, o.amount_due, o.currency FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN public_products p ON p.id = oi.product_id WHERE p.seller_id = ? ORDER BY o.created_at DESC")
+            .bind(seller.id));
+        const payoutRows = await getAllResults(getOrderDb(env).prepare("SELECT order_id, status FROM public_payout_requests WHERE seller_id = ?").bind(seller.id));
+        const payoutByOrder = {};
+        for (const payoutRow of payoutRows || []) payoutByOrder[payoutRow.order_id] = payoutRow.status || "";
+        const ownProducts = await getAllResults(getOrderDb(env).prepare("SELECT id FROM public_products WHERE seller_id = ?").bind(seller.id));
+        const ownIds = new Set(ownProducts.map((p) => p.id));
+        const orders = [];
+        for (const row of rows) {
+            const items = (await getOrderItems(env, row.id)).filter((item) => ownIds.has(item.product_id));
+            const ownTotal = items.reduce((sum, item) => sum + (Number(item.line_total) || 0), 0);
+            orders.push({
+                id: row.id,
+                createdAt: row.created_at || "",
+                paymentStatus: row.payment_status || "",
+                paymentStatusLabel: getPaymentStatusLabel(row.payment_status),
+                deliveryStatus: row.delivery_status || "",
+                deliveryStatusLabel: getDeliveryStatusLabel(row.delivery_status),
+                payoutStatus: payoutByOrder[row.id] || "",
+                amountDue: ownTotal,
+                currency: row.currency || "TND",
+                items: items.map((item) => ({ productId: item.product_id, productName: item.product_name, quantity: Number(item.quantity), unitPrice: Number(item.unit_price), lineTotal: Number(item.line_total) })),
+            });
+        }
+        return jsonResponse({ ok: true, orders }, 200, corsHeaders);
+    }
+
+    if (action === "public-request-payout") {
+        const phone = normalizePhone(String(body.phone || "").trim());
+        const seller = await getPublicSellerByCodeAndPhone(env, body.code, phone);
+        if (!seller) return jsonResponse({ error: "Invalid code or phone" }, 401, corsHeaders);
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        if (!await publicSellerOwnsOrder(env, seller.id, orderId)) {
+            return jsonResponse({ error: "You can only request payouts for orders containing your products." }, 403, corsHeaders);
+        }
+        const d17 = String(body.d17Number || "").replace(/\s/g, "");
+        if (!/^\d{8}$/.test(d17)) return jsonResponse({ error: "Enter a valid 8-digit D17 number." }, 400, corsHeaders);
+        const record = await getOrderById(env, orderId);
+        if (!record) return jsonResponse({ error: "Order was not found." }, 404, corsHeaders);
+        if (String(record.payment_status || "") !== "verified" || String(record.delivery_status || "") !== "delivered") {
+            return jsonResponse({ error: "Payout requests are available after the order is delivered and payment is verified." }, 400, corsHeaders);
+        }
+        await ensurePublicSchema(env);
+        const db = getOrderDb(env);
+        const existing = await db.prepare("SELECT id, status FROM public_payout_requests WHERE order_id = ?").bind(orderId).first();
+        const now = new Date().toISOString();
+        if (existing) {
+            if (existing.status === "approved") {
+                return jsonResponse({ error: "Payout for this order was already approved." }, 400, corsHeaders);
+            }
+            await db.prepare("UPDATE public_payout_requests SET d17_number = ?, status = 'pending', updated_at = ? WHERE id = ?").bind(d17, now, existing.id).run();
+        } else {
+            await db.prepare("INSERT INTO public_payout_requests (order_id, seller_id, d17_number, status, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?)").bind(orderId, seller.id, d17, now, now).run();
+        }
+        if (env.TELEGRAM_ADMIN_CHAT_ID) {
+            try {
+                const ownProducts = await getAllResults(db.prepare("SELECT id FROM public_products WHERE seller_id = ?").bind(seller.id));
+                const ownIds = new Set(ownProducts.map((p) => p.id));
+                const ownItems = (await getOrderItems(env, orderId)).filter((item) => ownIds.has(item.product_id));
+                const ownTotal = ownItems.reduce((sum, item) => sum + (Number(item.line_total) || 0), 0);
+                await sendTelegramMessage(
+                    env,
+                    env.TELEGRAM_ADMIN_CHAT_ID,
+                    "\uD83D\uDCB0 Community payout request\n\u2014 " + escapeHtml(orderId) + "\nD17: " + escapeHtml(d17) + "\nSeller: " + escapeHtml(formatTunisianPhone(phone)) + "\nAmount: " + Number(ownTotal).toFixed(3) + " TND",
+                    getPayoutKeyboard(orderId)
+                );
+            } catch (error) {
+                console.error("[payout] telegram notify failed:", error);
+            }
+        }
+        return jsonResponse({ ok: true, status: "pending" }, 200, corsHeaders);
+    }
+
+    if (action === "public-chat-messages") {
+        const phone = normalizePhone(String(body.phone || "").trim());
+        const seller = await getPublicSellerByCodeAndPhone(env, body.code, phone);
+        if (!seller) return jsonResponse({ error: "Invalid code or phone" }, 401, corsHeaders);
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        if (!await publicSellerOwnsOrder(env, seller.id, orderId)) {
+            return jsonResponse({ error: "You can only chat about orders containing your products." }, 403, corsHeaders);
+        }
+        await ensureChatSchema(env);
+        const db = getOrderDb(env);
+        const [messages, markResult] = await Promise.all([
+            getChatMessages(env, orderId),
+            db.prepare("UPDATE chat_messages SET seller_read = 1 WHERE order_id = ? AND sender_type = 'customer'").bind(orderId).run(),
+        ]);
+        if (markResult?.error) console.error("[chat] public seller mark read failed:", markResult.error);
+        return jsonResponse({
+            ok: true,
+            orderId,
+            sellers: await getOrderChatSellers(env, orderId),
+            messages: formatChatMessages(messages),
+        }, 200, corsHeaders);
+    }
+
+    if (action === "public-chat-send") {
+        const phone = normalizePhone(String(body.phone || "").trim());
+        const seller = await getPublicSellerByCodeAndPhone(env, body.code, phone);
+        if (!seller) return jsonResponse({ error: "Invalid code or phone" }, 401, corsHeaders);
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        if (!await publicSellerOwnsOrder(env, seller.id, orderId)) {
+            return jsonResponse({ error: "You can only chat about orders containing your products." }, 403, corsHeaders);
+        }
+        if (!checkChatRateLimit("chat-public-" + seller.id)) {
+            return jsonResponse({ error: "You are sending messages too quickly." }, 429, corsHeaders);
+        }
+        const message = String(body.message || "").trim().replace(/\r?\n/g, " ").replace(/\s+/g, " ").slice(0, CHAT_MESSAGE_MAX_LENGTH);
+        if (!message) return jsonResponse({ error: "Message cannot be empty." }, 400, corsHeaders);
+        await ensureChatSchema(env);
+        const now = new Date().toISOString();
+        const insert = await getOrderDb(env)
+            .prepare("INSERT INTO chat_messages (order_id, sender_type, sender_name, message, created_at) VALUES (?, 'seller', 'Community', ?, ?)")
+            .bind(orderId, message, now)
+            .run();
+        if (!insert?.success) {
+            console.error("[chat] public seller insert failed:", insert?.error || "unknown");
+            return jsonResponse({ error: "Could not send the message." }, 500, corsHeaders);
+        }
+        return jsonResponse({
+            ok: true,
+            message: { id: insert.meta.last_row_id, orderId, senderType: "seller", senderName: "Community", message, createdAt: now },
+        }, 200, corsHeaders);
+    }
+
+    if (action === "public-chat-upload-image") {
+        const phone = normalizePhone(String(body.phone || "").trim());
+        const seller = await getPublicSellerByCodeAndPhone(env, body.code, phone);
+        if (!seller) return jsonResponse({ error: "Invalid code or phone" }, 401, corsHeaders);
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        if (!await publicSellerOwnsOrder(env, seller.id, orderId)) {
+            return jsonResponse({ error: "You can only chat about orders containing your products." }, 403, corsHeaders);
+        }
+        if (!checkChatRateLimit("chat-public-" + seller.id)) {
+            return jsonResponse({ error: "You are sending messages too quickly." }, 429, corsHeaders);
+        }
+        const base64 = String(body.image || "");
+        if (!base64) return jsonResponse({ error: "No image was provided." }, 400, corsHeaders);
+        try {
+            const origin = new URL(request.url).origin;
+            const imageUrl = await uploadChatImage(env, origin, orderId, base64);
+            const message = await insertChatImageMessage(env, orderId, "seller", "Community", imageUrl);
+            return jsonResponse({ ok: true, message }, 200, corsHeaders);
+        } catch (error) {
+            return jsonResponse({ error: error.message || "Could not send the image." }, 400, corsHeaders);
+        }
+    }
+
+    if (action === "seller-chat-messages") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        const record = await getOrderById(env, orderId);
+        if (!record) return jsonResponse({ error: "Order was not found" }, 404, corsHeaders);
+        if (!await sellerCanChatOnOrder(env, seller, orderId)) {
+            return jsonResponse({ error: "You can only chat about orders containing your products." }, 403, corsHeaders);
+        }
+
+        await ensureChatSchema(env);
+        const db = getOrderDb(env);
+        const [messages, markResult] = await Promise.all([
+            getChatMessages(env, orderId),
+            db.prepare("UPDATE chat_messages SET seller_read = 1 WHERE order_id = ? AND sender_type = 'customer'").bind(orderId).run(),
+        ]);
+        if (markResult?.error) console.error("[chat] seller mark read failed:", markResult.error);
+
+        return jsonResponse({
+            ok: true,
+            orderId,
+            sellers: await getOrderChatSellers(env, orderId),
+            messages: formatChatMessages(messages),
+        }, 200, corsHeaders);
+    }
+
+    if (action === "seller-chat-send") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        if (!await sellerCanChatOnOrder(env, seller, orderId)) {
+            return jsonResponse({ error: "You can only chat about orders containing your products." }, 403, corsHeaders);
+        }
+        if (!checkChatRateLimit("chat-seller-" + seller.id)) {
+            return jsonResponse({ error: "You are sending messages too quickly." }, 429, corsHeaders);
+        }
+        const message = String(body.message || "").trim().replace(/\r?\n/g, " ").replace(/\s+/g, " ").slice(0, CHAT_MESSAGE_MAX_LENGTH);
+        if (!message) return jsonResponse({ error: "Message cannot be empty." }, 400, corsHeaders);
+
+        await ensureChatSchema(env);
+        const now = new Date().toISOString();
+        const insert = await getOrderDb(env)
+            .prepare("INSERT INTO chat_messages (order_id, sender_type, sender_name, message, created_at) VALUES (?, 'seller', ?, ?, ?)")
+            .bind(orderId, seller.display_name, message, now)
+            .run();
+        if (!insert?.success) {
+            console.error("[chat] seller insert failed:", insert?.error || "unknown");
+            return jsonResponse({ error: "Could not send the message." }, 500, corsHeaders);
+        }
+        return jsonResponse({
+            ok: true,
+            message: { id: insert.meta.last_row_id, orderId, senderType: "seller", senderName: seller.display_name, message, createdAt: now },
+        }, 200, corsHeaders);
+    }
+
+    if (action === "seller-chat-upload-image") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        if (!await sellerCanChatOnOrder(env, seller, orderId)) {
+            return jsonResponse({ error: "You can only chat about orders containing your products." }, 403, corsHeaders);
+        }
+        if (!checkChatRateLimit("chat-seller-" + seller.id)) {
+            return jsonResponse({ error: "You are sending messages too quickly." }, 429, corsHeaders);
+        }
+        try {
+            const imageUrl = await uploadChatImage(env, origin, orderId, String(body.base64 || "").trim());
+            const message = await insertChatImageMessage(env, orderId, "seller", seller.display_name, imageUrl);
+            return jsonResponse({ ok: true, message }, 200, corsHeaders);
+        } catch (error) {
+            return jsonResponse({ error: error.message || "Could not send the image." }, 400, corsHeaders);
+        }
+    }
+
+    if (action === "seller-chat-unread") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+
+        const rows = await getAllResults(
+            getOrderDb(env)
+                .prepare(
+                    `SELECT order_id, COUNT(*) AS total FROM chat_messages
+                     WHERE sender_type = 'customer' AND seller_read = 0
+                       AND order_id IN (SELECT DISTINCT order_id FROM order_items WHERE sold_by = ?)
+                     GROUP BY order_id`,
+                )
+                .bind(seller.display_name),
+        );
+        const byOrder = {};
+        let total = 0;
+        for (const row of rows || []) {
+            byOrder[row.order_id] = Number(row.total || 0);
+            total += Number(row.total || 0);
+        }
+        return jsonResponse({ ok: true, total, byOrder }, 200, corsHeaders);
+    }
+
+    if (action === "seller-cancel-order") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        if (!(await sellerCanChatOnOrder(env, seller, orderId))) {
+            return jsonResponse({ error: "You can only cancel orders containing your products." }, 403, corsHeaders);
+        }
+
+        const record = await getOrderById(env, orderId);
+        if (!record) return jsonResponse({ error: "Order was not found." }, 404, corsHeaders);
+        if (record.customer_confirmed_at) {
+            return jsonResponse({ error: "This order was already confirmed by the customer." }, 400, corsHeaders);
+        }
+        if (record.delivery_status === "delivered") {
+            return jsonResponse({ error: "A delivered order cannot be cancelled." }, 400, corsHeaders);
+        }
+        if (record.delivery_status === "cancelled") {
+            return jsonResponse({ ok: true, deliveryStatus: "cancelled" }, 200, corsHeaders);
+        }
+
+        const now = new Date().toISOString();
+        const db = getOrderDb(env);
+        const updateResult = await db
+            .prepare("UPDATE orders SET delivery_status = 'cancelled', delivery_status_reason = ?, updated_at = ? WHERE id = ? AND delivery_status != 'delivered' AND customer_confirmed_at IS NULL")
+            .bind(`Cancelled by seller: ${seller.display_name}`, now, orderId)
+            .run();
+        const changed = Number(updateResult?.meta?.changes || 0);
+        if (changed < 1) {
+            const fresh = await getOrderById(env, orderId);
+            if (fresh?.customer_confirmed_at) {
+                return jsonResponse({ error: "This order was already confirmed by the customer." }, 409, corsHeaders);
+            }
+            if (fresh?.delivery_status === "delivered") {
+                return jsonResponse({ error: "A delivered order cannot be cancelled." }, 409, corsHeaders);
+            }
+            return jsonResponse({ error: "This order can no longer be cancelled." }, 409, corsHeaders);
+        }
+
+        try {
+            if (env.TELEGRAM_ADMIN_CHAT_ID) {
+                await sendTelegramMessage(
+                    env,
+                    env.TELEGRAM_ADMIN_CHAT_ID,
+                    `${ICONS.warning} <b>Order cancelled by seller</b> \u2014 ${escapeHtml(orderId)}\n${ICONS.phone} WhatsApp: <code>+216 ${escapeHtml(formatTunisianPhone(record.customer_phone))}</code>\nSeller: ${escapeHtml(seller.display_name)}`,
+                );
+            }
+        } catch (error) {
+            console.warn("Seller cancellation Telegram notification failed", error);
+        }
+
+        return jsonResponse({ ok: true, deliveryStatus: "cancelled" }, 200, corsHeaders);
+    }
+
+    if (action === "seller-get-delivery") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        if (!(await sellerCanChatOnOrder(env, seller, orderId))) {
+            return jsonResponse({ error: "You can only deliver orders containing your products." }, 403, corsHeaders);
+        }
+
+        const record = await getOrderById(env, orderId);
+        const rows = await getSellerOrderDeliveries(env, orderId);
+        return jsonResponse(
+            {
+                ok: true,
+                deliveryStatus: record?.delivery_status || "",
+                items: rows
+                    .filter((row) => String(row.seller_name || "").trim() === seller.display_name)
+                    .map((row) => ({
+                        id: row.id,
+                        label: row.label || "",
+                        value: row.value || "",
+                        createdAt: row.created_at || "",
+                    })),
+            },
+            200,
+            corsHeaders,
+        );
+    }
+
+    if (action === "seller-save-delivery") {
+        const token = String(body.token || "").trim();
+        if (!token) return jsonResponse({ error: "Authentication required" }, 401, corsHeaders);
+        const seller = await getSellerByToken(env, token);
+        if (!seller) return jsonResponse({ error: "Invalid session" }, 401, corsHeaders);
+        if (!seller.active) return jsonResponse({ error: "Seller account is inactive" }, 403, corsHeaders);
+
+        const orderId = normalizeOrderId(body.orderId);
+        if (!ORDER_ID_REGEX.test(orderId)) return jsonResponse({ error: "Enter a valid order ID" }, 400, corsHeaders);
+        if (!(await sellerCanChatOnOrder(env, seller, orderId))) {
+            return jsonResponse({ error: "You can only deliver orders containing your products." }, 403, corsHeaders);
+        }
+
+        const record = await getOrderById(env, orderId);
+        if (!record) return jsonResponse({ error: "Order was not found." }, 404, corsHeaders);
+        const deliveryState = String(record.delivery_status || "").toLowerCase();
+        if (["cancelled", "canceled", "rejected"].includes(deliveryState)) {
+            return jsonResponse({ error: "Delivery items cannot be sent for a cancelled order." }, 403, corsHeaders);
+        }
+
+        const sentRows = await getSellerOrderDeliveries(env, orderId);
+        const ownRows = sentRows.filter((row) => String(row.seller_name || "").trim() === seller.display_name);
+        const existingKeys = new Set(ownRows.map((row) => `${row.label || ""}\u0000${row.value || ""}`));
+
+        let items;
+        try {
+            items = parseSellerDeliveryItems(body.items);
+        } catch (error) {
+            return jsonResponse({ error: error.message || "Invalid delivery items" }, 400, corsHeaders);
+        }
+
+        const freshItems = items.filter((item) => !existingKeys.has(`${item.label}\u0000${item.value}`));
+        if (!freshItems.length) {
+            return jsonResponse({ error: "No new delivery items to add." }, 400, corsHeaders);
+        }
+
+        const now = new Date().toISOString();
+        const db = getOrderDb(env);
+        try {
+            await db.batch([
+                ...freshItems.map((item) =>
+                    db
+                        .prepare(
+                            "INSERT INTO seller_order_deliveries (order_id, seller_name, label, value, created_at) VALUES (?, ?, ?, ?, ?)",
+                        )
+                        .bind(orderId, seller.display_name, item.label, item.value, now),
+                ),
+                db.prepare("UPDATE orders SET updated_at = ? WHERE id = ?").bind(now, orderId),
+            ]);
+        } catch (error) {
+            if (/no such table/i.test(String(error?.message || ""))) {
+                return jsonResponse(
+                    { error: "seller_order_deliveries table is missing. Run schema.sql in Cloudflare D1." },
+                    500,
+                    corsHeaders,
+                );
+            }
+            throw error;
+        }
+
+        try {
+            if (env.TELEGRAM_ADMIN_CHAT_ID) {
+                await sendTelegramMessage(
+                    env,
+                    env.TELEGRAM_ADMIN_CHAT_ID,
+                    `${ICONS.gift} <b>Delivery items added by seller</b> \u2014 ${escapeHtml(orderId)}\nSeller: ${escapeHtml(seller.display_name)}\nItems: ${items.length}`,
+                );
+            }
+        } catch (error) {
+            console.warn("Seller delivery Telegram notification failed", error);
+        }
+
+        return jsonResponse({ ok: true, count: freshItems.length }, 200, corsHeaders);
     }
 
     if (action === "seller-products") {
@@ -3684,7 +5489,7 @@ async function handleSellerAction(body, request, env, corsHeaders) {
     return jsonResponse({ error: "Unknown seller action" }, 400, corsHeaders);
 }
 
-/* ── Seller earnings on delivery ────────────── */
+/* â”€â”€ Seller earnings on delivery â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 async function earnSellerForOrder(env, orderId) {
     const db = getOrderDb(env);
@@ -3736,7 +5541,7 @@ async function handleOrder(request, env, corsHeaders) {
     cleanupProcessedOrders();
 
     const body = await request.json();
-    if (body.callback_query || body.message || body.update_id) {
+    if (!body.action && (body.callback_query || body.message || body.update_id)) {
         return handleTelegramWebhook(body, request, env, corsHeaders);
     }
 
@@ -3752,12 +5557,28 @@ async function handleOrder(request, env, corsHeaders) {
         return handleSellerAction(body, request, env, corsHeaders);
     }
 
+    if (String(body.action || "").startsWith("public-")) {
+        return handleSellerAction(body, request, env, corsHeaders);
+    }
+
     if (body.action === "order-status") {
         return handleOrderStatus(body, env, corsHeaders);
     }
 
+    if (body.action === "customer-confirm-delivery") {
+        return handleCustomerConfirmDelivery(body, env, corsHeaders);
+    }
+
+    if (body.action === "customer-report-admin") {
+        return handleCustomerReportAdmin(body, env, corsHeaders);
+    }
+
     if (body.action === "customer-input") {
         return handleCustomerInput(body, env, corsHeaders);
+    }
+
+    if (String(body.action || "").startsWith("chat-")) {
+        return handleCustomerChat(body, request, env, corsHeaders);
     }
 
     const checkoutRequestId = String(body.checkoutRequestId || "").trim();
@@ -3793,17 +5614,19 @@ async function handleOrder(request, env, corsHeaders) {
     }
 
     await ensureCatalogSchema(env);
-    const [allProducts, config, paymentSettings, marketplaceProducts] = await Promise.all([
+    const [allProducts, config, paymentSettings, marketplaceProducts, publicProducts] = await Promise.all([
         readAllProducts(env),
         readStoreConfig(env),
         readPaymentSettings(env),
         readAllMarketplaceProducts(env),
+        readPublicProductsMap(env),
     ]);
     const database = {
         products: allProducts,
         currency: config.currency || "TND",
         routes: config.routes || {},
         marketplaceProducts,
+        publicProducts,
     };
     const settings = paymentSettings ? mergePaymentSettings(paymentSettings) : clone(DEFAULT_PAYMENT_SETTINGS);
     const order = buildOrder(body, database, settings);
@@ -3841,6 +5664,12 @@ async function handleOrder(request, env, corsHeaders) {
         await markTelegramNotified(env, order.id);
     } catch (error) {
         console.warn("Telegram notification failed, order saved anyway", error);
+    }
+
+    try {
+        await consumePublicProductStock(env, order);
+    } catch (error) {
+        console.error(`Public product stock consumption failed for order ${order.id}:`, error);
     }
 
     if (order.referredBy) {
@@ -3881,13 +5710,22 @@ export default {
         if (request.method === "GET") {
             try {
                 if (urlPath === "/api/data") {
-                    const data = await getCatalogData(env);
+                    const data = await getCatalogData(env, new URL(request.url).origin);
                     return jsonResponse(data, 200, corsHeaders);
                 }
 
                 if (urlPath === "/api/settings") {
                     const settings = await readPaymentSettings(env);
                     return jsonResponse(settings || {}, 200, corsHeaders);
+                }
+
+                if (urlPath === "/api/chat-image") {
+                    await ensureChatSchema(env);
+                    return handleChatImageGet(request, env, corsHeaders);
+                }
+
+                if (urlPath === "/api/public-product-image") {
+                    return handlePublicProductImage(request, env, corsHeaders);
                 }
 
                 return jsonResponse({ error: "Not found" }, 404, corsHeaders);

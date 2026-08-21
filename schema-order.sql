@@ -3,7 +3,7 @@
 -- Paste each CREATE TABLE one at a time in the D1 Console.
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS orders ( id TEXT PRIMARY KEY, checkout_request_id TEXT, created_at TEXT NOT NULL, customer_phone TEXT NOT NULL, telegram_username TEXT, product_total REAL NOT NULL, amount_due REAL NOT NULL, currency TEXT NOT NULL, payment_method TEXT, payment_method_label TEXT, payment_status TEXT NOT NULL DEFAULT 'pending', delivery_status TEXT NOT NULL DEFAULT 'waiting', payment_status_reason TEXT DEFAULT '', delivery_status_reason TEXT DEFAULT '', updated_at TEXT, referred_by TEXT, telegram_notified_at TEXT );
+CREATE TABLE IF NOT EXISTS orders ( id TEXT PRIMARY KEY, checkout_request_id TEXT, created_at TEXT NOT NULL, customer_phone TEXT NOT NULL, telegram_username TEXT, product_total REAL NOT NULL, amount_due REAL NOT NULL, currency TEXT NOT NULL, payment_method TEXT, payment_method_label TEXT, payment_status TEXT NOT NULL DEFAULT 'pending', delivery_status TEXT NOT NULL DEFAULT 'waiting', payment_status_reason TEXT DEFAULT '', delivery_status_reason TEXT DEFAULT '', updated_at TEXT, referred_by TEXT, telegram_notified_at TEXT, customer_confirmed_at TEXT );
 
 CREATE TABLE IF NOT EXISTS order_items ( order_id TEXT NOT NULL, product_id TEXT NOT NULL, variation_id TEXT, product_name TEXT NOT NULL, option_label TEXT, quantity INTEGER NOT NULL DEFAULT 1, unit_price REAL NOT NULL, line_total REAL NOT NULL, sold_by TEXT );
 
