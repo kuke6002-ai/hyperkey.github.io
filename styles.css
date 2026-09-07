@@ -1624,6 +1624,16 @@ input[inputmode="tel"] {
     filter: saturate(0.35) brightness(0.72);
 }
 
+.product-art.has-image,
+.product-card:hover .product-art.has-image {
+    animation: none;
+    background: #000;
+}
+
+.product-art.has-image .product-image {
+    transform: scale(1.06);
+}
+
 .product-card:hover .product-art--muted {
     animation: heroShift 10s ease-in-out infinite;
 }

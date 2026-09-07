@@ -690,7 +690,7 @@ function productCardTemplate(id, product) {
     return `
         <div class="col-6 col-md-6 col-lg-4 col-xl-3 hk-reveal">
             <article class="card product-card h-100">
-                <a class="product-art ${art}${inStock ? "" : " product-art--muted"}" href="product.html?product=${encodeURIComponent(id)}" aria-label="View ${escapeHtml(product.name)}">
+                <a class="product-art ${art}${image ? " has-image" : ""}${inStock ? "" : " product-art--muted"}" href="product.html?product=${encodeURIComponent(id)}" aria-label="View ${escapeHtml(product.name)}">
                     ${
                         image
                             ? `<img class="product-image" src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" loading="lazy" />`
@@ -830,7 +830,7 @@ function marketplaceCardTemplate(id, product) {
     return `
         <div class="col-6 col-md-6 col-lg-4 col-xl-3 hk-reveal">
             <article class="card product-card h-100">
-                <a class="product-art ${art}${inStock ? "" : " product-art--muted"}" href="product.html?product=${encodeURIComponent(id)}" aria-label="View ${escapeHtml(product.name)}">
+                <a class="product-art ${art}${image ? " has-image" : ""}${inStock ? "" : " product-art--muted"}" href="product.html?product=${encodeURIComponent(id)}" aria-label="View ${escapeHtml(product.name)}">
                     ${image ? `<img class="product-image" src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" loading="lazy" />` : '<i class="bi bi-shop"></i>'}
                 </a>
                 <div class="card-body d-flex flex-column">
