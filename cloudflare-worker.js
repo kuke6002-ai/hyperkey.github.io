@@ -4125,6 +4125,19 @@ async function handleTelegramWebhook(body, request, env, corsHeaders) {
     }
 
     try {
+        const current = await getOrderById(env, action.orderId);
+        if (!current) throw new Error("Order was not found");
+        const alreadyPayment =
+            action.target === "payment" &&
+            current.payment_status === action.status &&
+            !(action.status === "rejected" && current.delivery_status !== "cancelled");
+        const alreadyDelivery = action.target === "delivery" && current.delivery_status === action.status;
+        if (alreadyPayment || alreadyDelivery) {
+            const statusLabel = action.target === "payment" ? getPaymentStatusLabel(action.status) : getDeliveryStatusLabel(action.status);
+            await answerTelegramCallback(env, callbackQuery.id, `${action.orderId} is already ${statusLabel}`);
+            return jsonResponse({ ok: true }, 200, corsHeaders);
+        }
+
         await updateAdminOrder(env, updateBody);
         const record = await getOrderById(env, action.orderId);
         const order = await getSavedOrderForNotification(env, record);
@@ -4136,6 +4149,9 @@ async function handleTelegramWebhook(body, request, env, corsHeaders) {
             try {
                 await editTelegramMessage(env, chatId, messageId, formatAdminMessage(order), getAdminOrderKeyboard(order));
             } catch (error) {
+                if (/message is not modified/i.test(String(error?.message || ""))) {
+                    return jsonResponse({ ok: true }, 200, corsHeaders);
+                }
                 console.warn("Telegram message edit failed, sending new message", error);
                 try {
                     await sendTelegramMessage(env, chatId, formatAdminMessage(order), getAdminOrderKeyboard(order));
@@ -4738,9 +4754,9 @@ async function handleSellerAction(body, request, env, corsHeaders) {
                 images = [{ image: rawImage, mime: detected }];
             }
         }
-        const first = images[0] || {};
-        image = first.image || "";
-        mime = first.mime || "";
+        const first = images[0];
+        image = first?.image || "";
+        mime = first?.mime || "";
         const id = await createUniquePublicProductId(env);
         const now = new Date().toISOString();
         const db = getOrderDb(env);
@@ -4786,9 +4802,9 @@ async function handleSellerAction(body, request, env, corsHeaders) {
         }
         const current = await db.prepare("SELECT image, mime FROM public_products WHERE id = ?").bind(productId).first();
         if (replaceImages) {
-            const first = replaceImages[0] || {};
-            image = first.image || "";
-            mime = first.mime || "";
+            const first = replaceImages[0];
+            image = first?.image || "";
+            mime = first?.mime || "";
         } else {
             image = current?.image || "";
             mime = current?.mime || "";
