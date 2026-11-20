@@ -1,0 +1,1067 @@
+/* ═══════════════════════════════════════════════════════════════
+   HYPERKEY ADMIN — VISUAL REDESIGN LAYER
+   Loaded ONLY by nope.html (after styles.css).
+   Dark-first control-room theme: deep neutral surfaces,
+   brand orange accent, glass chrome, calm motion.
+   Layout mechanics (sticky offsets, grids) are intentionally
+   preserved — this file restyles, it does not restructure.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 1. Design tokens (admin retheme) ─────────────────────────── */
+:root,
+[data-bs-theme="dark"] {
+    --ak-accent: #ff8a2b;
+    --ak-accent-deep: #f26101;
+    --ak-accent-soft: #ffb15c;
+    --ak-bg: #07080b;
+    --ak-surface: #13161c;
+    --ak-surface-2: #171b22;
+    --ak-field: #14171d;
+    --ak-border: rgba(255, 255, 255, 0.09);
+    --ak-border-strong: rgba(255, 255, 255, 0.14);
+    --ak-ink: #eef1f6;
+    --ak-muted: #98a1ad;
+
+    /* Re-map the shared store tokens for the admin surface */
+    --gv-ink: #eef1f6;
+    --gv-muted: #98a1ad;
+    --gv-primary: #ff8a2b;
+    --gv-primary-dark: #f26101;
+    --gv-lime: #ffbd72;
+    --gv-violet: #a78bfa;
+    --gv-violet-glow: rgba(167, 139, 250, 0.3);
+    --gv-panel: #13161c;
+    --gv-soft: #171b22;
+    --gv-border: rgba(255, 255, 255, 0.09);
+    --gv-glow: rgba(255, 138, 43, 0.32);
+    --bs-body-bg: #07080b;
+    --bs-body-color: #eef1f6;
+
+    --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.38), 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.42), 0 2px 8px rgba(0, 0, 0, 0.32);
+    --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.5), 0 6px 18px rgba(0, 0, 0, 0.35);
+    --shadow-xl: 0 32px 80px rgba(0, 0, 0, 0.55), 0 10px 30px rgba(0, 0, 0, 0.4);
+    --shadow-card: var(--shadow-sm);
+    --shadow-card-hover: var(--shadow-md);
+    --ak-ring: 0 0 0 3.5px rgba(255, 138, 43, 0.16);
+}
+
+/* ── 2. Base & ambient background ─────────────────────────────── */
+body {
+    background:
+        radial-gradient(1100px 520px at 8% -6%, rgba(255, 138, 43, 0.08), transparent 60%),
+        radial-gradient(900px 480px at 100% -8%, rgba(124, 77, 224, 0.08), transparent 60%),
+        radial-gradient(1000px 640px at 50% 115%, rgba(255, 138, 43, 0.05), transparent 55%),
+        var(--ak-bg);
+    color: var(--ak-ink);
+}
+
+::selection {
+    background: rgba(255, 138, 43, 0.35);
+    color: #fff7ed;
+}
+
+/* Thin custom scrollbars */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.14);
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.26);
+    background-clip: padding-box;
+}
+
+/* Accessible focus ring */
+#adminContent :focus-visible,
+#adminLockScreen :focus-visible {
+    outline: 2px solid rgba(255, 138, 43, 0.65);
+    outline-offset: 2px;
+}
+
+/* ── 3. Lock screen ───────────────────────────────────────────── */
+#adminLockScreen {
+    background:
+        radial-gradient(900px 480px at 15% 20%, rgba(255, 138, 43, 0.10), transparent 62%),
+        radial-gradient(760px 460px at 85% 75%, rgba(124, 77, 224, 0.12), transparent 62%),
+        var(--ak-bg);
+    overflow: hidden;
+}
+
+/* Animated aurora orbs */
+#adminLockScreen::before,
+#adminLockScreen::after {
+    content: "";
+    border-radius: 50%;
+    filter: blur(90px);
+    pointer-events: none;
+    position: absolute;
+    z-index: 0;
+}
+
+#adminLockScreen::before {
+    animation: akOrbA 16s ease-in-out infinite alternate;
+    background: rgba(255, 138, 43, 0.13);
+    height: 420px;
+    left: -140px;
+    top: -120px;
+    width: 420px;
+}
+
+#adminLockScreen::after {
+    animation: akOrbB 19s ease-in-out infinite alternate;
+    background: rgba(124, 77, 224, 0.14);
+    bottom: -140px;
+    height: 460px;
+    right: -160px;
+    width: 460px;
+}
+
+@keyframes akOrbA {
+    from { transform: translate(0, 0) scale(1); }
+    to { transform: translate(70px, 50px) scale(1.15); }
+}
+
+@keyframes akOrbB {
+    from { transform: translate(0, 0) scale(1.1); }
+    to { transform: translate(-60px, -40px) scale(0.95); }
+}
+
+#adminLockScreen .admin-lock-card {
+    animation: akLockIn 0.55s var(--ease-out) both;
+    backdrop-filter: blur(22px) saturate(1.4);
+    -webkit-backdrop-filter: blur(22px) saturate(1.4);
+    background: rgba(15, 17, 22, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 22px;
+    box-shadow:
+        0 30px 90px rgba(0, 0, 0, 0.55),
+        0 0 0 1px rgba(255, 138, 43, 0.05),
+        0 0 90px rgba(255, 122, 26, 0.06);
+    max-width: 400px;
+    padding: 42px 34px 34px;
+    position: relative;
+    z-index: 1;
+}
+
+@keyframes akLockIn {
+    from { opacity: 0; transform: translateY(16px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+#adminLockScreen .admin-lock-logo {
+    position: relative;
+    display: inline-block;
+}
+
+#adminLockScreen .admin-lock-logo img {
+    animation: akLogoGlow 4.5s ease-in-out infinite;
+    height: 74px;
+    width: 74px;
+    box-shadow:
+        0 0 0 3px rgba(255, 138, 43, 0.22),
+        0 0 36px rgba(255, 138, 43, 0.30),
+        0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes akLogoGlow {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(255, 138, 43, 0.22), 0 0 30px rgba(255, 138, 43, 0.26), 0 10px 30px rgba(0, 0, 0, 0.45); }
+    50% { box-shadow: 0 0 0 3px rgba(255, 138, 43, 0.34), 0 0 46px rgba(255, 138, 43, 0.42), 0 10px 30px rgba(0, 0, 0, 0.45); }
+}
+
+#adminLockScreen h1 {
+    font-family: var(--font-display);
+    letter-spacing: 0.02em;
+}
+
+#adminLockScreen .form-control {
+    background-color: var(--ak-field);
+    border-color: var(--ak-border-strong);
+    border-radius: 12px;
+    color: var(--ak-ink);
+    font-size: 0.95rem;
+    min-height: 46px;
+    padding: 0.6rem 0.9rem;
+    transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+#adminLockScreen .form-control::placeholder {
+    color: rgba(152, 161, 173, 0.75);
+}
+
+#adminLockScreen .form-control:focus {
+    background-color: #191d24;
+    border-color: rgba(255, 138, 43, 0.6);
+    box-shadow: var(--ak-ring);
+    color: var(--ak-ink);
+}
+
+#adminLockScreen .btn-primary {
+    border: 0;
+    border-radius: 12px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    min-height: 46px;
+}
+
+/* ── 4. Navbar ────────────────────────────────────────────────── */
+.admin-navbar {
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    background: rgba(9, 10, 13, 0.78);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
+}
+
+.admin-navbar .navbar-brand {
+    align-items: center;
+    display: inline-flex;
+    font-weight: 800;
+    gap: 10px;
+    letter-spacing: 0.01em;
+}
+
+.admin-navbar .brand-mark img {
+    filter: drop-shadow(0 0 10px rgba(255, 138, 43, 0.35));
+    transition: transform 220ms var(--ease-out);
+}
+
+.admin-navbar .navbar-brand:hover .brand-mark img {
+    transform: rotate(-4deg) scale(1.06);
+}
+
+.admin-navbar .btn {
+    font-weight: 700;
+    min-height: 36px;
+}
+
+/* ── 5. Buttons ───────────────────────────────────────────────── */
+#adminContent .btn,
+#adminLockScreen .btn {
+    border-radius: 10px;
+    font-weight: 700;
+    transition:
+        transform 150ms var(--ease-out),
+        box-shadow 200ms ease,
+        background-color 200ms ease,
+        border-color 200ms ease,
+        color 200ms ease,
+        filter 200ms ease;
+}
+
+#adminContent .btn:active,
+#adminLockScreen .btn:active {
+    transform: translateY(1px) scale(0.99);
+}
+
+/* Shine sweep on filled accent buttons */
+#adminContent .btn-primary,
+#adminLockScreen .btn-primary {
+    overflow: hidden;
+    position: relative;
+}
+
+#adminContent .btn-primary::after,
+#adminLockScreen .btn-primary::after {
+    background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.35) 50%, transparent 80%);
+    content: "";
+    height: 100%;
+    left: -90%;
+    pointer-events: none;
+    position: absolute;
+    top: 0;
+    transform: skewX(-20deg);
+    transition: left 480ms ease;
+    width: 46%;
+}
+
+#adminContent .btn-primary:hover::after,
+#adminLockScreen .btn-primary:hover::after {
+    left: 140%;
+}
+
+#adminContent .btn-primary,
+#adminLockScreen .btn-primary {
+    background: linear-gradient(135deg, var(--ak-accent), var(--ak-accent-deep));
+    border: 0;
+    color: #1d1106;
+    box-shadow: 0 4px 14px rgba(255, 122, 26, 0.22);
+}
+
+#adminContent .btn-primary:hover,
+#adminLockScreen .btn-primary:hover {
+    box-shadow: 0 10px 26px rgba(255, 122, 26, 0.35);
+    color: #1d1106;
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+}
+
+#adminContent .btn-primary:focus-visible,
+#adminLockScreen .btn-primary:focus-visible {
+    box-shadow: 0 0 0 3.5px rgba(255, 138, 43, 0.28);
+    color: #1d1106;
+}
+
+/* Surface (ghost) buttons — replaces harsh outline-dark on dark bg */
+#adminContent .btn-outline-dark,
+#adminContent .btn-outline-secondary,
+.admin-navbar .btn-outline-dark,
+.admin-navbar .btn-outline-secondary {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: var(--ak-border-strong);
+    color: var(--ak-ink);
+}
+
+#adminContent .btn-outline-dark:hover,
+#adminContent .btn-outline-secondary:hover,
+.admin-navbar .btn-outline-dark:hover,
+.admin-navbar .btn-outline-secondary:hover {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.24);
+    color: #ffffff;
+}
+
+#adminContent .btn-outline-primary {
+    border-color: rgba(255, 138, 43, 0.5);
+    color: #ffa459;
+}
+
+#adminContent .btn-outline-primary:hover {
+    background: rgba(255, 138, 43, 0.13);
+    border-color: rgba(255, 138, 43, 0.75);
+    color: #ffc084;
+}
+
+#adminContent .btn-outline-success {
+    border-color: rgba(52, 211, 153, 0.45);
+    color: #6ee7b7;
+}
+
+#adminContent .btn-outline-success:hover {
+    background: rgba(52, 211, 153, 0.12);
+    border-color: rgba(52, 211, 153, 0.7);
+    color: #a7f3d0;
+}
+
+#adminContent .btn-outline-danger,
+#adminContent .btn-danger {
+    border-color: rgba(248, 113, 113, 0.45);
+    color: #fca5a5;
+}
+
+#adminContent .btn-danger {
+    background: rgba(248, 113, 113, 0.13);
+}
+
+#adminContent .btn-outline-danger:hover,
+#adminContent .btn-danger:hover {
+    background: rgba(248, 113, 113, 0.2);
+    border-color: rgba(248, 113, 113, 0.7);
+    color: #fecaca;
+}
+
+#adminContent .btn-outline-warning {
+    border-color: rgba(251, 191, 36, 0.45);
+    color: #fcd34d;
+}
+
+#adminContent .btn-outline-warning:hover {
+    background: rgba(251, 191, 36, 0.12);
+    border-color: rgba(251, 191, 36, 0.7);
+    color: #fde68a;
+}
+
+/* ── 6. Page title header ─────────────────────────────────────── */
+#adminContent .admin-page-title {
+    background:
+        linear-gradient(120deg, rgba(255, 138, 43, 0.09), rgba(124, 77, 224, 0.05) 48%, rgba(19, 22, 28, 0) 75%),
+        linear-gradient(180deg, #14171d, #101318);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+    padding: 18px 22px;
+    position: relative;
+}
+
+#adminContent .admin-page-title::after {
+    background: linear-gradient(90deg, rgba(255, 138, 43, 0.65), rgba(255, 138, 43, 0.08) 42%, transparent 72%);
+    content: "";
+    height: 1px;
+    inset: 0 0 auto 0;
+    position: absolute;
+}
+
+#adminContent .admin-page-title:hover {
+    transform: none;
+}
+
+#adminContent .admin-page-title .eyebrow {
+    color: #ffa459;
+}
+
+#adminContent .admin-page-title h1,
+#adminContent .admin-page-title .h4 {
+    font-family: var(--font-display);
+    letter-spacing: 0.01em;
+}
+
+/* Pane headings */
+#adminContent .admin-pane-heading {
+    background:
+        linear-gradient(90deg, rgba(255, 138, 43, 0.08), transparent 55%),
+        var(--gv-soft);
+    border: 1px solid var(--ak-border);
+    border-left: 3px solid var(--gv-primary);
+    border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+/* ── 7. Tab rail ──────────────────────────────────────────────── */
+#adminWorkspaceTabs.admin-tabs {
+    backdrop-filter: blur(14px) saturate(1.3);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    background: rgba(16, 18, 23, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.07),
+        0 10px 30px rgba(0, 0, 0, 0.35);
+    gap: 6px;
+    padding: 6px;
+}
+
+#adminWorkspaceTabs .nav-link {
+    align-items: center;
+    border-radius: 10px;
+    color: #a3abb6;
+    display: inline-flex;
+    font-size: 0.88rem;
+    font-weight: 700;
+    gap: 8px;
+    padding: 8px 14px;
+    transition: background-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
+    white-space: nowrap;
+}
+
+#adminWorkspaceTabs .nav-link i {
+    font-size: 1rem;
+    opacity: 0.75;
+    transition: opacity 180ms ease, transform 180ms var(--ease-out);
+}
+
+#adminWorkspaceTabs .nav-link:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--ak-ink);
+}
+
+#adminWorkspaceTabs .nav-link:hover i {
+    opacity: 1;
+    transform: translateY(-1px);
+}
+
+#adminWorkspaceTabs .nav-link.active {
+    background: linear-gradient(135deg, var(--ak-accent), var(--ak-accent-deep));
+    box-shadow: 0 6px 18px rgba(255, 122, 26, 0.35);
+    color: #1c1106;
+}
+
+#adminWorkspaceTabs .nav-link.active i {
+    opacity: 1;
+}
+
+/* Tab pane entrance */
+.admin-tab-content .tab-pane.show.active {
+    animation: akPaneIn 340ms var(--ease-out) both;
+}
+
+@keyframes akPaneIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── 8. Panels & surfaces ─────────────────────────────────────── */
+#adminContent .content-panel {
+    background: linear-gradient(180deg, #13161c, #0f1116);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 16px;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.035),
+        0 10px 30px rgba(0, 0, 0, 0.32);
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+#adminContent .content-panel:hover {
+    border-color: rgba(255, 255, 255, 0.13);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.035),
+        0 14px 36px rgba(0, 0, 0, 0.4);
+    transform: none;
+}
+
+/* Nested details / step chips */
+#adminContent .admin-editor-details {
+    border-radius: 12px;
+}
+
+#adminContent .admin-editor-details summary {
+    transition: background-color 160ms ease;
+}
+
+#adminContent .admin-editor-details summary:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+#adminContent .admin-step {
+    box-shadow: 0 0 16px rgba(255, 138, 43, 0.18);
+}
+
+/* ── 9. Forms ─────────────────────────────────────────────────── */
+#adminContent .form-label {
+    color: #c7ccd4;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-bottom: 0.35rem;
+}
+
+#adminContent .form-text {
+    color: var(--ak-muted);
+}
+
+#adminContent .form-control,
+#adminContent .form-select {
+    background-color: var(--ak-field);
+    border-color: var(--ak-border-strong);
+    border-radius: 10px;
+    color: var(--ak-ink);
+    min-height: 42px;
+    padding: 0.5rem 0.8rem;
+    transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+#adminContent .form-control::placeholder {
+    color: rgba(152, 161, 173, 0.85);
+}
+
+#adminContent .form-control:focus,
+#adminContent .form-select:focus {
+    background-color: #191d24;
+    border-color: rgba(255, 138, 43, 0.6);
+    box-shadow: var(--ak-ring);
+    color: var(--ak-ink);
+}
+
+#adminContent .input-group-text {
+    background-color: var(--ak-field);
+    border-color: var(--ak-border-strong);
+    color: var(--ak-muted);
+}
+
+#adminContent .form-check-input {
+    background-color: var(--ak-field);
+    border-color: var(--ak-border-strong);
+}
+
+#adminContent .form-check-input:checked {
+    background-color: var(--gv-primary);
+    border-color: var(--gv-primary);
+}
+
+#adminContent .form-check-input:focus {
+    border-color: rgba(255, 138, 43, 0.6);
+    box-shadow: var(--ak-ring);
+}
+
+#adminContent .form-control:disabled,
+#adminContent .form-select:disabled {
+    background-color: #0e1014;
+    color: rgba(152, 161, 173, 0.7);
+}
+
+/* ── 10. Tables ───────────────────────────────────────────────── */
+#adminContent .table {
+    --bs-table-bg: transparent;
+    border-color: rgba(255, 255, 255, 0.07);
+    color: var(--ak-ink);
+    margin-bottom: 0;
+}
+
+#adminContent .table thead th {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.13);
+    color: #8d95a1;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.09em;
+    padding: 10px 12px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+#adminContent .table tbody td {
+    border-color: rgba(255, 255, 255, 0.06);
+    padding: 12px;
+    vertical-align: middle;
+}
+
+#adminContent .table tbody tr {
+    transition: background-color 150ms ease;
+}
+
+#adminContent .table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.035);
+}
+
+/* ── 11. Order cards ──────────────────────────────────────────── */
+#adminContent .admin-order-card {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.018));
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+    padding: 18px;
+    position: relative;
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+#adminContent .admin-order-card::before {
+    background: linear-gradient(180deg, var(--ak-accent-soft), var(--ak-accent-deep));
+    border-radius: 999px;
+    bottom: 14px;
+    content: "";
+    left: 0;
+    opacity: 0.75;
+    position: absolute;
+    top: 14px;
+    width: 3px;
+}
+
+#adminContent .admin-order-card:hover {
+    border-color: rgba(255, 138, 43, 0.28);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.38);
+    transform: none;
+}
+
+#adminContent .admin-order-card .status-badge {
+    border-radius: 999px;
+    min-height: 34px;
+    padding: 7px 13px;
+}
+
+#adminContent .admin-order-card .status-badge {
+    animation: none;
+    background: color-mix(in srgb, var(--status-color, #a9adb4) 12%, transparent);
+}
+
+#adminContent .admin-order-card .status-dot {
+    animation: akDotPulse 2.6s ease-in-out infinite;
+}
+
+@keyframes akDotPulse {
+    0%, 100% { box-shadow: 0 0 0 3px var(--status-halo, rgba(169, 173, 180, 0.16)), 0 0 12px var(--status-color, #a9adb4); }
+    50% { box-shadow: 0 0 0 5px var(--status-halo, rgba(169, 173, 180, 0.16)), 0 0 20px var(--status-color, #a9adb4); }
+}
+
+/* Meta info chips */
+#adminContent .admin-order-meta-row span,
+#adminContent .admin-order-meta-row strong {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    font-size: 0.8rem;
+    min-height: 32px;
+    min-width: 0;
+    max-width: 100%;
+    padding: 5px 12px;
+}
+
+#adminContent .admin-order-meta-row span i {
+    color: var(--ak-muted);
+}
+
+#adminContent .admin-status-card {
+    background: var(--ak-surface-2);
+    border: 1px solid var(--ak-border);
+    border-radius: 12px;
+}
+
+#adminContent .admin-quick-actions .btn {
+    box-shadow: none;
+}
+
+/* ── 12. Save bar & unsaved indicator ─────────────────────────── */
+#adminContent .admin-save-bar {
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.35);
+}
+
+#adminContent .admin-unsaved-indicator {
+    align-items: center;
+    border: 1px solid var(--ak-border);
+    border-radius: 999px;
+    display: inline-flex;
+    font-size: 0.78rem;
+    font-weight: 700;
+    gap: 8px;
+    padding: 6px 14px;
+}
+
+#adminContent .admin-unsaved-indicator span {
+    border-radius: 999px;
+    height: 8px;
+    width: 8px;
+}
+
+#adminContent .admin-unsaved-indicator.is-dirty span {
+    animation: akDotPulse 1.8s ease-in-out infinite;
+}
+
+/* ── 13. Offcanvas, modals, chat ──────────────────────────────── */
+#mobileProductCatalogSheet.offcanvas,
+#mobileMarketplaceCatalogSheet.offcanvas,
+#adminContent ~ .offcanvas.offcanvas {
+    background: var(--gv-panel);
+    border-left: 1px solid var(--ak-border);
+}
+
+#adminChatModal .modal-content {
+    background: linear-gradient(180deg, #13161c, #0f1116);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 18px;
+    box-shadow: var(--shadow-xl);
+    overflow: hidden;
+}
+
+#adminChatModal .modal-header,
+#adminChatModal .modal-footer {
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+#adminChatModal .modal-title {
+    font-weight: 800;
+}
+
+#adminChatModal .btn-close {
+    --bs-btn-close-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23eef1f6'%3e%3cpath d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z'/%3e%3c/svg%3e");
+    filter: none;
+    opacity: 0.7;
+}
+
+#adminChatModal .btn-close:hover {
+    opacity: 1;
+}
+
+/* ── 14. Toast ────────────────────────────────────────────────── */
+#adminToast {
+    backdrop-filter: blur(14px) saturate(1.3);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    /* Bootstrap's .text-bg-dark is !important — match it to win the cascade */
+    background: rgba(17, 20, 25, 0.92) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    box-shadow:
+        inset 3px 0 0 0 var(--gv-primary),
+        0 18px 44px rgba(0, 0, 0, 0.5);
+    color: var(--ak-ink) !important;
+    font-weight: 600;
+    overflow: hidden;
+}
+
+#adminToast .btn-close {
+    --bs-btn-close-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23eef1f6'%3e%3cpath d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z'/%3e%3c/svg%3e");
+}
+
+/* ── 15. Responsive & motion polish ───────────────────────────── */
+@media (max-width: 768px) {
+    #adminContent .admin-page-title {
+        padding: 14px 16px;
+    }
+
+    #adminWorkspaceTabs .nav-link {
+        font-size: 0.84rem;
+        padding: 7px 12px;
+    }
+
+    #adminContent .btn {
+        font-size: 0.85rem;
+    }
+
+    #adminContent .admin-order-card {
+        padding: 14px 12px 14px 16px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #adminLockScreen::before,
+    #adminLockScreen::after,
+    #adminLockScreen .admin-lock-logo img,
+    #adminContent .admin-order-card .status-dot,
+    #adminContent .admin-unsaved-indicator.is-dirty span {
+        animation: none;
+    }
+
+    #adminContent .btn,
+    #adminLockScreen .btn,
+    #adminContent .content-panel,
+    #adminContent .admin-order-card {
+        transition: none;
+    }
+
+    .admin-tab-content .tab-pane.show.active {
+        animation: none;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v2 — ui-ux-pro-max informed pass
+   Design system: operations console, glass depth, data-dense but
+   scannable. Brand colors/typography intentionally unchanged.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Focus visibility on EVERY interactive control (skill: High severity).
+   Body-level so it also covers modals, offcanvas sheets and the toast,
+   which live outside #adminContent. */
+body :focus-visible {
+    outline: 2px solid rgba(255, 138, 43, 0.65);
+    outline-offset: 2px;
+}
+
+#adminWorkspaceTabs .nav-link:focus-visible,
+#adminContent .btn:focus-visible,
+#adminLockScreen .btn:focus-visible {
+    outline: 2px solid rgba(255, 138, 43, 0.65);
+    outline-offset: 2px;
+}
+
+/* Pointer affordance for dropdowns and switches */
+#adminContent .form-select,
+#adminContent .form-check-input {
+    cursor: pointer;
+}
+
+/* Data scannability: aligned digits, monospaced identifiers.
+   Uses system mono (no new font load) and tabular numerals so the
+   Manrope brand face stays intact. */
+#adminContent .admin-order-title-block h3 {
+    font-family: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, Menlo, monospace;
+    font-size: 1.02rem;
+    letter-spacing: 0.01em;
+}
+
+#adminContent .table td,
+#adminContent .admin-order-meta-row,
+#adminContent .admin-status-card .status-badge,
+#adminContent .admin-unsaved-indicator {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Chat unread badge: whole number, never clipped */
+#adminContent .admin-chat-badge {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* Density 8/10: tighten data surfaces slightly */
+#adminContent .table thead th {
+    padding: 8px 12px;
+}
+
+#adminContent .table tbody td {
+    padding: 10px 12px;
+}
+
+#adminContent .admin-order-card {
+    padding: 16px;
+}
+
+/* Loading feedback (skill: High severity): the .empty-state blocks
+   admin.js renders while fetching get a calm pulse instead of
+   static text. */
+#adminContent .empty-state {
+    padding: 32px 0;
+}
+
+#adminContent .empty-state p {
+    animation: akLoadingPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes akLoadingPulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+}
+
+/* Compact chips: labels may wrap inside the chip instead of
+   overflowing the row (skill: compact label overflow, High). */
+#adminContent .admin-order-meta-row span,
+#adminContent .admin-order-meta-row strong {
+    overflow-wrap: anywhere;
+}
+
+/* Small phones (375px): keep the header and rail usable */
+@media (max-width: 400px) {
+    .admin-navbar .btn {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+        font-size: 0.8rem;
+    }
+
+    #adminWorkspaceTabs .nav-link {
+        font-size: 0.8rem;
+        padding: 6px 10px;
+    }
+
+    #adminContent .admin-page-title h1,
+    #adminContent .admin-page-title .h4 {
+        font-size: 1.15rem;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v3 — layout reorganization (grouping + unified toolbars)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Orders: one labeled toolbar row replaces the floating status
+   select, the separate filter grid and the button inside the
+   heading. Fields align on their labels' baseline. */
+#adminContent .admin-order-toolbar {
+    align-items: flex-end;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 14px;
+    margin-bottom: 16px;
+}
+
+#adminContent .admin-order-field {
+    display: flex;
+    flex: 0 1 180px;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+}
+
+#adminContent .admin-order-field-grow {
+    flex: 1 1 300px;
+}
+
+#adminContent .admin-order-field-actions {
+    align-self: flex-end;
+    flex: 0 0 auto;
+}
+
+#adminContent .admin-order-field .form-label {
+    color: var(--ak-muted);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    margin-bottom: 0;
+    text-transform: uppercase;
+}
+
+#adminContent .admin-order-field .form-control,
+#adminContent .admin-order-field .form-select {
+    width: 100%;
+}
+
+/* Compact page title band: the rail below carries the context */
+#adminContent .admin-page-title {
+    margin-bottom: 14px !important;
+    padding: 14px 18px;
+}
+
+/* Tab rail group separators:
+   [Products Orders Payments | Categories Import/Export Settings |
+   Marketplace Sellers Affiliates Payouts Community] */
+#adminWorkspaceTabs .admin-tab-sep {
+    align-self: stretch;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 1px;
+    flex: 0 0 1px;
+    margin: 7px 4px;
+    width: 1px;
+}
+
+@media (max-width: 576px) {
+    #adminContent .admin-order-field {
+        flex: 1 1 100%;
+    }
+
+    #adminContent .admin-order-field-actions .btn {
+        width: 100%;
+    }
+
+    #adminWorkspaceTabs .admin-tab-sep {
+        display: none;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v4 — products pane layout (kill phantom track, tighten cards)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ≥1200px: the hidden preview aside reserved a 260–340px grid track
+   even while display:none — a permanent empty column that squeezed
+   the editor. Flex lets it release its space until the Preview
+   toggle shows it (admin.js only flips display, so CSS suffices). */
+@media (min-width: 1200px) {
+    #adminContent .admin-products-layout {
+        align-items: flex-start;
+        display: flex;
+        gap: 14px;
+    }
+
+    #adminContent .admin-product-sidebar {
+        flex: 0 0 320px;
+    }
+
+    #adminContent .admin-editor-column {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    #adminContent .admin-preview-column {
+        flex: 0 0 340px;
+    }
+}
+
+/* "Choose product" dropdown only makes sense ≤767px (the sidebar is
+   hidden there); on desktop it duplicated the list and wasted a row. */
+@media (min-width: 768px) {
+    #adminContent .admin-mobile-product-picker {
+        display: none;
+    }
+}
+
+/* Section cards: 22px top+bottom padding stacked 44px of air between
+   cards. Tighten and drop the redundant card-top border line. */
+#adminContent .admin-form-section {
+    border-top: 0;
+    padding: 10px 0;
+}
+
+/* Save bar floats at the viewport bottom while a long form scrolls
+   (its negative top shadow already implied elevation). */
+#adminContent .admin-save-bar {
+    background: linear-gradient(180deg, #14171d, #101318);
+    border: 1px solid var(--ak-border);
+    border-radius: 12px;
+    margin-top: 16px;
+    padding: 14px 16px;
+    position: sticky;
+    bottom: 12px;
+    z-index: 20;
+}

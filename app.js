@@ -1304,6 +1304,7 @@ function renderCheckoutCustomerInputs() {
         });
 
     container.innerHTML = fields.join("");
+    document.getElementById("checkoutDeliveryFields")?.classList.toggle("d-none", !fields.length);
     translateElement(container);
 }
 
@@ -1458,6 +1459,7 @@ function renderPaymentProofFields(details) {
     const codeLength = Number(details.codeLength) || 15;
     proofFields.innerHTML = `
         <label class="form-label">Recharge card codes</label>
+        <p class="small text-secondary mb-2">${t("Do not recharge the cards yourself.")}</p>
         <div class="payment-code-grid">
             ${Array.from({ length: count })
                 .map(
@@ -1525,6 +1527,10 @@ function renderPaymentGuide(method) {
     const guide = document.getElementById("paymentGuide");
     if (!guide) return;
 
+    if (method === "tt-card") {
+        guide.classList.add("d-none");
+        return;
+    }
     const imgs = guide.querySelectorAll("img");
     imgs.forEach((img) => img.classList.toggle("d-none", !img.src.includes(method)));
     guide.classList.remove("d-none");
@@ -3260,7 +3266,7 @@ function setupProductDetailPage() {
 }
 
 function applyTheme(theme) {
-    const nextTheme = theme === "dark" ? "dark" : "light";
+    const nextTheme = theme === "light" ? "light" : "dark";
     document.documentElement.setAttribute("data-bs-theme", nextTheme);
     localStorage.setItem(THEME_KEY, nextTheme);
 
@@ -3273,7 +3279,7 @@ function applyTheme(theme) {
 }
 
 function setupThemeToggle() {
-    const savedTheme = localStorage.getItem(THEME_KEY) || "dark";
+    const savedTheme = localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
     const cartLinks = document.querySelectorAll('a[href="cart.html"][aria-label="Cart"]');
 
     cartLinks.forEach((cartLink) => {

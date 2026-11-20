@@ -108,7 +108,7 @@ html {
 body {
     background: var(--bs-body-bg);
     color: var(--gv-ink);
-    font-family: Manrope, Arial, system-ui, sans-serif;
+    font-family: var(--font-display);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
@@ -8612,4 +8612,1647 @@ main > section,
 
 .admin-upload-zone-input:hover {
     cursor: pointer;
+}
+
+/* ================================================================
+   SITE REDESIGN — Ember signature pass (ui-ux-pro-max informed)
+   Brand colors unchanged: orange primary, warm light / deep dark.
+   Both color modes styled. Appended last → later-cascade overrides.
+   nope.html loads admin.css AFTER this file, so the admin page keeps
+   its own theme; store-only visuals are :has(#adminContent)-scoped.
+   Pattern: Feature-Rich Showcase (hero value prop → categories →
+   how-to → featured → CTA). One message per card, CTA repetition.
+   ================================================================ */
+
+/* ── Foundation: keyboard focus, selection, scroll, scrollbar ── */
+:focus-visible {
+    outline: 2px solid rgba(255, 106, 19, 0.65);
+    outline-offset: 2px;
+}
+
+::selection {
+    background: rgba(255, 106, 19, 0.22);
+}
+
+html {
+    scroll-padding-top: 84px;
+    scrollbar-color: rgba(255, 106, 19, 0.40) transparent;
+}
+
+::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(255, 138, 43, 0.50), rgba(217, 79, 5, 0.50));
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(255, 138, 43, 0.78), rgba(217, 79, 5, 0.78));
+    background-clip: padding-box;
+    border: 2px solid transparent;
+}
+
+/* ── Atmosphere: one soft aurora wash behind store pages ─────── */
+body:not(:has(#adminContent))::before {
+    background:
+        radial-gradient(900px 480px at 8% -10%, rgba(255, 106, 19, 0.055), transparent 62%),
+        radial-gradient(820px 460px at 108% 16%, rgba(124, 77, 224, 0.045), transparent 64%),
+        radial-gradient(700px 420px at 50% 118%, rgba(255, 122, 26, 0.035), transparent 66%);
+    content: "";
+    inset: 0;
+    pointer-events: none;
+    position: fixed;
+    z-index: -1;
+}
+
+[data-bs-theme="dark"] body:not(:has(#adminContent))::before {
+    background:
+        radial-gradient(900px 480px at 8% -10%, rgba(255, 106, 19, 0.095), transparent 60%),
+        radial-gradient(820px 460px at 108% 16%, rgba(124, 77, 224, 0.075), transparent 62%),
+        radial-gradient(700px 420px at 50% 118%, rgba(255, 122, 26, 0.055), transparent 64%);
+}
+
+/* ── Navbar: brand hairline accent ───────────────────────────── */
+.navbar {
+    position: relative;
+}
+
+.navbar::after {
+    background: linear-gradient(90deg, rgba(255, 106, 19, 0.50), rgba(255, 138, 43, 0.08) 42%, transparent 75%);
+    bottom: -1px;
+    content: "";
+    height: 1px;
+    left: 0;
+    pointer-events: none;
+    position: absolute;
+    right: 0;
+}
+
+/* ── Eyebrow: signature dash (store pages) ───────────────────── */
+body:not(:has(#adminContent)) .eyebrow {
+    align-items: center;
+    display: inline-flex;
+    gap: 9px;
+}
+
+body:not(:has(#adminContent)) .eyebrow::before {
+    background: linear-gradient(90deg, var(--gv-primary), rgba(255, 106, 19, 0.10));
+    border-radius: 2px;
+    content: "";
+    flex: 0 0 auto;
+    height: 2px;
+    width: 20px;
+}
+
+/* ── Hero: gradient ink headline ─────────────────────────────── */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+    .home-hero .display-3 {
+        background: linear-gradient(100deg, #ff8a2b 0%, var(--gv-primary) 46%, var(--gv-primary-dark) 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+}
+
+/* Console: top-bar hierarchy with an orange tick */
+.hero-console-top {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 18px;
+    position: relative;
+}
+
+.hero-console-top::after {
+    background: linear-gradient(90deg, var(--gv-primary), rgba(255, 106, 19, 0));
+    border-radius: 2px;
+    bottom: -1px;
+    content: "";
+    height: 2px;
+    left: 0;
+    position: absolute;
+    width: 72px;
+}
+
+/* ── Buttons: shine sweep on the primary action ──────────────── */
+.btn-primary::after {
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.30), transparent);
+    bottom: 0;
+    content: "";
+    left: -45%;
+    pointer-events: none;
+    position: absolute;
+    top: 0;
+    transform: skewX(-18deg);
+    transition: left 620ms var(--ease-out);
+    width: 34%;
+}
+
+.btn-primary:hover::after,
+.btn-primary:focus-visible::after {
+    left: 118%;
+}
+
+/* ── Cards: orange ring hover on merchandise cards ───────────── */
+.category-card:hover,
+.service-card:hover,
+.summary-card:hover,
+.product-card:hover {
+    border-color: rgba(255, 106, 19, 0.38);
+    box-shadow: var(--shadow-md), 0 10px 30px rgba(255, 106, 19, 0.16);
+}
+
+[data-bs-theme="dark"] .category-card:hover,
+[data-bs-theme="dark"] .service-card:hover,
+[data-bs-theme="dark"] .summary-card:hover,
+[data-bs-theme="dark"] .product-card:hover {
+    border-color: rgba(255, 122, 26, 0.45);
+    box-shadow: var(--shadow-md), 0 10px 34px rgba(255, 106, 19, 0.20);
+}
+
+/* ── Footer: accent hairline + underline slide ───────────────── */
+.site-footer {
+    position: relative;
+}
+
+.site-footer::before {
+    background: linear-gradient(90deg, rgba(255, 106, 19, 0.45), rgba(255, 138, 43, 0.10) 40%, transparent 75%);
+    content: "";
+    height: 1px;
+    inset: 0 0 auto 0;
+    position: absolute;
+}
+
+.site-footer a {
+    position: relative;
+}
+
+.site-footer a::after {
+    background: var(--gv-primary);
+    bottom: -3px;
+    content: "";
+    height: 1px;
+    left: 0;
+    position: absolute;
+    right: auto;
+    top: auto;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 220ms var(--ease-out);
+    width: 100%;
+}
+
+.site-footer a:hover::after,
+.site-footer a:focus-visible::after {
+    transform: scaleX(1);
+}
+
+/* ── Cart toast: brand accent ────────────────────────────────── */
+#cartToast {
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    background: rgba(13, 14, 18, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-left: 3px solid var(--gv-primary);
+    border-radius: 12px;
+    color: #ffffff;
+}
+
+#cartToast .toast-body {
+    color: rgba(255, 255, 255, 0.92);
+    font-weight: 600;
+}
+
+/* ── Reduced motion: freeze the new flourishes ───────────────── */
+@media (prefers-reduced-motion: reduce) {
+    .btn-primary::after,
+    .site-footer a::after {
+        transition: none;
+    }
+
+    .home-hero::before,
+    .home-hero::after,
+    .brand-mark img {
+        animation: none;
+    }
+}
+
+/* ================================================================
+   EMBER v2 — Keycap buttons + Ember-tile cards (ui-ux-pro-max:
+   dimensional layering — tactile depth, elevation, hover scale).
+   Dark-first (site default). Store pages only: body:not(:has(#adminContent))
+   keeps the admin panel (own admin.css theme) fully immune.
+   ================================================================ */
+
+/* ── Keycap tokens ────────────────────────────────────────────── */
+body:not(:has(#adminContent)) {
+    --hk-btn-radius: 12px;
+    --hk-primary-face: linear-gradient(180deg, #ffa050 0%, #ff7a1a 48%, #f26209 100%);
+    --hk-primary-face-hover: linear-gradient(180deg, #ffad63 0%, #ff8a2e 48%, #f76d0f 100%);
+    --hk-primary-edge: #a8430a;
+    --hk-dark-face: linear-gradient(180deg, #242833 0%, #171a20 55%, #111318 100%);
+    --hk-dark-face-hover: linear-gradient(180deg, #2b303c 0%, #1d2129 55%, #16181f 100%);
+    --hk-dark-edge: #04050a;
+}
+
+[data-bs-theme="light"] body:not(:has(#adminContent)) {
+    --hk-dark-face: linear-gradient(180deg, #ffffff 0%, #faf7f1 55%, #f1ece2 100%);
+    --hk-dark-face-hover: linear-gradient(180deg, #ffffff 0%, #ffffff 55%, #f6f2ea 100%);
+    --hk-dark-edge: #d8d2c6;
+}
+
+/* ── Button base ──────────────────────────────────────────────── */
+body:not(:has(#adminContent)) .btn {
+    border-radius: var(--hk-btn-radius);
+    font-weight: 800;
+    letter-spacing: 0.012em;
+}
+
+body:not(:has(#adminContent)) .filter-pills .btn {
+    border-radius: var(--radius-full);
+    font-weight: 650;
+}
+
+/* ── Primary = orange keycap (press it like a key) ────────────── */
+body:not(:has(#adminContent)) .btn-primary {
+    background: var(--hk-primary-face);
+    border: 0;
+    border-radius: var(--hk-btn-radius);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.34),
+        inset 0 -3px 0 rgba(146, 56, 0, 0.32),
+        0 4px 0 var(--hk-primary-edge),
+        0 12px 26px rgba(255, 106, 19, 0.22);
+    color: #ffffff;
+    text-shadow: 0 1px 0 rgba(122, 47, 0, 0.35);
+    transform: translateY(0);
+}
+
+body:not(:has(#adminContent)) .btn-primary:hover,
+body:not(:has(#adminContent)) .btn-primary:focus {
+    background: var(--hk-primary-face-hover);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.38),
+        inset 0 -3px 0 rgba(146, 56, 0, 0.32),
+        0 4px 0 var(--hk-primary-edge),
+        0 14px 32px rgba(255, 106, 19, 0.34);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+body:not(:has(#adminContent)) .btn-primary:active {
+    background: linear-gradient(180deg, #ff8a2e 0%, #ef6408 100%);
+    box-shadow:
+        inset 0 2px 5px rgba(122, 47, 0, 0.38),
+        0 1px 0 var(--hk-primary-edge);
+    transform: translateY(3px);
+}
+
+body:not(:has(#adminContent)) .btn-primary:disabled {
+    background: linear-gradient(180deg, #4b4e56 0%, #3a3d44 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 3px 0 #23252b;
+    color: rgba(255, 255, 255, 0.75);
+    opacity: 1;
+    text-shadow: none;
+    transform: none;
+}
+
+/* ── Secondary = dark keycap ──────────────────────────────────── */
+body:not(:has(#adminContent)) .btn-outline-dark {
+    background: var(--hk-dark-face);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: var(--hk-btn-radius);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 4px 0 var(--hk-dark-edge);
+    color: var(--bs-body-color);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.28);
+}
+
+body:not(:has(#adminContent)) .btn-outline-dark:hover,
+body:not(:has(#adminContent)) .btn-outline-dark:focus {
+    background: var(--hk-dark-face-hover);
+    border-color: rgba(255, 138, 43, 0.55);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.10),
+        0 4px 0 var(--hk-dark-edge),
+        0 10px 24px rgba(255, 106, 19, 0.16);
+    color: var(--gv-primary);
+    transform: translateY(-1px);
+}
+
+body:not(:has(#adminContent)) .btn-outline-dark:active {
+    background: var(--hk-dark-face);
+    box-shadow:
+        inset 0 2px 5px rgba(0, 0, 0, 0.35),
+        0 1px 0 var(--hk-dark-edge);
+    color: var(--gv-primary);
+    transform: translateY(3px);
+}
+
+[data-bs-theme="light"] body:not(:has(#adminContent)) .btn-outline-dark {
+    border-color: rgba(24, 23, 21, 0.22);
+    text-shadow: none;
+}
+
+/* Solid variants get matching bottom edges */
+body:not(:has(#adminContent)) .btn-success {
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.28),
+        0 3px 0 #146c43;
+}
+
+body:not(:has(#adminContent)) .btn-success:active {
+    box-shadow:
+        inset 0 2px 5px rgba(0, 60, 30, 0.4),
+        0 1px 0 #146c43;
+    transform: translateY(2px);
+}
+
+body:not(:has(#adminContent)) .btn-danger {
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        0 3px 0 #a03028;
+}
+
+body:not(:has(#adminContent)) .btn-danger:active {
+    box-shadow:
+        inset 0 2px 5px rgba(90, 20, 15, 0.4),
+        0 1px 0 #a03028;
+    transform: translateY(2px);
+}
+
+/* ── Solid dark buttons → dark keycap (copy order id, etc.) ───── */
+body:not(:has(#adminContent)) .btn-dark {
+    background: var(--hk-dark-face);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 4px 0 var(--hk-dark-edge);
+    color: var(--bs-body-color);
+}
+
+body:not(:has(#adminContent)) .btn-dark:hover,
+body:not(:has(#adminContent)) .btn-dark:focus {
+    background: var(--hk-dark-face-hover);
+    border-color: rgba(255, 138, 43, 0.55);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.10),
+        0 4px 0 var(--hk-dark-edge),
+        0 10px 24px rgba(255, 106, 19, 0.16);
+    color: var(--gv-primary);
+    transform: translateY(-1px);
+}
+
+body:not(:has(#adminContent)) .btn-dark:active {
+    box-shadow:
+        inset 0 2px 5px rgba(0, 0, 0, 0.35),
+        0 1px 0 var(--hk-dark-edge);
+    transform: translateY(3px);
+}
+
+[data-bs-theme="light"] body:not(:has(#adminContent)) .btn-dark {
+    border-color: rgba(24, 23, 21, 0.22);
+}
+
+/* Light mode: outline keycaps are white → force ink text */
+[data-bs-theme="light"] body:not(:has(#adminContent)) .btn-outline-dark {
+    color: #181715;
+}
+
+/* ── Navbar action cluster: one coherent keycap row ───────────── */
+body:not(:has(#adminContent)) .navbar .btn {
+    min-height: 44px;
+}
+
+body:not(:has(#adminContent)) .navbar .theme-toggle {
+    height: 45px;
+    width: 45px;
+}
+
+body:not(:has(#adminContent)) .navbar .theme-toggle,
+body:not(:has(#adminContent)) .navbar .language-toggle-desktop {
+    margin-right: 0;
+}
+
+body:not(:has(#adminContent)) .navbar .d-flex.align-items-center.gap-2 {
+    gap: 10px !important;
+}
+
+/* Cart = the bar's primary action → orange keycap */
+body:not(:has(#adminContent)) .navbar .btn-dark {
+    align-items: center;
+    background: var(--hk-primary-face);
+    border: 1px solid transparent;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.34),
+        inset 0 -3px 0 rgba(146, 56, 0, 0.32),
+        0 4px 0 var(--hk-primary-edge),
+        0 10px 22px rgba(255, 106, 19, 0.26);
+    color: #ffffff;
+    display: inline-flex;
+    justify-content: center;
+    min-width: 58px;
+    overflow: visible;
+    text-shadow: 0 1px 0 rgba(122, 47, 0, 0.35);
+}
+
+body:not(:has(#adminContent)) .navbar .btn-dark:hover,
+body:not(:has(#adminContent)) .navbar .btn-dark:focus {
+    background: var(--hk-primary-face-hover);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+body:not(:has(#adminContent)) .navbar .btn-dark:active {
+    box-shadow:
+        inset 0 2px 5px rgba(122, 47, 0, 0.38),
+        0 1px 0 var(--hk-primary-edge);
+    transform: translateY(3px);
+}
+
+/* Count badge: absolute corner pill.
+   Bootstrap's `.btn .badge { position: relative; top: -1px }` (0,2,0)
+   beat the old `.cart-count` (0,1,0) rule — the badge dropped inline and
+   stretched the cart button to 69px. This selector outranks it. */
+body:not(:has(#adminContent)) .btn .cart-count {
+    align-items: center;
+    background: #101216 !important;
+    border-radius: 999px;
+    box-shadow: 0 0 0 2px var(--bs-body-bg);
+    color: #ffffff !important;
+    display: inline-flex;
+    font-size: 0.68rem;
+    font-weight: 800;
+    height: 20px;
+    justify-content: center;
+    line-height: 1;
+    min-width: 20px;
+    padding: 0 5px;
+    position: absolute;
+    left: auto;
+    right: auto;
+    inset-inline-end: -7px;
+    top: -7px;
+}
+
+/* ── Product card → Ember tile ────────────────────────────────── */
+body:not(:has(#adminContent)) .product-card {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 46%), var(--gv-panel);
+    border: 1px solid var(--gv-border);
+    border-radius: 18px;
+}
+
+[data-bs-theme="dark"] body:not(:has(#adminContent)) .product-card {
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Art stage: square, matching the source assets (most are 800×800).
+   The previous 4/3 box + cover cropped ~25% off square artwork (logos and
+   titles got cut) and a permanent scale(1.06) pushed the img outside its
+   own box. Now every image is shown WHOLE: contain letterboxes portrait
+   gift cards / landscape banners on the dark stage instead of cropping. */
+body:not(:has(#adminContent)) .product-card .product-art {
+    aspect-ratio: 1 / 1;
+    padding: 8px;
+}
+
+body:not(:has(#adminContent)) .product-card .product-art.has-image {
+    background: radial-gradient(circle at 50% 42%, #17181d 0%, #08090c 78%);
+}
+
+[data-bs-theme="light"] body:not(:has(#adminContent)) .product-card .product-art.has-image {
+    background: radial-gradient(circle at 50% 42%, #faf7f1 0%, #e9e3d8 78%);
+}
+
+body:not(:has(#adminContent)) .product-card .product-art .product-image {
+    border-radius: 10px;
+    object-fit: contain;
+    transform: scale(1);
+}
+
+body:not(:has(#adminContent)) .product-card:hover .product-art .product-image {
+    transform: scale(1.03);
+}
+
+/* Depth shade at the art's base (image or icon art) */
+body:not(:has(#adminContent)) .product-card .product-art::after {
+    background: linear-gradient(180deg, rgba(5, 6, 10, 0) 52%, rgba(5, 6, 10, 0.42) 100%);
+    content: "";
+    inset: 0;
+    pointer-events: none;
+    position: absolute;
+    z-index: 1;
+}
+
+/* Chips lift out of the body and float over the art's lower edge.
+   NOTE: .card-body is position:relative (pre-existing z-index:1 rule), so
+   `bottom: calc(100% + 10px)` anchors to the BODY's top edge = art bottom —
+   anchoring with `top` would land on the title text. pointer-events:none
+   keeps the art link clickable underneath. */
+body:not(:has(#adminContent)) .product-card .card-body > div:first-child {
+    bottom: calc(100% + 10px);
+    justify-content: space-between;
+    left: 12px;
+    margin: 0;
+    pointer-events: none;
+    position: absolute;
+    right: 12px;
+    top: auto;
+    z-index: 2;
+}
+
+body:not(:has(#adminContent)) .product-card .badge {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    background: rgba(9, 10, 14, 0.58) !important;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 999px;
+    clip-path: none;
+    color: rgba(255, 255, 255, 0.94) !important;
+    font-size: 0.68rem;
+    font-weight: 750;
+    letter-spacing: 0.02em;
+    padding: 0.34rem 0.68rem;
+}
+
+body:not(:has(#adminContent)) .product-card .badge.stock-chip--available {
+    color: #7ce3a4 !important;
+}
+
+/* Body typography: tighter, scannable */
+body:not(:has(#adminContent)) .product-card h2 {
+    font-size: 0.98rem;
+    font-weight: 800;
+}
+
+body:not(:has(#adminContent)) .product-card .product-title-link {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+}
+
+body:not(:has(#adminContent)) .product-card .card-body > p {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: 0.8rem;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+body:not(:has(#adminContent)) .product-card .card-body .price {
+    color: var(--gv-primary);
+    font-size: 1.02rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+}
+
+/* Compact keycap for the Add action */
+body:not(:has(#adminContent)) .product-card .card-body .btn {
+    border-radius: 10px !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.32),
+        inset 0 -2px 0 rgba(146, 56, 0, 0.32),
+        0 3px 0 var(--hk-primary-edge);
+    font-size: 0.8rem;
+    min-height: 34px;
+    padding: 0.26rem 0.95rem;
+    text-shadow: 0 1px 0 rgba(122, 47, 0, 0.3);
+}
+
+body:not(:has(#adminContent)) .product-card .card-body .btn:hover,
+body:not(:has(#adminContent)) .product-card .card-body .btn:focus {
+    transform: translateY(-1px);
+}
+
+body:not(:has(#adminContent)) .product-card .card-body .btn:active {
+    box-shadow:
+        inset 0 2px 5px rgba(122, 47, 0, 0.38),
+        0 1px 0 var(--hk-primary-edge);
+    transform: translateY(2px);
+}
+
+body:not(:has(#adminContent)) .product-card .card-body .btn:disabled {
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        0 3px 0 #23252b;
+}
+
+body:not(:has(#adminContent)) .product-card:hover {
+    transform: translateY(-6px);
+}
+
+body:not(:has(#adminContent)) .product-card:hover .product-art::after {
+    opacity: 0.6;
+}
+
+/* ── Category card → rail tile ────────────────────────────────── */
+body:not(:has(#adminContent)) .category-card {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 55%), var(--gv-panel);
+    border-radius: 16px;
+    gap: 14px;
+    min-height: 86px;
+    padding: 16px 18px;
+}
+
+body:not(:has(#adminContent)) .category-card i {
+    border-radius: 14px;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.32),
+        0 8px 18px rgba(255, 106, 19, 0.26);
+    height: 50px;
+    width: 50px;
+}
+
+body:not(:has(#adminContent)) .category-card:hover i {
+    transform: scale(1.07) rotate(-4deg);
+}
+
+body:not(:has(#adminContent)) .category-card span {
+    font-size: 0.95rem;
+    font-weight: 800;
+}
+
+/* Catalog variant: count becomes a bottom "N products" tag with arrow */
+body:not(:has(#adminContent)) .catalog-category-card {
+    min-height: 172px;
+    padding: 18px;
+}
+
+body:not(:has(#adminContent)) .catalog-category-card strong {
+    align-items: center;
+    display: inline-flex;
+    font-size: 0.84rem;
+    font-weight: 800;
+    gap: 6px;
+    margin-top: auto;
+}
+
+body:not(:has(#adminContent)) .catalog-category-card strong::after {
+    content: "\2192";
+    font-weight: 700;
+    transition: transform var(--duration-fast) var(--ease-out);
+}
+
+body:not(:has(#adminContent)) .catalog-category-card:hover strong::after {
+    transform: translateX(4px);
+}
+
+/* ── Reduced motion: keycap presses snap instead of glide ─────── */
+@media (prefers-reduced-motion: reduce) {
+    body:not(:has(#adminContent)) .btn,
+    body:not(:has(#adminContent)) .product-card,
+    body:not(:has(#adminContent)) .category-card,
+    body:not(:has(#adminContent)) .catalog-category-card strong::after {
+        transition: none;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LANDING v3 — "HyperKey Deck"
+   Homepage only (main.hk-home). Extends the Ember keycap language:
+   a dark stage, one warm accent, tactile keys, quiet type.
+   Scoped so no other page inherits any of it.
+   ================================================================ */
+
+/* ── Hero stage ───────────────────────────────────────────────── */
+.hk-home .hk-hero {
+    background:
+        radial-gradient(58% 68% at 10% 0%, rgba(255, 106, 19, 0.20), transparent 62%),
+        radial-gradient(46% 58% at 94% 92%, rgba(124, 77, 224, 0.14), transparent 62%),
+        linear-gradient(180deg, #08080a 0%, #0d0c0b 56%, #0a0a0a 100%);
+    color: #fdfbf8;
+    isolation: isolate;
+    overflow: hidden;
+    padding: clamp(2.75rem, 5.5vw, 5rem) 0 clamp(2.5rem, 4.5vw, 4rem);
+    position: relative;
+}
+
+/* Fine desk grid, faded out at the edges */
+.hk-home .hk-hero::before {
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 62px 62px;
+    content: "";
+    inset: 0;
+    -webkit-mask-image: radial-gradient(72% 62% at 50% 26%, #000 0%, transparent 78%);
+    mask-image: radial-gradient(72% 62% at 50% 26%, #000 0%, transparent 78%);
+    pointer-events: none;
+    position: absolute;
+    z-index: -1;
+}
+
+.hk-home .hk-hero > .container {
+    position: relative;
+    z-index: 1;
+}
+
+.hk-home .hk-eyebrow {
+    align-items: center;
+    display: inline-flex;
+    gap: 9px;
+    margin: 0 0 14px;
+}
+
+.hk-home .hk-pulse {
+    animation: hkPulse 2.6s ease-out infinite;
+    background: var(--gv-primary);
+    border-radius: 50%;
+    flex: 0 0 auto;
+    height: 8px;
+    width: 8px;
+}
+
+@keyframes hkPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(255, 106, 19, 0.55); }
+    70%  { box-shadow: 0 0 0 9px rgba(255, 106, 19, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 106, 19, 0); }
+}
+
+.hk-home .hk-hero-title {
+    color: #fdfbf8;
+    font-family: var(--font-display);
+    font-size: clamp(2.25rem, 4.4vw, 3.65rem);
+    font-weight: 850;
+    letter-spacing: -0.03em;
+    line-height: 1.03;
+    margin: 0 0 18px;
+    max-width: 17ch;
+    text-wrap: balance;
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+    .hk-home .hk-hero-title {
+        -webkit-background-clip: text;
+        background-clip: text;
+        background-image: linear-gradient(168deg, #ffffff 0%, #fff4e9 44%, #ffc79a 100%);
+        -webkit-text-fill-color: transparent;
+    }
+}
+
+.hk-home .hk-hero-copy {
+    color: rgba(253, 251, 248, 0.70);
+    font-size: clamp(1rem, 1.6vw, 1.1rem);
+    line-height: 1.72;
+    margin: 0 0 26px;
+    max-width: 54ch;
+}
+
+.hk-home .hk-hero-ctas {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.hk-home .hk-hero-ctas .btn {
+    align-items: center;
+    display: inline-flex;
+    font-size: 0.98rem;
+    gap: 9px;
+    justify-content: center;
+    min-height: 50px;
+    padding: 0 22px;
+}
+
+.hk-home .hk-hero-ctas .btn-lg {
+    font-size: 1.02rem;
+    padding: 0 26px;
+}
+
+.hk-home .hk-hero-proof {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 20px;
+    list-style: none;
+    margin: 26px 0 0;
+    padding: 0;
+}
+
+.hk-home .hk-hero-proof li {
+    align-items: center;
+    color: rgba(253, 251, 248, 0.68);
+    display: inline-flex;
+    font-size: 0.84rem;
+    font-weight: 700;
+    gap: 7px;
+}
+
+.hk-home .hk-hero-proof i {
+    color: var(--gv-primary);
+    font-size: 0.95rem;
+}
+
+/* ── The deck: four keycaps on a keyboard plate ───────────────── */
+.hk-home .hk-deck {
+    /* The plate is dark in both themes, so its keys stay dark too:
+       re-declaring the keycap tokens here overrides the light-mode
+       white keycap inherited from body. */
+    --hk-dark-edge: #04050a;
+    --hk-dark-face: linear-gradient(180deg, #242833 0%, #171a20 55%, #111318 100%);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012) 42%),
+        #0f1013;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 22px;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.09),
+        0 40px 80px -30px rgba(0, 0, 0, 0.9);
+    padding: 18px;
+    position: relative;
+}
+
+.hk-home .hk-deck::before {
+    background: radial-gradient(58% 58% at 50% 32%, rgba(255, 106, 19, 0.20), transparent 70%);
+    content: "";
+    filter: blur(22px);
+    inset: -46px -34px;
+    pointer-events: none;
+    position: absolute;
+    z-index: -1;
+}
+
+.hk-home .hk-deck-head {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+}
+
+.hk-home .hk-deck-mark {
+    flex: 0 0 auto;
+}
+
+.hk-home .hk-deck-titles {
+    min-width: 0;
+}
+
+.hk-home .hk-deck-titles .eyebrow {
+    font-size: 0.66rem;
+    letter-spacing: 0.1em;
+    line-height: 1.2;
+}
+
+.hk-home .hk-deck-titles strong {
+    color: #f4f2ee;
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
+.hk-home .hk-deck-tag {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    color: rgba(255, 255, 255, 0.5);
+    flex: 0 0 auto;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    margin-inline-start: auto;
+    padding: 4px 8px;
+}
+
+.hk-home .hk-deck-keys {
+    display: grid;
+    gap: 11px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 16px;
+}
+
+.hk-home .hk-key {
+    background: var(--hk-dark-face);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 14px;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.10),
+        0 4px 0 var(--hk-dark-edge),
+        0 12px 20px -10px rgba(0, 0, 0, 0.9);
+    display: grid;
+    gap: 5px;
+    min-height: 106px;
+    padding: 14px;
+    position: relative;
+    transition: border-color 200ms var(--ease-out),
+                box-shadow 200ms var(--ease-out),
+                transform 200ms var(--ease-out);
+}
+
+.hk-home .hk-key:hover {
+    border-color: rgba(255, 138, 43, 0.45);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.14),
+        0 5px 0 var(--hk-dark-edge),
+        0 18px 28px -12px rgba(0, 0, 0, 0.95),
+        0 0 26px rgba(255, 106, 19, 0.16);
+    transform: translateY(-2px);
+}
+
+.hk-home .hk-key-num {
+    color: rgba(255, 255, 255, 0.26);
+    font-size: 0.66rem;
+    font-weight: 800;
+    inset-block-start: 12px;
+    inset-inline-end: 13px;
+    letter-spacing: 0.12em;
+    position: absolute;
+}
+
+.hk-home .hk-key i {
+    color: var(--gv-primary);
+    font-size: 1.3rem;
+    line-height: 1;
+}
+
+.hk-home .hk-key strong {
+    color: #f4f2ee;
+    font-size: 0.87rem;
+    font-weight: 800;
+    line-height: 1.35;
+    margin-top: auto;
+    padding-top: 10px;
+}
+
+.hk-home .hk-deck-foot {
+    align-items: center;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+    padding-top: 13px;
+}
+
+.hk-home .hk-deck-foot span {
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    border-radius: 999px;
+    color: rgba(255, 255, 255, 0.66);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    padding: 4px 9px;
+    text-transform: uppercase;
+}
+
+.hk-home .hk-deck-foot em {
+    color: rgba(255, 255, 255, 0.44);
+    font-size: 0.7rem;
+    font-style: normal;
+    font-weight: 600;
+    margin-inline-start: auto;
+}
+
+/* ── Payment / delivery marquee ───────────────────────────────── */
+.hk-home .hk-strip {
+    background: #08080a;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+    padding: 13px 0;
+}
+
+[data-bs-theme="light"] .hk-home .hk-strip {
+    background: #ffffff;
+    border-color: rgba(24, 23, 21, 0.08);
+}
+
+.hk-home .hk-marquee {
+    direction: ltr;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+
+.hk-home .hk-marquee-track {
+    animation: hkMarquee 38s linear infinite;
+    display: flex;
+    width: max-content;
+}
+
+.hk-home .hk-marquee:hover .hk-marquee-track,
+.hk-home .hk-marquee:focus-within .hk-marquee-track {
+    animation-play-state: paused;
+}
+
+.hk-home .hk-marquee-set {
+    align-items: center;
+    display: flex;
+    gap: 34px;
+    padding-inline-end: 34px;
+}
+
+.hk-home .hk-marquee-set span {
+    align-items: center;
+    color: var(--gv-muted);
+    display: inline-flex;
+    font-size: 0.74rem;
+    font-weight: 800;
+    gap: 9px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.hk-home .hk-marquee-set i {
+    color: var(--gv-primary);
+    font-size: 0.95rem;
+}
+
+@keyframes hkMarquee {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+}
+
+/* ── Section shell + heading row ──────────────────────────────── */
+.hk-home .hk-section {
+    padding: clamp(2.75rem, 5vw, 4.5rem) 0;
+}
+
+/* The older main > section rule forces 0.85rem top padding site-wide.
+   Restore the intended breathing room for the homepage category section. */
+main.hk-home > .hk-section--categories {
+    padding-top: clamp(3rem, 5vw, 4.5rem) !important;
+}
+
+.hk-home .hk-section--categories .hk-head {
+    margin-bottom: 30px;
+}
+
+.hk-home #homeCategoryGrid > [class*="col-"] {
+    display: flex;
+}
+
+body:not(:has(#adminContent)) .hk-home #homeCategoryGrid .category-card {
+    flex: 1 1 auto;
+    min-height: 190px;
+    padding: 20px 20px 30px;
+    padding-top: 20px !important;
+    gap: 10px;
+}
+
+.hk-home #homeCategoryGrid .category-card > i,
+.hk-home #homeCategoryGrid .category-card > .category-photo {
+    flex: 0 0 50px;
+    height: 50px;
+    width: 50px;
+}
+
+.hk-home #homeCategoryGrid .category-card::after {
+    bottom: 15px;
+    left: auto;
+    right: auto;
+    inset-inline-start: 20px;
+}
+
+.hk-home #homeCategoryGrid .category-card:hover::after {
+    width: calc(100% - 40px);
+}
+
+.hk-home .hk-section--band {
+    background: var(--gv-soft);
+    border-bottom: 1px solid var(--gv-border);
+    border-top: 1px solid var(--gv-border);
+}
+
+[data-bs-theme="dark"] .hk-home .hk-section--band {
+    background: #0d0d0f;
+    border-color: rgba(255, 255, 255, 0.06);
+}
+
+.hk-home .hk-head {
+    align-items: flex-end;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: space-between;
+    margin-bottom: 26px;
+}
+
+.hk-home .hk-head h2 {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 2.6vw, 2.1rem);
+    letter-spacing: -0.022em;
+    line-height: 1.15;
+}
+
+.hk-home .hk-head .eyebrow {
+    font-size: 0.76rem;
+}
+
+.hk-home .hk-head .btn {
+    align-items: center;
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 8px;
+    min-height: 42px;
+}
+
+.hk-home .hk-head .btn i {
+    font-size: 0.85rem;
+    transition: transform 200ms var(--ease-out);
+}
+
+.hk-home .hk-head .btn:hover i {
+    transform: translateX(3px);
+}
+
+[dir="rtl"] .hk-home .hk-head .btn:hover i {
+    transform: translateX(-3px);
+}
+
+.hk-home .hk-head--center {
+    justify-content: center;
+    text-align: center;
+}
+
+.hk-home .hk-head--center > div {
+    max-width: 62ch;
+}
+
+.hk-home .hk-head-sub {
+    color: var(--gv-muted);
+    font-size: 0.95rem;
+    line-height: 1.65;
+    margin-inline: auto;
+}
+
+/* ── How it works: four steps ─────────────────────────────────── */
+.hk-home .hk-steps {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.hk-home .hk-step {
+    background: var(--gv-panel);
+    border: 1px solid var(--gv-border);
+    border-radius: 16px;
+    box-shadow: inset 0 1px 0 var(--card-highlight);
+    display: grid;
+    gap: 8px;
+    overflow: hidden;
+    padding: 20px 18px;
+    position: relative;
+    transition: border-color 220ms var(--ease-out),
+                box-shadow 220ms var(--ease-out),
+                transform 220ms var(--ease-out);
+}
+
+.hk-home .hk-step:hover {
+    border-color: rgba(255, 106, 19, 0.4);
+    box-shadow: 0 16px 34px -18px rgba(255, 106, 19, 0.45);
+    transform: translateY(-3px);
+}
+
+.hk-home .hk-step-ghost {
+    color: rgba(255, 106, 19, 0.16);
+    font-size: 3.2rem;
+    font-weight: 850;
+    inset-block-start: 4px;
+    inset-inline-end: 12px;
+    letter-spacing: -0.06em;
+    line-height: 1;
+    pointer-events: none;
+    position: absolute;
+}
+
+[data-bs-theme="light"] .hk-home .hk-step-ghost {
+    color: rgba(255, 106, 19, 0.14);
+}
+
+.hk-home .hk-step > i {
+    color: var(--gv-primary);
+    font-size: 1.3rem;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.hk-home .hk-step h3 {
+    font-size: 0.98rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+    margin: 0;
+}
+
+.hk-home .hk-step p {
+    color: var(--gv-muted);
+    font-size: 0.85rem;
+    line-height: 1.55;
+    margin: 0;
+}
+
+.hk-home .hk-steps-action {
+    display: flex;
+    justify-content: center;
+    margin-top: 24px;
+}
+
+/* ── Why HyperKey ─────────────────────────────────────────────── */
+.hk-home .hk-why {
+    align-items: start;
+    display: grid;
+    gap: clamp(24px, 4vw, 48px);
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr);
+}
+
+.hk-home .hk-why-copy {
+    color: var(--gv-muted);
+    font-size: 0.96rem;
+    line-height: 1.7;
+    max-width: 42ch;
+}
+
+.hk-home .hk-why-intro .btn {
+    align-items: center;
+    display: inline-flex;
+    gap: 8px;
+    min-height: 44px;
+}
+
+.hk-home .hk-why-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hk-home .hk-why-card {
+    background: var(--gv-panel);
+    border: 1px solid var(--gv-border);
+    border-radius: 16px;
+    box-shadow: inset 0 1px 0 var(--card-highlight);
+    display: grid;
+    gap: 9px;
+    padding: 20px;
+    transition: border-color 220ms var(--ease-out),
+                box-shadow 220ms var(--ease-out),
+                transform 220ms var(--ease-out);
+}
+
+.hk-home .hk-why-card:hover {
+    border-color: rgba(255, 106, 19, 0.4);
+    box-shadow: 0 16px 34px -18px rgba(255, 106, 19, 0.45);
+    transform: translateY(-3px);
+}
+
+.hk-home .hk-why-icon {
+    align-items: center;
+    background: linear-gradient(180deg, rgba(255, 122, 26, 0.18), rgba(255, 122, 26, 0.06));
+    border: 1px solid rgba(255, 122, 26, 0.28);
+    border-radius: 13px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    color: var(--gv-primary);
+    display: inline-flex;
+    font-size: 1.15rem;
+    height: 44px;
+    justify-content: center;
+    width: 44px;
+}
+
+.hk-home .hk-why-card h3 {
+    font-size: 0.97rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+    margin: 0;
+}
+
+.hk-home .hk-why-card p {
+    color: var(--gv-muted);
+    font-size: 0.85rem;
+    line-height: 1.55;
+    margin: 0;
+}
+
+/* ── Closing CTA panel ────────────────────────────────────────── */
+.hk-home .hk-cta {
+    padding: clamp(2.5rem, 4.5vw, 4rem) 0;
+}
+
+.hk-home .hk-cta-panel {
+    --hk-dark-edge: #04050a;
+    --hk-dark-face: linear-gradient(180deg, #242833 0%, #171a20 55%, #111318 100%);
+    align-items: center;
+    background:
+        radial-gradient(66% 120% at 6% 0%, rgba(255, 106, 19, 0.24), transparent 62%),
+        radial-gradient(58% 100% at 100% 100%, rgba(124, 77, 224, 0.16), transparent 58%),
+        #101013;
+    border: 1px solid rgba(255, 122, 26, 0.26);
+    border-radius: 24px;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.07),
+        0 32px 70px -32px rgba(0, 0, 0, 0.85);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 26px;
+    justify-content: space-between;
+    overflow: hidden;
+    padding: clamp(24px, 4vw, 42px);
+    position: relative;
+}
+
+.hk-home .hk-cta-panel::after {
+    background: linear-gradient(90deg, transparent, var(--gv-primary), transparent);
+    content: "";
+    height: 2px;
+    inset-block-start: 0;
+    inset-inline: 0;
+    opacity: 0.75;
+    position: absolute;
+}
+
+.hk-home .hk-cta-copy {
+    min-width: 0;
+}
+
+.hk-home .hk-cta-copy h2 {
+    color: #fdfbf8;
+    font-family: var(--font-display);
+    font-size: clamp(1.45rem, 2.5vw, 2rem);
+    letter-spacing: -0.022em;
+    line-height: 1.15;
+}
+
+.hk-home .hk-cta-copy p.mb-0 {
+    color: rgba(253, 251, 248, 0.62);
+    font-size: 0.94rem;
+    line-height: 1.6;
+}
+
+.hk-home .hk-cta-actions {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.hk-home .hk-cta-actions .btn {
+    align-items: center;
+    display: inline-flex;
+    gap: 9px;
+    justify-content: center;
+    min-height: 48px;
+    padding: 0 22px;
+}
+
+/* The panel is dark in both themes → keep its keycaps dark too */
+body:not(:has(#adminContent)) .hk-home .hk-cta-panel .btn-outline-dark {
+    background: linear-gradient(180deg, #242833 0%, #171a20 55%, #111318 100%);
+    border-color: rgba(255, 255, 255, 0.16);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.10),
+        0 4px 0 #04050a;
+    color: #f4f2ee;
+}
+
+body:not(:has(#adminContent)) .hk-home .hk-cta-panel .btn-outline-dark:hover,
+body:not(:has(#adminContent)) .hk-home .hk-cta-panel .btn-outline-dark:focus {
+    background: linear-gradient(180deg, #2b303c 0%, #1d2129 55%, #16181f 100%);
+    border-color: rgba(255, 138, 43, 0.55);
+    color: var(--gv-primary);
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+@media (max-width: 1199.98px) {
+    .hk-home .hk-why {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .hk-home .hk-why-intro {
+        max-width: 62ch;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .hk-home .hk-steps {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .hk-home .hk-deck {
+        margin-top: 6px;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .hk-home .hk-hero {
+        padding-top: 2.25rem;
+    }
+
+    .hk-home .hk-hero-title {
+        max-width: none;
+    }
+
+    .hk-home .hk-hero-ctas {
+        gap: 10px;
+    }
+
+    .hk-home .hk-hero-ctas .btn,
+    .hk-home .hk-hero-ctas .btn-lg {
+        flex: 1 1 100%;
+        font-size: 0.96rem;
+        padding: 0 18px;
+    }
+
+    .hk-home .hk-hero-proof {
+        gap: 8px 16px;
+        margin-top: 20px;
+    }
+
+    .hk-home .hk-deck {
+        padding: 14px;
+    }
+
+    .hk-home .hk-key {
+        min-height: 92px;
+        padding: 12px;
+    }
+
+    .hk-home .hk-key strong {
+        font-size: 0.8rem;
+        padding-top: 8px;
+    }
+
+    .hk-home .hk-deck-foot em {
+        margin-inline-start: 0;
+    }
+
+    .hk-home .hk-steps,
+    .hk-home .hk-why-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .hk-home .hk-cta-actions {
+        flex: 1 1 100%;
+    }
+
+    .hk-home .hk-cta-actions .btn {
+        flex: 1 1 100%;
+    }
+}
+
+/* ── Motion preferences ───────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    .hk-home .hk-marquee-track {
+        animation: none;
+    }
+
+    .hk-home .hk-marquee-set[aria-hidden="true"] {
+        display: none;
+    }
+
+    .hk-home .hk-marquee {
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
+    .hk-home .hk-pulse {
+        animation: none;
+    }
+
+    .hk-home .hk-key,
+    .hk-home .hk-step,
+    .hk-home .hk-why-card,
+    .hk-home .hk-head .btn i {
+        transition: none;
+    }
+
+    .hk-home .hk-key:hover,
+    .hk-home .hk-step:hover,
+    .hk-home .hk-why-card:hover {
+        transform: none;
+    }
+}
+
+/* Checkout flow: one clear task per screen, shared step indicator. */
+.checkout-flow .checkout-progress {
+    margin-top: 22px;
+    max-width: 720px;
+}
+
+.checkout-flow .checkout-progress ol {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.checkout-flow .checkout-progress-step {
+    align-items: center;
+    background: var(--gv-panel);
+    border: 1px solid var(--gv-border);
+    border-radius: 12px;
+    color: var(--gv-muted);
+    display: flex;
+    font-size: 0.83rem;
+    font-weight: 750;
+    gap: 9px;
+    line-height: 1.3;
+    min-height: 48px;
+    padding: 8px 12px;
+}
+
+.checkout-flow .checkout-progress-number {
+    align-items: center;
+    background: var(--gv-soft);
+    border-radius: 50%;
+    color: var(--gv-ink);
+    display: inline-flex;
+    flex: 0 0 25px;
+    height: 25px;
+    justify-content: center;
+}
+
+.checkout-flow .checkout-progress-step.is-complete {
+    color: var(--gv-ink);
+}
+
+.checkout-flow .checkout-progress-step.is-current {
+    background: color-mix(in srgb, var(--gv-primary) 10%, var(--gv-panel));
+    border-color: var(--gv-primary);
+    color: var(--gv-ink);
+}
+
+.checkout-flow .checkout-progress-step.is-current .checkout-progress-number {
+    background: var(--gv-primary);
+    color: #17110b;
+}
+
+.checkout-flow .checkout-next-note {
+    align-items: flex-start;
+    background: color-mix(in srgb, var(--gv-primary) 7%, var(--gv-panel));
+    border: 1px solid var(--gv-border);
+    border-radius: 12px;
+    color: var(--gv-ink);
+    display: flex;
+    font-size: 0.9rem;
+    gap: 10px;
+    line-height: 1.55;
+    padding: 14px 16px;
+}
+
+.checkout-flow .checkout-next-note i {
+    color: var(--gv-primary);
+    flex: 0 0 auto;
+}
+
+.checkout-flow .checkout-change-method {
+    color: var(--gv-primary);
+    font-size: 0.88rem;
+    font-weight: 750;
+    text-underline-offset: 3px;
+}
+
+.checkout-flow .checkout-submit-note {
+    color: var(--gv-muted);
+    font-size: 0.87rem;
+    line-height: 1.55;
+    margin: 12px 0 0;
+}
+
+.checkout-flow .payment-guide summary {
+    color: var(--gv-ink);
+    cursor: pointer;
+    font-weight: 750;
+}
+
+.checkout-flow .payment-guide summary:focus-visible {
+    border-radius: 4px;
+    outline: 2px solid var(--gv-primary);
+    outline-offset: 3px;
+}
+
+.checkout-flow .payment-guide img {
+    margin-top: 12px;
+}
+
+@media (max-width: 575.98px) {
+    .checkout-flow .checkout-progress-step {
+        flex-direction: column;
+        font-size: 0.75rem;
+        justify-content: center;
+        min-height: 74px;
+        padding: 8px 5px;
+        text-align: center;
+    }
+
+    .checkout-flow .order-success-box .btn {
+        flex: 1 1 100%;
+    }
 }
