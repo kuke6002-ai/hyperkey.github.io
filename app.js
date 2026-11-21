@@ -15,7 +15,7 @@ const LANGUAGE_KEY = "hyperkey-language";
 let CURRENCY = "TND";
 const ORDER_API_URL = window.GAMEVAULT_ORDER_API_URL || "";
 const CATALOG_API_URL = ORDER_API_URL ? `${ORDER_API_URL.replace(/\/+$/, "")}/api` : "";
-const SUPPORT_WHATSAPP_NUMBER = "21655159280";
+const SUPPORT_WHATSAPP_NUMBER = "21693460221";
 const CART_VARIATION_SEPARATOR = "::";
 const REFERRAL_KEY = "hyperkey-ref";
 const SUPPORTED_LANGUAGES = ["en", "fr", "ar"];
@@ -1267,6 +1267,12 @@ function renderCheckoutCustomerInputs() {
     const session = getCheckoutSession() || {};
     const savedInputs = Array.isArray(session.customerInputs) ? session.customerInputs : [];
     const savedByKey = new Map(savedInputs.map((input) => [`${makeCartKey(input.productId, input.variationId || "")}::${String(input.label || "").toLowerCase()}`, input]));
+    const currentByKey = new Map(
+        [...container.querySelectorAll("[data-customer-input]")].map((input) => [
+            `${makeCartKey(input.dataset.productId || "", input.dataset.variationId || "")}::${String(input.dataset.label || "").toLowerCase()}`,
+            input.value,
+        ])
+    );
 
     const fields = Object.entries(cart)
         .filter(([cartKey]) => getCartLine(cartKey))
@@ -1277,7 +1283,10 @@ function renderCheckoutCustomerInputs() {
 
             return configs.map((config, index) => {
                 const fieldId = `checkoutCustomerInput-${slugify(cartKey)}-${index}`;
-                const previous = savedByKey.get(`${cartKey}::${String(config.label || "").toLowerCase()}`);
+                const fieldKey = `${cartKey}::${String(config.label || "").toLowerCase()}`;
+                const currentValue = currentByKey.get(fieldKey);
+                const previous = savedByKey.get(fieldKey);
+                const fieldValue = currentValue ? currentValue : previous?.value || "";
                 return `
                     <div>
                         <label class="form-label mt-2" for="${escapeHtml(fieldId)}">
@@ -1290,7 +1299,7 @@ function renderCheckoutCustomerInputs() {
                             maxlength="120"
                             autocomplete="off"
                             placeholder="${escapeHtml(t(config.label))}"
-                            value="${previous ? escapeHtml(previous.value || "") : ""}"
+                            value="${escapeHtml(fieldValue)}"
                             required
                             data-customer-input
                             data-product-id="${escapeHtml(line.productId)}"
@@ -1343,8 +1352,91 @@ function setupCheckoutForm() {
     const form = document.getElementById("checkoutForm");
     if (!form) return;
 
+    const detailsStep = document.getElementById("checkoutStepDetails");
+    const paymentStep = document.getElementById("checkoutStepPayment");
+    const paymentRadios = [...document.querySelectorAll('input[name="paymentMethod"]')];
+    const progressSteps = [...document.querySelectorAll(".checkout-flow .checkout-progress-step")];
+    let activeStep = 1;
+
+    // Keep the payment radios out of native validation until their step is shown.
+    paymentRadios.forEach((input) => {
+        input.required = false;
+    });
+
+    const showCheckoutStep = (step) => {
+        activeStep = step;
+        form.dataset.checkoutStep = String(step);
+        const onPaymentStep = step === 2;
+        detailsStep?.classList.toggle("d-none", onPaymentStep);
+        paymentStep?.classList.toggle("d-none", !onPaymentStep);
+        paymentRadios.forEach((input) => {
+            input.required = onPaymentStep;
+        });
+        progressSteps.forEach((item, index) => {
+            const itemStep = index + 1;
+            item.classList.toggle("is-complete", itemStep < step);
+            item.classList.toggle("is-current", itemStep === step);
+            if (itemStep === step) item.setAttribute("aria-current", "step");
+            else item.removeAttribute("aria-current");
+        });
+        translatePage();
+        const target = onPaymentStep ? paymentStep : detailsStep;
+        target?.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (onPaymentStep) document.getElementById("checkoutPaymentHeading")?.focus({ preventScroll: true });
+        else document.getElementById("customerPhone")?.focus({ preventScroll: true });
+    };
+
+    const validateCheckoutDetails = () => {
+        const phoneInput = document.getElementById("customerPhone");
+        const customerPhone = normalizeTunisianPhoneInput(phoneInput?.value || "");
+        setAlert("checkoutSuccess", "");
+        setAlert("checkoutError", "");
+        if (!customerPhone) {
+            setAlert("checkoutError", "Enter a valid Tunisian WhatsApp number with 8 digits.");
+            phoneInput?.focus();
+            return false;
+        }
+        const deliveryInputs = [...document.querySelectorAll("#checkoutCustomerInputs [data-customer-input]")];
+        const missingInput = deliveryInputs.find((input) => !input.value.trim());
+        if (missingInput) {
+            setAlert("checkoutError", "Fill every delivery information field.");
+            missingInput.focus();
+            return false;
+        }
+        return true;
+    };
+
+    document.getElementById("checkoutDetailsButton")?.addEventListener("click", () => {
+        if (validateCheckoutDetails()) showCheckoutStep(2);
+    });
+
+    document.getElementById("checkoutBackToDetails")?.addEventListener("click", (event) => {
+        event.preventDefault();
+        showCheckoutStep(1);
+    });
+
+    const phoneInput = document.getElementById("customerPhone");
+    const savedSession = getCheckoutSession() || {};
+    if (phoneInput && !phoneInput.value && savedSession.customerPhone) {
+        phoneInput.value = formatTunisianPhone(savedSession.customerPhone);
+    }
+    if (new URLSearchParams(window.location.search).get("step") === "payment" && normalizeTunisianPhoneInput(phoneInput?.value || "")) {
+        showCheckoutStep(2);
+    } else {
+        form.dataset.checkoutStep = String(activeStep);
+    }
+
     form.addEventListener("submit", (event) => {
         event.preventDefault();
+        if (activeStep === 2 && !validateCheckoutDetails()) {
+            showCheckoutStep(1);
+            form.classList.add("was-validated");
+            return;
+        }
+        if (activeStep === 1) {
+            if (validateCheckoutDetails()) showCheckoutStep(2);
+            return;
+        }
         if (!form.checkValidity()) {
             form.classList.add("was-validated");
             return;
@@ -1439,15 +1531,21 @@ function renderPaymentProofFields(details) {
     if (!proofFields) return;
 
     if (details.proofType === "reference") {
+        const legacyProofLabels = {
+            d17: { legacy: "Authorization number", label: "Your D17 Number" },
+            flouci: { legacy: "Transaction ID", label: "Your Flouci Number" },
+        };
+        const legacy = legacyProofLabels[details.method];
+        const proofLabel = legacy && details.proofLabel === legacy.legacy ? legacy.label : details.proofLabel;
         proofFields.innerHTML = `
-            <label class="form-label" for="paymentReference">${escapeHtml(details.proofLabel)}</label>
+            <label class="form-label" for="paymentReference">${escapeHtml(proofLabel)}</label>
             <input
                 class="form-control"
                 id="paymentReference"
                 type="text"
                 autocomplete="off"
                 maxlength="80"
-                placeholder="${escapeHtml(details.proofLabel)}"
+                placeholder="${escapeHtml(proofLabel)}"
                 required
             />
         `;
@@ -1523,20 +1621,6 @@ function renderPaymentRecipient(details) {
     translatePage();
 }
 
-function renderPaymentGuide(method) {
-    const guide = document.getElementById("paymentGuide");
-    if (!guide) return;
-
-    if (method === "tt-card") {
-        guide.classList.add("d-none");
-        return;
-    }
-    const imgs = guide.querySelectorAll("img");
-    imgs.forEach((img) => img.classList.toggle("d-none", !img.src.includes(method)));
-    guide.classList.remove("d-none");
-    translatePage();
-}
-
 function readPaymentProof(method) {
     if (method === "tt-card") {
         return {
@@ -1585,7 +1669,6 @@ async function renderPaymentPage() {
         renderPaymentOrderSummary(validCart);
         renderPaymentRecipient(details);
         renderPaymentProofFields(details);
-        renderPaymentGuide(details.method);
         const paymentContext = { session: { ...session, cart: validCart, items: getCheckoutItems(validCart) }, details };
         updateContinueOrderWhatsAppLinks(paymentContext);
         setAlert("paymentError", "");
@@ -2157,6 +2240,43 @@ function renderCurrentStatusPanel(order) {
     const paymentRejected = String(order.paymentStatusCode || "").toLowerCase() === "rejected";
     const paymentVerified = String(order.paymentStatusCode || "").toLowerCase() === "verified";
     const confirmedAt = order.customerConfirmedAt || "";
+    // Reporting is a marketplace-only action: store-owned orders have no seller to dispute.
+    const marketplaceOrder =
+        Boolean(order.marketplaceOrder) ||
+        Boolean(order.chatAvailable) ||
+        (Array.isArray(order.items) && order.items.some((item) => String(item.soldBy || "").trim()));
+    const confirmHint =
+        !cancelled && !paymentRejected
+            ? paymentVerified
+                ? `<p class="mb-2 small text-secondary">${t("Received your product and it works? Confirm delivery.")}</p>`
+                : `<p class="mb-2 small text-secondary">${t("Confirm delivery is available after payment verification.")}</p>`
+            : "";
+    const confirmButton =
+        !confirmedAt && !cancelled && !paymentRejected && paymentVerified
+            ? `<button class="btn confirm-delivery-btn flex-fill" type="button" data-confirm-delivery>
+                <i class="bi bi-check-circle me-2"></i>${t("Confirm delivery")}
+            </button>`
+            : "";
+    const reportButton = marketplaceOrder
+        ? `<button class="btn report-admin-btn flex-fill" type="button" data-report-admin>
+                <i class="bi bi-flag me-2"></i>${t("Report to admin")}
+            </button>`
+        : "";
+    const deliveryActions =
+        confirmHint || confirmButton || reportButton
+            ? `<div class="confirm-delivery-box mt-3">
+                ${confirmHint}
+                ${
+                    confirmButton || reportButton
+                        ? `<div class="confirm-delivery-actions">
+                            ${confirmButton}
+                            ${reportButton}
+                        </div>`
+                        : ""
+                }
+                ${marketplaceOrder ? `<p class="report-admin-feedback d-none mb-0 mt-2" data-report-admin-feedback></p>` : ""}
+            </div>`
+            : "";
     return (
         `
         <div class="current-status-panel status-${escapeHtml(current.tone)} mb-4">
@@ -2176,28 +2296,7 @@ function renderCurrentStatusPanel(order) {
                         : ""
                 }
                 ${["waiting", "delivered"].includes(deliveryStatus) ? renderSellerDeliveredItems(order) : ""}
-                <div class="confirm-delivery-box mt-3">
-                    ${
-                        !cancelled && !paymentRejected
-                            ? paymentVerified
-                                ? `<p class="mb-2 small text-secondary">${t("Received your product and it works? Confirm delivery.")}</p>`
-                                : `<p class="mb-2 small text-secondary">${t("Confirm delivery is available after payment verification.")}</p>`
-                            : ""
-                    }
-                    <div class="confirm-delivery-actions">
-                        ${
-                            !confirmedAt && !cancelled && !paymentRejected && paymentVerified
-                                ? `<button class="btn confirm-delivery-btn flex-fill" type="button" data-confirm-delivery>
-                                    <i class="bi bi-check-circle me-2"></i>${t("Confirm delivery")}
-                                </button>`
-                                : ""
-                        }
-                        <button class="btn report-admin-btn flex-fill" type="button" data-report-admin>
-                            <i class="bi bi-flag me-2"></i>${t("Report to admin")}
-                        </button>
-                    </div>
-                    <p class="report-admin-feedback d-none mb-0 mt-2" data-report-admin-feedback></p>
-                </div>
+                ${deliveryActions}
                 ${
                     confirmedAt
                         ? `<div class="customer-confirmed-box mt-3">

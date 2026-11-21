@@ -2116,21 +2116,6 @@ input[inputmode="tel"] {
     grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
 }
 
-.payment-guide {
-    background: var(--gv-soft);
-    border: 1px solid var(--gv-border);
-    border-radius: 8px;
-    padding: 14px;
-}
-
-.payment-guide img {
-    border-radius: 8px;
-    display: block;
-    max-height: 520px;
-    object-fit: contain;
-    width: 100%;
-}
-
 .order-success-box {
     color: var(--gv-ink);
 }
@@ -10147,7 +10132,7 @@ body:not(:has(#adminContent)) .hk-home .hk-cta-panel .btn-outline-dark:focus {
 .checkout-flow .checkout-progress ol {
     display: grid;
     gap: 10px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     list-style: none;
     margin: 0;
     padding: 0;
@@ -10219,6 +10204,54 @@ body:not(:has(#adminContent)) .hk-home .hk-cta-panel .btn-outline-dark:focus {
     text-underline-offset: 3px;
 }
 
+.checkout-flow .checkout-step-back {
+    align-items: center;
+    color: var(--gv-muted);
+    display: flex;
+    font-size: 0.88rem;
+    font-weight: 750;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 14px;
+    text-decoration: none;
+}
+
+.checkout-flow .checkout-step-back:hover,
+.checkout-flow .checkout-step-back:focus-visible {
+    color: var(--gv-primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.checkout-flow .checkout-step-back i {
+    font-size: 0.95rem;
+}
+
+[dir="rtl"] .checkout-flow .checkout-step-back i {
+    transform: scaleX(-1);
+}
+
+.checkout-flow .summary-policy-link {
+    align-items: center;
+    color: var(--gv-muted);
+    display: inline-flex;
+    font-weight: 700;
+    gap: 6px;
+    margin-top: 14px;
+    text-decoration: none;
+}
+
+.checkout-flow .summary-policy-link:hover,
+.checkout-flow .summary-policy-link:focus-visible {
+    color: var(--gv-primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.checkout-flow .summary-policy-link i {
+    color: var(--gv-primary);
+}
+
 .checkout-flow .checkout-submit-note {
     color: var(--gv-muted);
     font-size: 0.87rem;
@@ -10226,23 +10259,11 @@ body:not(:has(#adminContent)) .hk-home .hk-cta-panel .btn-outline-dark:focus {
     margin: 12px 0 0;
 }
 
-.checkout-flow .payment-guide summary {
-    color: var(--gv-ink);
-    cursor: pointer;
-    font-weight: 750;
-}
-
-.checkout-flow .payment-guide summary:focus-visible {
-    border-radius: 4px;
-    outline: 2px solid var(--gv-primary);
-    outline-offset: 3px;
-}
-
-.checkout-flow .payment-guide img {
-    margin-top: 12px;
-}
-
 @media (max-width: 575.98px) {
+    .checkout-flow .checkout-progress ol {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .checkout-flow .checkout-progress-step {
         flex-direction: column;
         font-size: 0.75rem;

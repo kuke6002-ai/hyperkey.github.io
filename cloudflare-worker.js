@@ -2168,6 +2168,7 @@ async function getOrderStatusPayload(env, record) {
             autoCompletedAt: record.auto_completed_at || "",
             chatAvailable: items.some((item) => String(item.sold_by || "").trim()),
             chatSellers: [...new Set(items.map((item) => String(item.sold_by || "").trim()).filter(Boolean))],
+            marketplaceOrder: items.some((item) => String(item.sold_by || "").trim()),
         },
     };
 }
@@ -2917,6 +2918,11 @@ async function handleCustomerReportAdmin(body, env, corsHeaders) {
     const record = await getOrderByIdAndPhone(env, orderId, body.customerPhone);
     if (!record) {
         return jsonResponse({ error: "Order was not found. Check the order ID and WhatsApp number." }, 404, corsHeaders);
+    }
+
+    const orderItems = await getOrderItems(env, orderId);
+    if (!orderItems.some((item) => String(item.sold_by || "").trim())) {
+        return jsonResponse({ error: "Reports are only available for marketplace orders." }, 400, corsHeaders);
     }
 
     if (!checkAdminReportRateLimit(orderId)) {        return jsonResponse({ error: "Please wait a moment before reporting again." }, 429, corsHeaders);
